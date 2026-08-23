@@ -1,0 +1,81 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="MySQLBulkInsert.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\DB\MySQL\BaseMySQL.cpp">
+      <Filter>UtilCore\DB</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\Allocator.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\Memory.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\MemoryPool.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{004b9a67-5af3-4702-a0e8-6af8733e7d82}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\DB">
+      <UniqueIdentifier>{3b8d1d88-2b45-4bf5-9adf-d7d7a9552d1e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{bdfcf894-55b0-4f27-b12f-a85e64b3bfdf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Memory">
+      <UniqueIdentifier>{f27fbef4-dcaa-413d-a16e-f2d3c7767c55}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\DB\MySQL\BaseMySQL.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Allocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Containers.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Memory.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\RawAllocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,200 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{abf0a86c-a40f-4f74-a5ab-2c84bce54f25}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\DB">
+      <UniqueIdentifier>{c2b72a07-0b1c-45c7-a656-29c91c12ca5a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\JSON">
+      <UniqueIdentifier>{9b8458e5-f4d2-4961-b659-22f907de053a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Memory">
+      <UniqueIdentifier>{b68dc688-69d6-42ff-8a7f-f9256a181675}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Thread">
+      <UniqueIdentifier>{5dd82e57-99d1-42f1-90cb-7778909f9121}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{797546be-93b1-4bb3-9662-c495e9b5c7d9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\DB\MySQL">
+      <UniqueIdentifier>{453eab6b-9b66-42c2-b968-24ef97a566dd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers">
+      <UniqueIdentifier>{c18c781c-5eb6-407f-ab5d-58cc29793042}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Queue">
+      <UniqueIdentifier>{6ccdff81-8b92-41ec-b479-462b04a64d43}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
+      <Filter>UtilCore\JSON</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Allocator.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Memory.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\ServerConfig.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="MySQLAsync.cpp" />
+    <ClCompile Include="DBAsyncHandler.cpp" />
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\MySQL\BaseMySQL.cpp">
+      <Filter>UtilCore\DB\MySQL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\MySQL\MySQLAsyncSrv.cpp">
+      <Filter>UtilCore\DB\MySQL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\MySQL\MySQLConnPool.cpp">
+      <Filter>UtilCore\DB\MySQL</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
+      <Filter>UtilCore\JSON</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Memory.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\CacheAlignment.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConfig.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConnectInfo.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="DBAsyncHandler.h" />
+    <ClInclude Include="DBAsyncStruct.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\MySQL\BaseMySQL.h">
+      <Filter>UtilCore\DB\MySQL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\MySQL\MySQLAsyncSrv.h">
+      <Filter>UtilCore\DB\MySQL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\MySQL\MySQLConnPool.h">
+      <Filter>UtilCore\DB\MySQL</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncSrv.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBEnum.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Singleton.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\ChunkedSwapQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\QueueCommon.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
+      <Filter>UtilCore\JSON</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
+      <Filter>UtilCore\Thread</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\Memory\Singleton.inl">
+      <Filter>UtilCore\Memory</Filter>
+    </None>
+  </ItemGroup>
+</Project>
