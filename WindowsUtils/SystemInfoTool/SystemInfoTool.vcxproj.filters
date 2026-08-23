@@ -1,0 +1,111 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{b26958ab-ac35-486a-84c9-0d6305bdb6d6}</UniqueIdentifier>
+      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{29d45cae-24be-4ab3-8deb-b875b20ad457}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\System">
+      <UniqueIdentifier>{5c6af69e-b870-4a22-a6f8-72c6584af6e0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\System\Asm">
+      <UniqueIdentifier>{4b93b3e5-afd8-41bc-aa86-580f4938b502}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="SystemInfoTool.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\StringUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\System\CpuInfo.cpp">
+      <Filter>UtilCore\System</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\System\OsInfo.cpp">
+      <Filter>UtilCore\System</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\System\SoftwareInfo.cpp">
+      <Filter>UtilCore\System</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\System\Wmi.cpp">
+      <Filter>UtilCore\System</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\System\WmiHardwareInfo.cpp">
+      <Filter>UtilCore\System</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\System\DeviceInfo.cpp">
+      <Filter>UtilCore\System</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\StringUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\CpuInfo.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\OsInfo.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\SoftwareInfo.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\SystemBaseDefine.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\Wmi.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\HwInfoStructs.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\WmiHardwareInfo.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\System\DeviceInfo.h">
+      <Filter>UtilCore\System</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="..\..\..\Library\UtilCore\System\Asm\CpuInfo64.asm">
+      <Filter>UtilCore\System\Asm</Filter>
+    </MASM>
+    <MASM Include="..\..\..\Library\UtilCore\System\Asm\CpuInfo86.asm">
+      <Filter>UtilCore\System\Asm</Filter>
+    </MASM>
+  </ItemGroup>
+</Project>
