@@ -1,0 +1,35 @@
+{
+  "status": "success",
+  "serverInfo": {
+    "name": "C++ IOCP Web Server",
+    "version": "1.0.0",
+    "framework": "Win32 / TCHAR"
+  },
+  "user": {
+    "id": 1001,
+    "username": "developer",
+    "roles": [ "admin", "user" ]
+  },
+  "items": [
+    {
+      "id": 1,
+      "name": "HTML Document",
+      "type": "text/html"
+    },
+    {
+      "id": 2,
+      "name": "JSON Data",
+      "type": "application/json"
+    },
+    {
+      "id": 3,
+      "name": "XML Data",
+      "type": "text/xml"
+    },
+    {
+      "id": 4,
+      "name": "PNG Image",
+      "type": "image/png"
+    }
+  ]
+}

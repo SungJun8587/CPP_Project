@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<response>
+	<status>success</status>
+	<serverInfo>
+		<name>C++ IOCP Web Server</name>
+		<version>1.0.0</version>
+		<framework>Win32 / TCHAR</framework>
+	</serverInfo>
+	<users>
+		<user id="1001">
+			<username>developer</username>
+			<role>admin</role>
+			<role>user</role>
+		</user>
+	</users>
+	<supportedTypes>
+		<type id="1" name="HTML Document">text/html</type>
+		<type id="2" name="JSON Data">application/json</type>
+		<type id="3" name="XML Data">text/xml</type>
+		<type id="4" name="PNG Image">image/png</type>
+	</supportedTypes>
+</response>

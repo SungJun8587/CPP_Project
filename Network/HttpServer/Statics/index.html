@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ IOCP Server Test Console</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent-color: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --success-color: #4ade80;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 700px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+        }
+
+        .title {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+
+        .btn-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .btn {
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            background-color: var(--accent-color);
+            color: #0f172a;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+            .btn:hover {
+                opacity: 0.9;
+                transform: translateY(-2px);
+            }
+
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+        }
+
+            .btn-outline:hover {
+                background-color: rgba(255, 255, 255, 0.05);
+            }
+
+        .result-box {
+            background-color: #000;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        pre {
+            width: 100%;
+            color: var(--success-color);
+            font-family: monospace;
+            font-size: 0.9rem;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        img {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 8px;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header">
+            <div class="title">C++ IOCP Multi-Type Response Test</div>
+        </div>
+
+        <div class="btn-grid">
+            <button class="btn" onclick="testJson()">JSON 테스트</button>
+            <button class="btn" onclick="testXml()">XML 테스트</button>
+            <button class="btn btn-outline" onclick="testImage()">이미지 테스트</button>
+        </div>
+
+        <div class="result-box" id="resultBox">
+            <span style="color: var(--text-muted);">버튼을 눌러 요청을 테스트하세요.</span>
+        </div>
+    </div>
+
+    <script>
+        const resultBox = document.getElementById('resultBox');
+
+        function testJson() {
+            fetch('/api/json')
+                .then(res => res.json())
+                .then(data => {
+                    resultBox.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                })
+                .catch(err => showError(err));
+        }
+
+        function testXml() {
+            fetch('/api/xml')
+                .then(res => res.text())
+                .then(xmlStr => {
+                    resultBox.innerHTML = `<pre>${escapeHtml(xmlStr)}</pre>`;
+                })
+                .catch(err => showError(err));
+        }
+
+        function testImage() {
+            // wwwroot/test.png 파일 요청
+            const img = new Image();
+            img.src = '/test.png?' + new Date().getTime(); // 캐시 방지
+            img.onload = () => {
+                resultBox.innerHTML = '';
+                resultBox.appendChild(img);
+            };
+            img.onerror = () => {
+                resultBox.innerHTML = `<span style="color: #ef4444;">이미지 로드 실패! (wwwroot/test.png 파일이 존재하는지 확인하세요)</span>`;
+            };
+        }
+
+        function showError(err) {
+            resultBox.innerHTML = `<span style="color: #ef4444;">요청 오류: ${err}</span>`;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+    </script>
+</body>
+</html>
