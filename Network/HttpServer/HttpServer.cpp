@@ -1,20 +1,91 @@
 ﻿// HttpServer.cpp : 이 파일에는 'main' 함수가 포함됩니다. 거기서 프로그램 실행이 시작되고 종료됩니다.
 //
 
-#include <iostream>
+#include "pch.h"
+#include "HttpServerSession.h"
+
+constexpr ENetworkEngineType kTestEngineType = ENetworkEngineType::IOCP;
 
 int main()
 {
-    std::cout << "Hello World!\n";
+#ifdef	_MSC_VER
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+
+    //_CrtSetBreakAlloc(676);
+
+    InitUtf8Console();
+
+    BaseGlobal::Init();
+    CSocketUtils::Init();
+
+    CNetAddress serverAddress(L"127.0.0.1", 7777);
+    CNetServiceRef serverService = nullptr;
+
+    CIocpCoreRef iocpCore = nullptr;
+    CRioCoreRef rioCore = nullptr;
+
+    std::cout << "========================================\n";
+    std::cout << " Network Engine: " << (kTestEngineType == ENetworkEngineType::RIO ? "RIO (Registered I/O)" : "IOCP") << "\n";
+    std::cout << "========================================\n";
+
+    // 2. 네트워크 엔진 및 서버 서비스 구성
+    // - 서버 워커 스레드 개수 설정 가이드 (0 입력 시 하드웨어 코어 수 기반 자동 산정)
+    uint32_t serverThreadWorkerCount = 2;
+
+    iocpCore = std::make_shared<CIocpCore>();
+
+    // 3-1. IOCP 서버 서비스 생성 (인자 순서: 엔진타입, 주소, 팩토리, 최대세션수, 워커스레드수, 코어참조)
+    serverService = CNetworkFactory::CreateServerService(
+        ENetworkEngineType::IOCP, serverAddress,
+        []() { return std::make_shared<CHttpServerSession>(); },
+        10, serverThreadWorkerCount, &iocpCore
+    );
+
+    // 4. 서버 서비스 구동 시작
+    if( serverService && serverService->Start() )
+    {
+        std::cout << "[Server] HTTP Server started successfully on port 7777 (CThreadManager active).\n";
+    }
+    else
+    {
+        std::cout << "[Error] HTTP Server Start failed!\n";
+        BaseGlobal::Destroy();
+        return 1;
+    }
+
+    // 5. 서버 메인 대기 루프 (ESC 키 입력 시 종료)
+    std::cout << "[System] Press ESC to stop the server and exit...\n";
+    while( 1 )
+    {
+        if( _kbhit() )	// 키 입력이 있을 경우
+        {
+            char key = _getch();	// 입력된 키를 가져옴
+            if( key == 27 )			// ESC 키의 ASCII 코드 : 27
+            {
+                std::cout << "ESC pressed. Exiting..." << std::endl;
+                break;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100)); // CPU 낭비 방지
+    }
+
+    // 6. 안전한 프로그램 종료 및 자원 해제
+    // 6-1. 서버 서비스 종료 처리
+    std::cout << "[System] Closing server service...\n";
+    if( serverService ) serverService->Close();
+
+    // 6-2. 전역 시스템 파괴
+    //   - BaseGlobal::Destroy 내부에서 gpThreadManager가 먼저 파괴되며 모든 워커 스레드를 안전하게 Join합니다.
+    //   - 메인 스레드의 TLS 캐시 정리 및 메모리 풀 해제가 올바른 순서로 진행됩니다.
+    std::cout << "[System] Calling BaseGlobal::Destroy()...\n";
+    BaseGlobal::Destroy();
+    std::cout << "[System] BaseGlobal::Destroy() finished.\n";
+
+    // 6-3. 소켓 유틸리티 정리
+    CSocketUtils::Clear();
+
+    std::cout << "[System] Server terminated safely.\n";
+
+    CloseConsole();
 }
-
-// 프로그램 실행: <Ctrl+F5> 또는 [디버그] > [디버깅하지 않고 시작] 메뉴
-// 프로그램 디버그: <F5> 키 또는 [디버그] > [디버깅 시작] 메뉴
-
-// 시작을 위한 팁: 
-//   1. [솔루션 탐색기] 창을 사용하여 파일을 추가/관리합니다.
-//   2. [팀 탐색기] 창을 사용하여 소스 제어에 연결합니다.
-//   3. [출력] 창을 사용하여 빌드 출력 및 기타 메시지를 확인합니다.
-//   4. [오류 목록] 창을 사용하여 오류를 봅니다.
-//   5. [프로젝트] > [새 항목 추가]로 이동하여 새 코드 파일을 만들거나, [프로젝트] > [기존 항목 추가]로 이동하여 기존 코드 파일을 프로젝트에 추가합니다.
-//   6. 나중에 이 프로젝트를 다시 열려면 [파일] > [열기] > [프로젝트]로 이동하고 .sln 파일을 선택합니다.

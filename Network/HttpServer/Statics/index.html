@@ -15,108 +15,21 @@
             --success-color: #4ade80;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: system-ui, -apple-system, sans-serif;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-main); min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
+        .container { width: 100%; max-width: 700px; background-color: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px; padding: 32px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4); }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 16px; margin-bottom: 24px; }
+        .title { font-size: 1.4rem; font-weight: 700; }
+        
+        .btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
+        .btn { padding: 12px; border-radius: 8px; border: none; background-color: var(--accent-color); color: #0f172a; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .btn:hover { opacity: 0.9; transform: translateY(-2px); }
+        .btn-outline { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-main); }
+        .btn-outline:hover { background-color: rgba(255, 255, 255, 0.05); }
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 20px;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 700px;
-            background-color: var(--card-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 32px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 16px;
-            margin-bottom: 24px;
-        }
-
-        .title {
-            font-size: 1.4rem;
-            font-weight: 700;
-        }
-
-        .btn-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-
-        .btn {
-            padding: 12px;
-            border-radius: 8px;
-            border: none;
-            background-color: var(--accent-color);
-            color: #0f172a;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-            .btn:hover {
-                opacity: 0.9;
-                transform: translateY(-2px);
-            }
-
-        .btn-outline {
-            background-color: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-main);
-        }
-
-            .btn-outline:hover {
-                background-color: rgba(255, 255, 255, 0.05);
-            }
-
-        .result-box {
-            background-color: #000;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px;
-            min-height: 180px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            overflow: hidden;
-        }
-
-        pre {
-            width: 100%;
-            color: var(--success-color);
-            font-family: monospace;
-            font-size: 0.9rem;
-            white-space: pre-wrap;
-            word-break: break-all;
-        }
-
-        img {
-            max-width: 100%;
-            max-height: 250px;
-            border-radius: 8px;
-            object-fit: contain;
-        }
+        .result-box { background-color: #000; border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; min-height: 180px; display: flex; flex-direction: column; justify-content: center; align-items: center; overflow: hidden; }
+        pre { width: 100%; color: var(--success-color); font-family: monospace; font-size: 0.9rem; white-space: pre-wrap; word-break: break-all; }
+        img { max-width: 100%; max-height: 250px; border-radius: 8px; object-fit: contain; }
     </style>
 </head>
 <body>
@@ -127,13 +40,13 @@
         </div>
 
         <div class="btn-grid">
-            <button class="btn" onclick="testJson()">JSON Å×½ºÆ®</button>
-            <button class="btn" onclick="testXml()">XML Å×½ºÆ®</button>
-            <button class="btn btn-outline" onclick="testImage()">ÀÌ¹ÌÁö Å×½ºÆ®</button>
+            <button class="btn" onclick="testJson()">JSON í…ŒìŠ¤íŠ¸</button>
+            <button class="btn" onclick="testXml()">XML í…ŒìŠ¤íŠ¸</button>
+            <button class="btn btn-outline" onclick="testImage()">ì´ë¯¸ì§€ í…ŒìŠ¤íŠ¸</button>
         </div>
 
         <div class="result-box" id="resultBox">
-            <span style="color: var(--text-muted);">¹öÆ°À» ´­·¯ ¿äÃ»À» Å×½ºÆ®ÇÏ¼¼¿ä.</span>
+            <span style="color: var(--text-muted);">ë²„íŠ¼ì„ ëˆŒëŸ¬ ìš”ì²­ì„ í…ŒìŠ¤íŠ¸í•˜ì„¸ìš”.</span>
         </div>
     </div>
 
@@ -159,20 +72,20 @@
         }
 
         function testImage() {
-            // wwwroot/test.png ÆÄÀÏ ¿äÃ»
+            // Statics/sample.jpg íŒŒì¼ ìš”ì²­
             const img = new Image();
-            img.src = '/test.png?' + new Date().getTime(); // Ä³½Ã ¹æÁö
+            img.src = '/sample.jpg?' + new Date().getTime(); // ìºì‹œ ë°©ì§€
             img.onload = () => {
                 resultBox.innerHTML = '';
                 resultBox.appendChild(img);
             };
             img.onerror = () => {
-                resultBox.innerHTML = `<span style="color: #ef4444;">ÀÌ¹ÌÁö ·Îµå ½ÇÆĞ! (wwwroot/test.png ÆÄÀÏÀÌ Á¸ÀçÇÏ´ÂÁö È®ÀÎÇÏ¼¼¿ä)</span>`;
+                resultBox.innerHTML = `<span style="color: #ef4444;">ì´ë¯¸ì§€ ë¡œë“œ ì‹¤íŒ¨! (Statics/sample.jpg íŒŒì¼ì´ ì¡´ì¬í•˜ëŠ”ì§€ í™•ì¸í•˜ì„¸ìš”)</span>`;
             };
         }
 
         function showError(err) {
-            resultBox.innerHTML = `<span style="color: #ef4444;">¿äÃ» ¿À·ù: ${err}</span>`;
+            resultBox.innerHTML = `<span style="color: #ef4444;">ìš”ì²­ ì˜¤ë¥˜: ${err}</span>`;
         }
 
         function escapeHtml(str) {
