@@ -32,6 +32,8 @@ using namespace std;
 
 #include <Util/ConsoleUtil.h>
 #include <Util/Log.h>
+#include <Util/WinCharsetConv.h>
+#include <Util/EncodingConvert.h>
 
 #include <Memory/RawAllocator.h>
 #include <Memory/Allocator.h>
@@ -54,7 +56,19 @@ using namespace std;
 #include <Containers/Stack/LockFreeSlotStack.h>
 
 #include <Network/NetworkCommon.h>
+
+#include <Network/HTTP/TlsFilter.h>
 #include <Network/HTTP/HttpParseUtil.h>
-#include <Network/HTTP/HttpRequestParser.h>
+#include <Network/HTTP/HttpResponseParser.h>
+#include <Network/HTTP/HttpPacketBuilder.h>
+#include <Network/HTTP/HttpClientCore.h>
+#include <Network/HTTP/HttpConnPoolCommon.h>
+#include <Network/HTTP/HttpConnPool.h>
+#include <Network/HTTP/HttpConnPoolManager.h>
+#include <Network/HTTP/HttpSessionIocp.h>
+#include <Network/HTTP/HttpConnPoolFactory.h>
+#include <Network/HTTP/HttpFormUtil.h>
+#include <Network/HTTP/HttpMultipartBuilder.h>
+#include <Network/HTTP/HttpClient.h>
 
 #endif // ndef PCH_H
