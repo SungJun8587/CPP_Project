@@ -69,13 +69,13 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp">
       <Filter>UtilCore</Filter>
     </ClCompile>
-    <ClCompile Include="HttpClientSession.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
+    <ClCompile Include="HttpClientSession.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -107,6 +107,9 @@
     </Filter>
     <Filter Include="UtilCore\Network\HTTP">
       <UniqueIdentifier>{8fc5d001-3a1f-4b19-8393-e9c846cd6fea}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Queue">
+      <UniqueIdentifier>{67b9d70c-cf17-4677-bd33-f7e18ee58be3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -219,11 +222,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h">
       <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="HttpClientSession.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpParseUtil.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpRequestParser.h">
       <Filter>UtilCore\Network\HTTP</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
@@ -237,6 +236,46 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpFormUtil.h">
       <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\TlsFilter.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpUrl.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpSessionIocp.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpResponseParser.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpPacketBuilder.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpMultipartBuilder.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolManager.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolFactory.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolCommon.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPool.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpClientCore.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpClient.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="HttpClientSession.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

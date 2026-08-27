@@ -130,6 +130,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinMap.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h" />

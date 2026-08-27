@@ -9,6 +9,17 @@
 #include <future>
 #include <thread>
 
+/*
+//***************************************************************************
+// @brief 디버그 빌드 환경에서 메모리 누수 추적을 위해 new 연산자를 재정의합니다.
+// @note MSVC CRT Debug Heap 기능과 연동되어 new 호출 위치(__FILE__, __LINE__)를 기록합니다.
+//***************************************************************************
+#if defined(_WIN32) && defined(_DEBUG)
+	#define DEBUG_NEW new(_NORMAL_BLOCK, __FILE__, __LINE__)
+	#define new DEBUG_NEW
+#endif
+*/
+
 //***************************************************************************
 // @brief GET 요청을 보내고 응답이 올 때까지 동기적으로 대기한 뒤 결과를 출력하는 헬퍼 함수입니다.
 // @param client   요청을 보낼 HTTP 클라이언트
@@ -49,6 +60,8 @@ int main()
 	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
 #endif
 
+	//_CrtSetBreakAlloc(1144);
+
 	// 1. 시스템 및 네트워크 환경 초기화
 	// 1-1. 콘솔 UTF-8 입출력 인코딩 설정
 	InitUtf8Console();
@@ -64,19 +77,6 @@ int main()
 	// 2. 네트워크 코어 및 HTTP 클라이언트 초기화
 	// 2-1. IOCP 코어 객체 생성
 	auto iocpCore = std::make_shared<CIocpCore>();
-
-	// 2-2. 워커 스레드 제어를 위한 플래그 및 워커 스레드 생성
-	std::atomic<bool> isRunning{ true };
-
-	// 워커 스레드 생성 (detach 대신 안전하게 loop 관리)
-	std::thread workerThread([iocpCore]() {
-		// Dispatch가 false(QUIT_KEY 수신)를 반환할 때까지 루프 수행
-		while( iocpCore->Dispatch(INFINITE) )
-		{
-			// Dispatch 내부에서 일반 네트워크 I/O 패킷 처리
-		}
-		std::cout << "[Worker] Quit signal received. Thread exiting...\n";
-		});
 
 	// 2-3. HTTP 클라이언트 인스턴스 생성 
 	// 커스텀한 CHttpClientSession을 템플릿 인자로 전달합니다.
@@ -102,17 +102,7 @@ int main()
 
 	// 7. 커넥션 풀 비동기 종료 처리
 	client->CloseAll();
-
-	// 8. 네트워크 코어 및 워커 스레드 종료 처리
-	// 8-1. 워커 스레드에게 종료 신호 전송 (CloseAll 패킷들 "뒤"에 종료 패킷이 쌓임)
-	iocpCore->PostQuit();
-
-	// 8-2. 워커 스레드가 안전하게 종료될 때까지 대기
-	if( workerThread.joinable() )
-	{
-		workerThread.join();
-		std::cout << "[System] Worker thread joined successfully.\n";
-	}
+	client->WaitUntilAllSessionsClosed();
 
 	// 9. 시스템 자원 해제 및 프로그램 종료
 	// 9-1. 전역 시스템 모듈 해제
