@@ -2,8 +2,12 @@
 //
 
 #include "pch.h"
-#include "Excel/XlntUtil.h"
+#include <Excel/XlntUtil.h>
 #include <Util/EncodingConvert.h>
+
+#include <fstream>
+#include <algorithm>
+#include <cctype>
 
 namespace fs = std::filesystem;
 
@@ -11,7 +15,7 @@ namespace fs = std::filesystem;
 // @brief 파일의 상세 정보를 저장하는 구조체입니다. (CXlntUtil 직렬화 연동)
 // @details ExcelSerializable을 상속받아 엑셀 행 데이터와의 매핑을 지원합니다.
 //***************************************************************************
-struct FileInfo : public Xlnt::ExcelSerializable<std::string, std::string, std::uintmax_t, std::string, std::string, std::string>
+struct FileInfo : public Xlnt::ExcelSerializable<std::string, std::string, std::uintmax_t, std::string, std::string, std::string, std::string>
 {
     _tstring folder;              // 폴더 경로
     _tstring filename;            // 파일 이름
@@ -19,8 +23,9 @@ struct FileInfo : public Xlnt::ExcelSerializable<std::string, std::string, std::
     _tstring creationTime;        // 생성일시 (YYYY-MM-DD HH:MM:SS)
     _tstring modifiedTime;        // 수정일시 (YYYY-MM-DD HH:MM:SS)
     _tstring encodingStr;         // 인코딩 타입 문자열
+    _tstring hasIncludeGuard;     // 인클루드 가드 존재 여부 ("O", "X", "N/A")
 
-    FileInfo() : ExcelSerializable("", "", 0, "", "", "") {}
+    FileInfo() : ExcelSerializable("", "", 0, "", "", "", "") {}
 
     //***************************************************************************
     // @brief FileInfo 객체를 생성하며, 콘솔 출력용(_tstring)과 엑셀 직렬화용(std::string)
@@ -39,7 +44,7 @@ struct FileInfo : public Xlnt::ExcelSerializable<std::string, std::string, std::
     //          이는 콘솔 출력 모드(_tcout)가 _tstring을 그대로 사용하기 때문입니다.
     //          즉 동일한 데이터를 용도별로 두 벌 유지하는 구조입니다.
     //***************************************************************************
-    FileInfo(const _tstring& f, const _tstring& fn, std::uintmax_t s, const _tstring& ct, const _tstring& mt, const _tstring& es)
+    FileInfo(const _tstring& f, const _tstring& fn, std::uintmax_t s, const _tstring& ct, const _tstring& mt, const _tstring& es, const _tstring& ig)
         // 1. std::string 필드(fields) 초기화 — 엑셀 저장(Serialize)용
         : ExcelSerializable(
             TStringToString(f),
@@ -47,11 +52,13 @@ struct FileInfo : public Xlnt::ExcelSerializable<std::string, std::string, std::
             s,
             TStringToString(ct),
             TStringToString(mt),
-            TStringToString(es)
+            TStringToString(es),
+            TStringToString(ig)
         ),
         // 2. _tstring 멤버 초기화 — 콘솔 출력(_tcout)용
-        folder(f), filename(fn), size(s), creationTime(ct), modifiedTime(mt), encodingStr(es) {
+        folder(f), filename(fn), size(s), creationTime(ct), modifiedTime(mt), encodingStr(es), hasIncludeGuard(ig) {
     }
+
 
     //***************************************************************************
     // @brief 엑셀 상단에 들어갈 필드(헤더) 이름 목록을 반환합니다.
@@ -59,7 +66,7 @@ struct FileInfo : public Xlnt::ExcelSerializable<std::string, std::string, std::
     //***************************************************************************
     static std::vector<std::string> get_field_names()
     {
-        return { "폴더 이름", "파일 이름", "크기(Bytes)", "생성일시", "수정일시", "인코딩 타입" };
+        return { "폴더 이름", "파일 이름", "크기(Bytes)", "생성일시", "수정일시", "인코딩 타입", "인클루드 가드" };
     }
 };
 
@@ -80,6 +87,69 @@ inline _tstring GetEncodingString(EEncoding encoding)
     case EEncoding::UTF8_NOBOM:  return _T("UTF-8 NO BOM");
     default:                     return _T("UNKNOWN");
     }
+}
+
+//***************************************************************************
+// @brief 파일 내에 지정된 3개 인클루드 가드 구문이 모두 포함되어 있는지 검사합니다.
+// @param[in] filePath 대상 파일 경로
+// @return bool 3개 구문이 모두 발견되면 true, 하나라도 없거나 읽기 실패 시 false
+//***************************************************************************
+bool CheckIncludeGuard(const fs::path& filePath)
+{
+    // 1. 확장자가 .h 또는 .hpp 인지 확인
+    std::string ext = filePath.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+    if( ext != ".h" && ext != ".hpp" )
+    {
+        return false;
+    }
+
+    // 2. 파일명(확장자 제외) 추출 후 대문자 변환 (예: CryptoUtil -> CRYPTOUTIL)
+    std::string stem = filePath.stem().string();
+    std::transform(stem.begin(), stem.end(), stem.begin(), ::toupper);
+
+    // 3. 필수 검사 타겟 패턴 설정
+    std::string targetIfndef = "#ifndef UC_" + stem + "_H";
+    std::string targetDefine = "#define UC_" + stem + "_H";
+    std::string targetEndif = "#endif // ndef UC_" + stem + "_H";
+    std::string targetEndifAlt = "#endif //ndef UC_" + stem + "_H"; // 주석 공백 오차 허용
+
+    bool foundIfndef = false;
+    bool foundDefine = false;
+    bool foundEndif = false;
+
+    // 4. 파일 열기
+    std::ifstream file(filePath);
+    if( !file.is_open() )
+    {
+        return false;
+    }
+
+    // 5. 한 줄씩 읽으며 패턴 검사
+    std::string line;
+    while( std::getline(file, line) )
+    {
+        if( !foundIfndef && line.find(targetIfndef) != std::string::npos )
+        {
+            foundIfndef = true;
+        }
+        if( !foundDefine && line.find(targetDefine) != std::string::npos )
+        {
+            foundDefine = true;
+        }
+        if( !foundEndif && (line.find(targetEndif) != std::string::npos || line.find(targetEndifAlt) != std::string::npos) )
+        {
+            foundEndif = true;
+        }
+
+        // 3개의 조건이 모두 충족되면 더 이상 읽지 않고 즉시 반환
+        if( foundIfndef && foundDefine && foundEndif )
+        {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 //***************************************************************************
@@ -130,6 +200,10 @@ void ToHeaderStyle(Xlnt::CXlntUtil& excel, const std::string& start_cell, const 
     borderRange.fill(header_fill);
     borderRange.font(title_font);
     borderRange.alignment(center_align);
+
+    // 8. 상단 헤더 영역에 자동 필터(Auto Filter) 적용
+    // xlnt::worksheet의 auto_filter() 메소드를 호출합니다.
+    excel.GetWorkSheet().auto_filter(xlnt::range_reference(start_cell + ":" + end_cell));
 }
 
 //***************************************************************************
@@ -214,8 +288,18 @@ bool DirectoryRecursiveSearch(const fs::path& dirPath, std::vector<FileInfo>& ou
 
         _tstring encodingStr = GetEncodingString(encoding);
 
-        // 7. FileInfo 객체 생성 후 결과 벡터에 대입
-        outFileList.emplace_back(folder, filename, size, creationTime, modifiedTime, encodingStr);
+        // 7. 인클루드 가드 검사 로직 ---
+        _tstring hasIncludeGuard = _T("N/A");
+        std::string ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+        if( ext == ".h" || ext == ".hpp" )
+        {
+            hasIncludeGuard = CheckIncludeGuard(entry.path()) ? _T("O") : _T("X");
+        }
+
+        // 8. FileInfo 객체 생성 후 결과 벡터에 대입
+        outFileList.emplace_back(folder, filename, size, creationTime, modifiedTime, encodingStr, hasIncludeGuard);
     }
 
     return true;
@@ -313,7 +397,7 @@ int main(int argc, TCHAR* argv[])
                 xlntUtil.Serialize(fileList, true);
 
                 // 6-3. 헤더 스타일 적용 ("A1"부터 "F1"까지)
-                ToHeaderStyle(xlntUtil, "A1", "F1");
+                ToHeaderStyle(xlntUtil, "A1", "G1");
 
                 // 6-4. 파일 저장
                 _tstring savePath = (fs::path(tszSrcFullPath) / _T("FileInfoResult.xlsx")).native();
@@ -331,15 +415,16 @@ int main(int argc, TCHAR* argv[])
             _tstringstream oss;
 
             // 7-2. 상단 구분선 + 헤더 행 작성
-            oss << _T("\n") << _tstring(125, _T('=')) << _T("\n");
+            oss << _T("\n") << _tstring(140, _T('=')) << _T("\n");
             oss << std::left
                 << std::setw(25) << _T("폴더 이름")
                 << std::setw(25) << _T("파일 이름")
                 << std::setw(12) << _T("크기(Bytes)")
-                << std::setw(22) << _T("생성일시")
-                << std::setw(22) << _T("수정일시")
-                << std::setw(22) << _T("인코딩 타입") << _T("\n");
-            oss << _tstring(125, _T('=')) << _T("\n");
+                << std::setw(20) << _T("생성일시")
+                << std::setw(20) << _T("수정일시")
+                << std::setw(18) << _T("인코딩 타입")
+                << std::setw(15) << _T("인클루드 가드") << _T("\n");
+            oss << _tstring(140, _T('=')) << _T("\n");
 
             // 7-3. 본문 행 작성
             for( const auto& file : fileList )
@@ -351,6 +436,7 @@ int main(int argc, TCHAR* argv[])
                     << std::setw(22) << file.creationTime
                     << std::setw(22) << file.modifiedTime
                     << std::setw(22) << file.encodingStr
+                    << std::setw(15) << file.hasIncludeGuard
                     << _T("\n");
             }
             oss << _tstring(125, _T('=')) << _T("\n");
