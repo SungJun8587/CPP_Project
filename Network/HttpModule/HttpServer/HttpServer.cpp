@@ -4,7 +4,7 @@
 #include "pch.h"
 #include "HttpServerSession.h"
 
-constexpr ENetworkEngineType kTestEngineType = ENetworkEngineType::IOCP;
+constexpr ENetworkEngineType kTestEngineType = ENetworkEngineType::IOCP; // 또는 ENetworkEngineType::RIO
 
 int main()
 {
@@ -32,9 +32,9 @@ int main()
 	CNetServiceRef serverService = nullptr;
 	CIocpCoreRef iocpCore = nullptr;
 
-	std::cout << "========================================\n";
-	std::cout << " Network Engine: " << (kTestEngineType == ENetworkEngineType::RIO ? "RIO (Registered I/O)" : "IOCP") << "\n";
-	std::cout << "========================================\n";
+	std::cout << "===========================================\n";
+	std::cout << " Network Engine: " << (kTestEngineType == ENetworkEngineType::RIO ? "RIO (Registered I/O)" : "IOCP (I/O Completion Port)") << "\n";
+	std::cout << "===========================================\n";
 
 	// 3. 네트워크 엔진 및 서버 서비스 생성
 	// 3-1. 워커 스레드 개수 결정 (0 입력 시 하드웨어 코어 수 기반 자동 산정)
@@ -46,14 +46,14 @@ int main()
 	// 3-3. IOCP 서버 서비스 객체 생성 (인자: 엔진타입, 주소, 세션 팩토리, 최대 세션 수, 워커 스레드 수, 코어 참조)
 	//      CHttpServerSession 생성자에 정적 파일 서빙 루트 디렉토리("Statics") 명시 주입
 	serverService = CNetworkFactory::CreateServerService(
-		ENetworkEngineType::IOCP, serverAddress,
+		iocpCore, serverAddress,
 		[]() -> std::shared_ptr<CSession> {
 			auto session = std::make_shared<CHttpServerSession>("Statics");
 			// 필요 시 추가 MIME 타입 등록 예시
 			// session->SetMimeType(".webp", "image/webp");
 			return session; // CSession 기반 shared_ptr로 안전하게 다형성 반환
 		},
-		10, serverThreadWorkerCount, &iocpCore
+		10, serverThreadWorkerCount
 	);
 
 	// 4. 서버 서비스 구동 시작
