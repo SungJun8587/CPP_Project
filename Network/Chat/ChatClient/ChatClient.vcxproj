@@ -13,8 +13,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{30c905e1-627f-44fa-8215-3bece7bcad2c}</ProjectGuid>
-    <RootNamespace>HttpServer</RootNamespace>
+    <ProjectGuid>{0d211d7b-0fcb-4881-ba9f-3a6f09fdaf6b}</ProjectGuid>
+    <RootNamespace>ChatClient</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -112,19 +112,16 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
-    <ClCompile Include="HttpServer.cpp" />
-    <ClCompile Include="HttpServerSession.cpp" />
+    <ClCompile Include="ChatClient.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseDefine.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
@@ -136,9 +133,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\ObjectPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpFormUtil.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpParseUtil.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpRequestParser.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.h" />
@@ -161,10 +155,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
-    <ClInclude Include="HttpServerSession.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

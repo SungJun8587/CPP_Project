@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="HttpClient.cpp" />
+    <ClCompile Include="ChatClient.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp">
       <Filter>UtilCore</Filter>
     </ClCompile>
@@ -66,13 +66,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp">
       <Filter>UtilCore</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
-      <Filter>UtilCore\Util</Filter>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\RIO\RioConnectDispatcher.cpp">
+      <Filter>UtilCore\Network\RIO</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
-      <Filter>UtilCore\Util</Filter>
-    </ClCompile>
-    <ClCompile Include="HttpClientSession.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -101,12 +97,6 @@
     </Filter>
     <Filter Include="UtilCore\Containers\Stack">
       <UniqueIdentifier>{8a76f4f8-bceb-49b0-8e3c-8fc2e7e70e53}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="UtilCore\Network\HTTP">
-      <UniqueIdentifier>{8fc5d001-3a1f-4b19-8393-e9c846cd6fea}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="UtilCore\Containers\Queue">
-      <UniqueIdentifier>{67b9d70c-cf17-4677-bd33-f7e18ee58be3}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -177,6 +167,9 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h">
+      <Filter>UtilCore\Containers\Map</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
@@ -213,71 +206,16 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h">
       <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpParseUtil.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h">
-      <Filter>UtilCore\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
-      <Filter>UtilCore\Util</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpFormUtil.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\TlsFilter.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpUrl.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpSessionIocp.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpResponseParser.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpPacketBuilder.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpMultipartBuilder.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolManager.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolFactory.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolCommon.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPool.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpClientCore.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpClient.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
-    <ClInclude Include="HttpClientSession.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
-      <Filter>UtilCore\Containers\Queue</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h">
-      <Filter>UtilCore\Containers\Map</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
-      <Filter>UtilCore\Thread</Filter>
-    </None>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
       <Filter>UtilCore\Containers\Map</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
+      <Filter>UtilCore\Thread</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -1,10 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <ClCompile Include="HttpClient.cpp" />
-    <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp">
-      <Filter>UtilCore</Filter>
-    </ClCompile>
+    <ClCompile Include="ChatServer.cpp" />
     <ClCompile Include="pch.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Memory.cpp">
       <Filter>UtilCore\Memory</Filter>
@@ -63,16 +60,44 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.cpp">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClCompile>
+    <ClCompile Include="ChatServerMain.cpp" />
+    <ClCompile Include="ChatSession.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp">
       <Filter>UtilCore</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
-      <Filter>UtilCore\Util</Filter>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp">
+      <Filter>UtilCore</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
-      <Filter>UtilCore\Util</Filter>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisClient.cpp">
+      <Filter>UtilCore\Redis</Filter>
     </ClCompile>
-    <ClCompile Include="HttpClientSession.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisService.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\Job.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobQueue.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobTimer.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -102,26 +127,14 @@
     <Filter Include="UtilCore\Containers\Stack">
       <UniqueIdentifier>{8a76f4f8-bceb-49b0-8e3c-8fc2e7e70e53}</UniqueIdentifier>
     </Filter>
-    <Filter Include="UtilCore\Network\HTTP">
-      <UniqueIdentifier>{8fc5d001-3a1f-4b19-8393-e9c846cd6fea}</UniqueIdentifier>
+    <Filter Include="UtilCore\Redis">
+      <UniqueIdentifier>{42101fe8-215e-4e84-82b4-13ec1f24764c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="UtilCore\Containers\Queue">
-      <UniqueIdentifier>{67b9d70c-cf17-4677-bd33-f7e18ee58be3}</UniqueIdentifier>
+    <Filter Include="UtilCore\Job">
+      <UniqueIdentifier>{32b65a33-45d1-4f67-8bf8-ad5c2ca2b416}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseDefine.h">
-      <Filter>UtilCore</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h">
-      <Filter>UtilCore</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h">
-      <Filter>UtilCore</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h">
-      <Filter>UtilCore</Filter>
-    </ClInclude>
     <ClInclude Include="pch.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.h">
       <Filter>UtilCore\Memory</Filter>
@@ -177,6 +190,9 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h">
+      <Filter>UtilCore\Containers\Map</Filter>
+    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
@@ -210,74 +226,85 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.h">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h">
-      <Filter>UtilCore</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpParseUtil.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
-    </ClInclude>
+    <ClInclude Include="ChatServerMain.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h">
-      <Filter>UtilCore\Util</Filter>
+    <ClInclude Include="ChatSession.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
-      <Filter>UtilCore\Util</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpFormUtil.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\TlsFilter.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpUrl.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpSessionIocp.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisClient.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpResponseParser.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommandBuilder.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpPacketBuilder.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpMultipartBuilder.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolManager.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisProtocol.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolFactory.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisRedefineDataType.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPoolCommon.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpConnPool.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpClientCore.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisService.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpClient.h">
-      <Filter>UtilCore\Network\HTTP</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommon.h">
+      <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="HttpClientSession.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
-      <Filter>UtilCore\Containers\Queue</Filter>
+    <ClInclude Include="ChatPacket.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.h">
+      <Filter>UtilCore\Job</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h">
-      <Filter>UtilCore\Containers\Map</Filter>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\Job.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobCommon.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobQueue.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobRedefineDataType.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobTimer.h">
+      <Filter>UtilCore\Job</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
+      <Filter>UtilCore\Containers\Map</Filter>
+    </None>
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
       <Filter>UtilCore\Thread</Filter>
     </None>
-    <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
-      <Filter>UtilCore\Containers\Map</Filter>
+    <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl">
+      <Filter>UtilCore\Job</Filter>
     </None>
   </ItemGroup>
 </Project>

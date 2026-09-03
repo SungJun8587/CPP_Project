@@ -103,7 +103,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpService.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSession.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.cpp" />
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\RecvBuffer.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetAddress.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetService.cpp" />
@@ -129,7 +128,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinMap.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h" />
@@ -159,7 +158,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpService.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSession.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\RecvBuffer.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetAddress.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetService.h" />
@@ -182,7 +180,7 @@
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinMap.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

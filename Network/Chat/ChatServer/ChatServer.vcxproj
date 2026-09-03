@@ -13,8 +13,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{30c905e1-627f-44fa-8215-3bece7bcad2c}</ProjectGuid>
-    <RootNamespace>HttpServer</RootNamespace>
+    <ProjectGuid>{023ec0a4-a16e-4a3c-8311-bfabdaefb046}</ProjectGuid>
+    <RootNamespace>ChatServer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -94,6 +94,10 @@
   <ItemGroup>
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\Job.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobQueue.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobTimer.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Allocator.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Memory.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.cpp" />
@@ -109,36 +113,44 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetworkFactory.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\RingBuffer.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisClient.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisService.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
-    <ClCompile Include="HttpServer.cpp" />
-    <ClCompile Include="HttpServerSession.cpp" />
+    <ClCompile Include="ChatServer.cpp" />
+    <ClCompile Include="ChatServerMain.cpp" />
+    <ClCompile Include="ChatSession.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseDefine.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\Job.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobCommon.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobQueue.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobRedefineDataType.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobTimer.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Memory.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\ObjectPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpFormUtil.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpParseUtil.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpRequestParser.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.h" />
@@ -155,20 +167,31 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\RingBuffer.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Session.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisClient.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommandBuilder.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommon.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisProtocol.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisRedefineDataType.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisService.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
-    <ClInclude Include="HttpServerSession.h" />
+    <ClInclude Include="ChatPacket.h" />
+    <ClInclude Include="ChatServerMain.h" />
+    <ClInclude Include="ChatSession.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl" />
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

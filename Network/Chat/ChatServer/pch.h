@@ -49,6 +49,8 @@ using namespace std;
 #include <Thread/PlatformLock.h>
 #include <Thread/ThreadManager.h>
 
+#include <Job/JobCommon.h>
+
 #include <BaseGlobal.h>
 
 #include <Containers/Map/ClusterSpinUnorderedMap.h>
@@ -56,19 +58,11 @@ using namespace std;
 #include <Containers/Stack/LockFreeSlotStack.h>
 
 #include <Network/NetworkCommon.h>
-
-#include <Network/HTTP/TlsFilter.h>
 #include <Network/HTTP/HttpParseUtil.h>
-#include <Network/HTTP/HttpResponseParser.h>
-#include <Network/HTTP/HttpPacketBuilder.h>
-#include <Network/HTTP/HttpClientCore.h>
-#include <Network/HTTP/HttpConnPoolCommon.h>
-#include <Network/HTTP/HttpConnPool.h>
-#include <Network/HTTP/HttpConnPoolManager.h>
-#include <Network/HTTP/HttpSessionIocp.h>
-#include <Network/HTTP/HttpConnPoolFactory.h>
-#include <Network/HTTP/HttpFormUtil.h>
-#include <Network/HTTP/HttpMultipartBuilder.h>
-#include <Network/HTTP/HttpClient.h>
+#include <Network/HTTP/HttpRequestParser.h>
+
+#include <Redis/RedisCommon.h>
+
+#include "ChatPacket.h"
 
 #endif // ndef PCH_H

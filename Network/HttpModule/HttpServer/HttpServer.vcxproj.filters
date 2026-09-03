@@ -60,9 +60,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\RingBuffer.cpp">
       <Filter>UtilCore\Network</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\RecvBuffer.cpp">
-      <Filter>UtilCore\Network\IOCP</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.cpp">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClCompile>
@@ -177,9 +174,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinMap.h">
-      <Filter>UtilCore\Containers\Map</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
@@ -210,9 +204,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\RecvBuffer.h">
-      <Filter>UtilCore\Network\IOCP</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.h">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClInclude>
@@ -238,13 +229,16 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpFormUtil.h">
       <Filter>UtilCore\Network\HTTP</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h">
+      <Filter>UtilCore\Containers\Map</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinMap.inl">
-      <Filter>UtilCore\Containers\Map</Filter>
-    </None>
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
       <Filter>UtilCore\Thread</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
+      <Filter>UtilCore\Containers\Map</Filter>
     </None>
   </ItemGroup>
 </Project>
