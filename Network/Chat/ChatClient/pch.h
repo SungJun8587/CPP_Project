@@ -51,12 +51,18 @@ using namespace std;
 
 #include <BaseGlobal.h>
 
-#include <Containers/Map/ClusterSpinUnorderedMap.h>
+#include <Crypto/CryptoUtil.h>
 
+#include <Containers/Map/ClusterSpinUnorderedMap.h>
 #include <Containers/Stack/LockFreeSlotStack.h>
 
 #include <Network/NetworkCommon.h>
 #include <Network/HTTP/HttpParseUtil.h>
 #include <Network/HTTP/HttpRequestParser.h>
+
+#include "ChatPacket.h"
+#include "ChatClientPacketDispatcher.h"
+#include "ChatClientSession.h"
+#include "ChatClientMain.h"
 
 #endif // ndef PCH_H

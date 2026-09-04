@@ -1,0 +1,42 @@
+{
+    "Name": "ChatServer",
+    "IP": "127.0.0.1",
+    "Port": 30201,
+    "UseTestMode": "OFF",
+    "KeepAliveSec": 3000,
+    "MaxUser": 2000,
+    "GameType": "ALL",
+    "DBNode": [
+        {
+            "ID": 2,
+            "DBClass": 2,
+            "DSNDriver": "{MySQL ODBC 9.7 Unicode Driver}",
+            "IP": "127.0.0.1",
+            "Port": 3306,
+            "DBName": "chat",
+            "UID": "root",
+            "PWD": "villdev!@"
+        }
+    ],
+    "RedisNode":[        
+	    {
+            "ID": 1,
+            "IP": "127.0.0.1",
+            "Port": 6379,
+            "UID": "",
+            "PWD": "",
+            "DBIndex": 0            
+        }
+	],
+    "ServerNode":[        
+	    {
+            "ID": 1,
+            "Name": "ChatServer",
+            "IP": "127.0.0.1",
+            "Port": 32101
+        }
+	]
+}
+
+
+

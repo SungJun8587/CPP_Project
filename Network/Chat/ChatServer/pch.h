@@ -11,6 +11,13 @@
 #define WIN32_LEAN_AND_MEAN		// 자주 사용하지 않는 API의 일부를 제외하여 Win32 헤더 파일의 크기를 줄이기 위해 설정(빌드 시간 단축 목적)
 #define _HAS_STD_BYTE 0			// c++17 옵션을 활성화 시 std::byte 를 비활성 하는 옵션
 
+// std::min(...)이나 std::max(...)를 호출할 때, 컴파일러가 std::min을 C++ 표준 라이브러리 함수가 아니라 매크로 치환 대상으로 오인하여 
+// std::(매크로이름) 형태로 해석해버리기 때문에 괄호 ( 앞에서 문법 오류(C2589)가 발생하는데, 이를 방지하기 위해 Windows 헤더가 로드되기 
+// 전에 NOMINMAX를 정의하여 윈도우즈의 min/max 매크로 생성을 아예 막아버리는 것이 가장 깔끔
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 #define USE_GPMEMORY			// 메모리 최적화 활성화 
 #define USE_NETWORK_IOCP		// IOCP 네트워크 활성화
 
@@ -31,6 +38,7 @@ using namespace std;
 #include <BaseMacro.h>
 
 #include <Util/ConsoleUtil.h>
+#include <Util/CommonUtil.h>
 #include <Util/Log.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
@@ -41,6 +49,7 @@ using namespace std;
 #include <Memory/Memory.h>
 #include <Memory/Containers.h>
 #include <Memory/ObjectPool.h>
+#include <Memory/Singleton.h>
 
 #include <Thread/CacheAlignment.h>
 #include <Thread/DeadLockProfiler.h>
@@ -52,17 +61,33 @@ using namespace std;
 #include <Job/JobCommon.h>
 
 #include <BaseGlobal.h>
+#include <BaseTLS.h>
+
+#include <JSON/RapidJSONUtil.h>
+#include <Crypto/CryptoUtil.h>
 
 #include <Containers/Map/ClusterSpinUnorderedMap.h>
-
 #include <Containers/Stack/LockFreeSlotStack.h>
 
 #include <Network/NetworkCommon.h>
 #include <Network/HTTP/HttpParseUtil.h>
 #include <Network/HTTP/HttpRequestParser.h>
 
+#include <ServerConfig.h>
+
+#include <DB/DBEnum.h>
+#include <DB/DBAsyncSrv.h>
+#include <DB/BaseODBC.h>
+#include <DB/OdbcConnPool.h>
+#include <DB/OdbcAsyncSrv.h>
+
 #include <Redis/RedisCommon.h>
 
 #include "ChatPacket.h"
+#include "ChatPacketDispatcher.h"
+#include "AccountDBHandler.h"
+#include "DBSignupRequest.h"
+#include "ChatSession.h"
+#include "ChatServerMain.h"
 
 #endif // ndef PCH_H

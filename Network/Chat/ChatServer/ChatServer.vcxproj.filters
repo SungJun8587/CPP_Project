@@ -98,6 +98,37 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobTimer.cpp">
       <Filter>UtilCore\Job</Filter>
     </ClCompile>
+    <ClCompile Include="AccountDBHandler.cpp" />
+    <ClCompile Include="ChatLoginHandler.cpp" />
+    <ClCompile Include="ChatPacketDispatcher.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp">
+      <Filter>UtilCore\Crypto</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.cpp">
+      <Filter>UtilCore\DB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\OdbcAsyncSrv.cpp">
+      <Filter>UtilCore\DB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\OdbcConnPool.cpp">
+      <Filter>UtilCore\DB</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
+      <Filter>UtilCore\JSON</Filter>
+    </ClCompile>
+    <ClCompile Include="ChatMessageHandler.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\ServerConfig.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -132,6 +163,15 @@
     </Filter>
     <Filter Include="UtilCore\Job">
       <UniqueIdentifier>{32b65a33-45d1-4f67-8bf8-ad5c2ca2b416}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Crypto">
+      <UniqueIdentifier>{05997d0b-b093-4f27-b598-b91e30aa0298}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\DB">
+      <UniqueIdentifier>{83645851-fa5d-4b07-b010-e6b5f926070b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\JSON">
+      <UniqueIdentifier>{401716b6-1a79-4bc0-8d89-c54fd8187f72}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -295,6 +335,45 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobTimer.h">
       <Filter>UtilCore\Job</Filter>
     </ClInclude>
+    <ClInclude Include="AccountDBHandler.h" />
+    <ClInclude Include="DBSignupRequest.h" />
+    <ClInclude Include="ChatPacketDispatcher.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h">
+      <Filter>UtilCore\Crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncSrv.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\OdbcAsyncSrv.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\OdbcConnPool.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
+      <Filter>UtilCore\JSON</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Singleton.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConfig.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConnectInfo.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
@@ -305,6 +384,24 @@
     </None>
     <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl">
       <Filter>UtilCore\Job</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.inl">
+      <Filter>UtilCore\DB</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\DB\DB_ColAttr.inl">
+      <Filter>UtilCore\DB</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\DB\DB_Error.inl">
+      <Filter>UtilCore\DB</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\DB\DB_ParamAttr.inl">
+      <Filter>UtilCore\DB</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
+      <Filter>UtilCore\JSON</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\Memory\Singleton.inl">
+      <Filter>UtilCore\Memory</Filter>
     </None>
   </ItemGroup>
 </Project>

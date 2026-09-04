@@ -66,9 +66,15 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp">
       <Filter>UtilCore</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\RIO\RioConnectDispatcher.cpp">
-      <Filter>UtilCore\Network\RIO</Filter>
+    <ClCompile Include="ChatClientMain.cpp" />
+    <ClCompile Include="ChatClientSession.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp">
+      <Filter>UtilCore\Crypto</Filter>
     </ClCompile>
+    <ClCompile Include="ChatClientLoginHandler.cpp" />
+    <ClCompile Include="ChatClientMessageHandler.cpp" />
+    <ClCompile Include="ChatClientNicknameHandler.cpp" />
+    <ClCompile Include="ChatClientPacketDispatcher.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -97,6 +103,9 @@
     </Filter>
     <Filter Include="UtilCore\Containers\Stack">
       <UniqueIdentifier>{8a76f4f8-bceb-49b0-8e3c-8fc2e7e70e53}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Crypto">
+      <UniqueIdentifier>{23f5596c-1294-47e9-a247-70fabdd5a067}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -209,6 +218,13 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="ChatClientMain.h" />
+    <ClInclude Include="ChatClientSession.h" />
+    <ClInclude Include="ChatPacket.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h">
+      <Filter>UtilCore\Crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatClientPacketDispatcher.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

@@ -1,8 +1,13 @@
-﻿// ChatServer.cpp : 이 파일에는 'main' 함수가 포함됩니다. 거기서 프로그램 실행이 시작되고 종료됩니다.
+﻿
+//***************************************************************************
+// ChatServer.cpp : CChatServerMain 구동 예시
 //
+//***************************************************************************
 
 #include "pch.h"
 #include "ChatServerMain.h"
+#include <ServerConnectInfo.h>
+#include <ServerConfig.h>
 
 #include <iostream>
 
@@ -27,6 +32,16 @@ namespace
 			return FALSE;
 		}
 	}
+
+	//***************************************************************************
+	// @brief TCHAR 문자열을 std::string으로 변환함(UNICODE 빌드 대응).
+	//***************************************************************************
+	std::string TCharToString(const TCHAR* ptsz)
+	{
+		if( ptsz == nullptr ) return std::string();
+
+		return TStringToString(ptsz);
+	}
 }
 
 int main()
@@ -35,24 +50,48 @@ int main()
 	GServer = &server;
 	::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
-	// TODO: 실서비스에서는 설정 파일/커맨드라인 인자로 대체
+	TCHAR tszConfigPath[FULLPATH_STRLEN];
+	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("..\\Config\\server_config_mysql.json"));
+
+	if( false == SERVER_CONFIG->Init(tszConfigPath) )
+	{
+		LOG_ERROR(_T("SERVER_CONFIG->Init Fail."));
+		SERVER_CONFIG->ReleaseInstance();
+		return -1;
+	}
+
+	SERVER_CONFIG->PrintServerSettingInfo();
+
+	// TODO: Redis/DB 커넥션 풀 크기와 DB 비동기 워커 스레드 수는
+	// CServerConfig의 JSON 스키마(ServerConfig.cpp::Init() 참고)에 항목이
+	// 없어 데모용 상수로 고정합니다 — 실서비스에서는 설정 파일에 추가하는
+	//것을 권장합니다.
+	constexpr int32 kRedisPoolSize = 5;
+	constexpr int32 kDbWorkerThreadCnt = 4;
+	constexpr int32 kHeartbeatTtlSec = 15;
+	constexpr int32 kHeartbeatIntervalSec = 5;
+
 	const bool started = server.Start(
-		_T("0.0.0.0"), 7777,			// bind 주소/포트
-		"127.0.0.1", 6379, 5,			// Redis 접속 정보(pool size 5)
-		"ChatServer", "1",				// serverType/serverId
+		SERVER_CONFIG->GetServerIP(), SERVER_CONFIG->GetServerPort(),
+		SERVER_CONFIG->GetRedisNodeVec(), kRedisPoolSize,
+		SERVER_CONFIG->GetDBNodeVec(), kDbWorkerThreadCnt,
+		TCharToString(SERVER_CONFIG->GetServiceName()), TCharToString(SERVER_CONFIG->GetServerName()),
 		1000, 0,						// maxSessionCount, workerThreadCount(자동)
-		15, 5							// 하트비트 TTL 15초 / 5초마다 갱신
+		kHeartbeatTtlSec, kHeartbeatIntervalSec
 	);
 
 	if( !started )
 	{
-		std::cerr << "CChatServer::Start() 실패" << std::endl;
-		return 1;
+		LOG_ERROR(_T("CChatServerMain::Start Fail."));
+		SERVER_CONFIG->ReleaseInstance();
+		return -1;
 	}
 
 	std::cout << "ChatServer started. Press Ctrl+C to stop." << std::endl;
 
 	// 메인 스레드는 그냥 대기 — 실제 I/O는 IOCP 워커 스레드들이 처리한다.
+	// Ctrl+C 등은 ConsoleCtrlHandler가 별도 스레드 컨텍스트에서 GServer->Stop()을
+	// 직접 호출하므로, 이 무한루프 자체는 정상 종료 경로를 막지 않는다.
 	while( true )
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 

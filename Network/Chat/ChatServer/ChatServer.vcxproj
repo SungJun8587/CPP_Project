@@ -48,7 +48,7 @@
     <OutDir>$(SolutionDir)Bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>Bin\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)64D</TargetName>
-    <IncludePath>K:\GitHub\CPP\Library\UtilCore;$(ProjectDir);$(IncludePath)</IncludePath>
+    <IncludePath>K:\GitHub\CPP\Library\UtilCore;K:\GitHub\CPP\Library\ExternalLib\openssl-master\include;K:\GitHub\CPP\Library\ExternalLib\rapidjson-master\include;$(ProjectDir);$(IncludePath)</IncludePath>
     <LibraryPath>K:\GitHub\CPP\Library\ExternalLib\Bin\$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -56,7 +56,7 @@
     <OutDir>$(SolutionDir)Bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>Bin\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)64</TargetName>
-    <IncludePath>K:\GitHub\CPP\Library\UtilCore;$(ProjectDir);$(IncludePath)</IncludePath>
+    <IncludePath>K:\GitHub\CPP\Library\UtilCore;K:\GitHub\CPP\Library\ExternalLib\openssl-master\include;K:\GitHub\CPP\Library\ExternalLib\rapidjson-master\include;$(ProjectDir);$(IncludePath)</IncludePath>
     <LibraryPath>K:\GitHub\CPP\Library\ExternalLib\Bin\$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -94,10 +94,15 @@
   <ItemGroup>
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\OdbcAsyncSrv.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\DB\OdbcConnPool.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\Job.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobQueue.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobTimer.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Allocator.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Memory.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.cpp" />
@@ -119,10 +124,18 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisService.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\ServerConfig.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
+    <ClCompile Include="AccountDBHandler.cpp" />
+    <ClCompile Include="ChatLoginHandler.cpp" />
+    <ClCompile Include="ChatMessageHandler.cpp" />
+    <ClCompile Include="ChatPacketDispatcher.cpp" />
     <ClCompile Include="ChatServer.cpp" />
     <ClCompile Include="ChatServerMain.cpp" />
     <ClCompile Include="ChatSession.cpp" />
@@ -139,18 +152,25 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncSrv.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\OdbcAsyncSrv.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\OdbcConnPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\Job.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobTimer.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Memory.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\ObjectPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Singleton.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.h" />
@@ -177,21 +197,35 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisService.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConfig.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConnectInfo.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="AccountDBHandler.h" />
     <ClInclude Include="ChatPacket.h" />
+    <ClInclude Include="ChatPacketDispatcher.h" />
     <ClInclude Include="ChatServerMain.h" />
     <ClInclude Include="ChatSession.h" />
+    <ClInclude Include="DBSignupRequest.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\DB\DB_ColAttr.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\DB\DB_Error.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\DB\DB_ParamAttr.inl" />
     <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\Memory\Singleton.inl" />
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
