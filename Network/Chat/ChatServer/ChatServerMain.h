@@ -14,7 +14,6 @@
 #include <DB/OdbcAsyncSrv.h>
 #include <Crypto/CryptoUtil.h>
 
-#include "AccountDBHandler.h"
 #include "ChatSession.h"
 #include "DBSignupRequest.h"
 
@@ -111,7 +110,6 @@ private:
 	std::unique_ptr<CRedisService>			_redisService;
 	CIocpServerServiceRef		_service;
 	std::unique_ptr<CRedisServerHeartbeat>	_heartbeat;
-	std::shared_ptr<CAccountDBHandler>		_accountHandler;	// COdbcAsyncSrv::Regist()에 등록해두는 핸들러 — CChatServerMain가 소유(수명 보장)
 
 	std::string	_serverType;
 	std::string	_serverId;

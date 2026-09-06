@@ -44,19 +44,47 @@ namespace
 	}
 }
 
+void MainClose()
+{
+	COdbcAsyncSrv::ReleaseInstance();
+	SERVER_CONFIG->ReleaseInstance();
+	BaseGlobal::Destroy();
+}
+
 int main()
 {
+	// 1. Debug 빌드에서의 CRT 메모리 누수 감지 옵션 설정
+#ifdef	_MSC_VER
+	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#endif
+
+	// 2. 콘솔 유니코드/UTF-8 환경 및 기본 프레임워크 초기화
+	InitUtf8Console();
+
 	CChatServerMain server;
 	GServer = &server;
 	::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
 	TCHAR tszConfigPath[FULLPATH_STRLEN];
+
+	BaseGlobal::Init();
+
 	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("..\\Config\\server_config_mysql.json"));
 
 	if( false == SERVER_CONFIG->Init(tszConfigPath) )
 	{
-		LOG_ERROR(_T("SERVER_CONFIG->Init Fail."));
-		SERVER_CONFIG->ReleaseInstance();
+		LOG_ERROR(_T("SERVER_CONFIG->Init Fail. (Path: %s)"), tszConfigPath);
+
+		MainClose();
+		return -1;
+	}
+
+	const auto& dbNodeVec = SERVER_CONFIG->GetDBNodeVec();
+	if( dbNodeVec.empty() )
+	{
+		LOG_ERROR(_T("DBNode configuration is empty. (Path: %s)"), tszConfigPath);
+
+		MainClose();
 		return -1;
 	}
 
@@ -83,7 +111,8 @@ int main()
 	if( !started )
 	{
 		LOG_ERROR(_T("CChatServerMain::Start Fail."));
-		SERVER_CONFIG->ReleaseInstance();
+
+		MainClose();
 		return -1;
 	}
 
@@ -94,6 +123,9 @@ int main()
 	// 직접 호출하므로, 이 무한루프 자체는 정상 종료 경로를 막지 않는다.
 	while( true )
 		std::this_thread::sleep_for(std::chrono::seconds(1));
+
+	MainClose();
+	CloseConsole();
 
 	return 0;
 }

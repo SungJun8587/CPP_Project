@@ -152,7 +152,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConnectInfo.h">
       <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="DBAsyncHandler.h" />
     <ClInclude Include="DBAsyncStruct.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\ADO\AdoConnPool.h">
@@ -184,6 +183,15 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\QueueCommon.h">
       <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

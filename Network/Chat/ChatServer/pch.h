@@ -77,6 +77,9 @@ using namespace std;
 
 #include <DB/DBEnum.h>
 #include <DB/DBAsyncSrv.h>
+#include <DB/DBAsyncHandler.h>
+#include <DB/DBAsyncPushHelper.h>
+
 #include <DB/BaseODBC.h>
 #include <DB/OdbcConnPool.h>
 #include <DB/OdbcAsyncSrv.h>
@@ -85,7 +88,6 @@ using namespace std;
 
 #include "ChatPacket.h"
 #include "ChatPacketDispatcher.h"
-#include "AccountDBHandler.h"
 #include "DBSignupRequest.h"
 #include "ChatSession.h"
 #include "ChatServerMain.h"

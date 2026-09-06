@@ -38,6 +38,7 @@ using namespace std;
 #include <BaseTLS.h>
 #include <BaseMacro.h>
 
+#include <Util/ConsoleUtil.h>
 #include <Util/Log.h>
 
 #include <Memory/RawAllocator.h>
@@ -67,11 +68,13 @@ using namespace std;
 
 #include <DB/DBEnum.h>
 #include <DB/DBAsyncSrv.h>
+#include <DB/DBAsyncHandler.h>
+#include <DB/DBAsyncPushHelper.h>
+
 #include <DB/BaseODBC.h>
 #include <DB/OdbcConnPool.h>
 #include <DB/OdbcAsyncSrv.h>
 
 #include "DBAsyncStruct.h"
-#include "DBAsyncHandler.h"
 
 #endif //PCH_H

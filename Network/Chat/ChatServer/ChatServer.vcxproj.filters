@@ -335,7 +335,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobTimer.h">
       <Filter>UtilCore\Job</Filter>
     </ClInclude>
-    <ClInclude Include="AccountDBHandler.h" />
     <ClInclude Include="DBSignupRequest.h" />
     <ClInclude Include="ChatPacketDispatcher.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h">
@@ -373,6 +372,12 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.h">
       <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h">
+      <Filter>UtilCore\DB</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

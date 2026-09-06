@@ -1,11 +1,20 @@
 ﻿
 //***************************************************************************
-// AccountDBHandler.cpp: implementation of the CAccountDBHandler class.
+// AccountDBHandler.cpp : DBASYNC_SIGNUP_REQ(회원가입/재접속 검증) 핸들러
 //
 //***************************************************************************
 
 #include "pch.h"
-#include "AccountDBHandler.h"
+#include <DB/DBAsyncHandler.h>
+#include <DB/OdbcAsyncSrv.h>
+#include <Crypto/CryptoUtil.h>
+
+#include "DBSignupRequest.h"
+#include "ChatSession.h"
+
+#include <cstring>
+#include <cctype>
+#include <array>
 
 namespace
 {
@@ -45,10 +54,10 @@ namespace
 
 	std::string FromTStringAscii(const TCHAR* s, size_t len)
 	{
-		// [수정] std::string(s, s+len)의 이터레이터 범위 생성자를 그대로
-		// 쓰면 UNICODE 빌드에서 TCHAR(wchar_t) -> char 암묵적 축소 변환이
-		// 발생해 C4244 경고가 난다(ASCII 전용이라 실제 데이터 손실은
-		// 없지만, 경고는 명시적 캐스팅으로 없애는 게 맞다).
+		// std::string(s, s+len) 이터레이터 범위 생성자를 그대로 쓰면
+		// UNICODE 빌드에서 TCHAR(wchar_t) -> char 암묵적 축소 변환으로
+		// C4244 경고가 난다(ASCII 전용이라 실제 데이터 손실은 없지만
+		// 경고는 명시적 캐스팅으로 없애는 게 맞다).
 		std::string result;
 		result.reserve(len);
 		for( size_t i = 0; i < len; ++i )
@@ -70,11 +79,18 @@ namespace
 
 //***************************************************************************
 // @brief 회원가입(hasToken==false) 또는 재접속 검증(hasToken==true)을 처리합니다.
+// @details [설계 변경] DECLARE_DBASYNC_HANDLER 매크로 채택 — 이 매크로가
+//          만드는 핸들러 클래스는 기본 생성자만 가지므로(생성자 파라미터로
+//          풀을 주입받을 수 없음), 다른 DB 핸들러들과 동일하게 매 호출마다
+//          COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool()로 풀을 새로
+//          얻는다. 이 등록 자체는 정적 초기화 시점(main() 진입 전)에
+//          COdbcAsyncSrv::Instance()->Regist()를 통해 이루어지는데, 그
+//          시점엔 아직 StartService()로 풀이 만들어지기 전이므로 애초에
+//          "생성자에서 풀을 미리 캡처해두는" 설계 자체가 위험했다 — 이
+//          패턴을 따르면 그 문제가 구조적으로 사라진다.
 //***************************************************************************
-EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
+DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, kDbCallIdent_Signup)
 {
-	// [가정] callIdent로 이미 라우팅된 뒤이므로 static_cast로 안전하다는
-	// 전제 — RTTI 기반 관례라면 dynamic_cast + 널 체크로 바꿔야 한다.
 	ST_SIGNUP_REQ* req = static_cast<ST_SIGNUP_REQ*>(pStAsync);
 
 	const std::array<BYTE, kTokenBytes> emptyToken{};
@@ -89,25 +105,19 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 
 	const std::string nickname(req->nickname, nicknameLen);
 
-	if( _pool == nullptr )
-	{
-		if( req->onComplete )
-			req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-		return EDBReturnType::OK;
-	}
-
-	OdbcConnGuard guard(_pool);
+	OdbcConnGuard guard(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
 	if( guard == nullptr )
 	{
+		LOG_ERROR(_T("kDbCallIdent_Signup: No available ODBC connection in pool."));
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-		return EDBReturnType::OK;
+		return EDBReturnType::INVALID;
 	}
 
-	// 스키마 가정:
+	// 스키마: create_chat_db.sql 참고
 	//   CREATE TABLE users (
 	//     nickname   VARCHAR(31)  NOT NULL PRIMARY KEY,
-	//     token_hash CHAR(64)     NOT NULL,   -- SHA-256 hex (Crypto::CCryptoUtil::HashSHA256 출력 그대로)
+	//     token_hash CHAR(64)     NOT NULL,   -- SHA-256 hex
 	//     created_at DATETIME     NOT NULL,
 	//     updated_at DATETIME     NOT NULL
 	//   );
@@ -120,16 +130,17 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 		{
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
 
 		const std::string hashHex = HashTokenHex(newToken.data(), newToken.size());
 
 		if( !guard->PrepareQuery(_T("INSERT INTO users (nickname, token_hash, created_at, updated_at) VALUES (?, ?, NOW(), NOW())")) )
 		{
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
 
 		_tstring nicknameT = ToTStringAscii(nickname);
@@ -142,6 +153,7 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 
 		if( guard->Execute() )
 		{
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::Ok, nickname, newToken);
 			return EDBReturnType::OK;
@@ -152,9 +164,7 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 		// 그 핸들이나 최종 에러 정보를 외부에 노출하는 public 메서드가 없어
 		// 여기서 직접 호출할 수 없다. 대신 핸들 접근이 필요 없는 방법으로
 		// 판별한다: 실패가 이미 확정된 뒤 "이 닉네임이 지금 존재하는가"만
-		// 다시 조회한다. 이 조회는 진단 목적일 뿐 정확성에 관여하지 않는다
-		// (애초에 피하려던 "SELECT 먼저" 레이스는 삽입 시도 자체를 SELECT로
-		// 대체하는 것이었지, 실패가 이미 확정된 뒤의 사후 확인이 아니다).
+		// 다시 조회한다. 이 조회는 진단 목적일 뿐 정확성에 관여하지 않는다.
 		guard->ClearStmt();
 		if( guard->PrepareQuery(_T("SELECT 1 FROM users WHERE nickname = ?")) )
 		{
@@ -163,30 +173,27 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 
 			if( guard->Execute() && guard->Fetch() )
 			{
-				// 지금 존재함 — 이번 INSERT 실패는 중복 키였다고 결론.
-				// (그 사이 다른 요청이 성공적으로 먼저 넣은 경우도 결과적으로
-				// "이 닉네임은 이제 못 씀"이라는 점에서 사용자에게 보여줄
-				// 결과는 동일하므로 구분할 필요가 없다.)
+				guard->ClearStmt();
 				if( req->onComplete )
 					req->onComplete(ELoginResult::NicknameTaken, nickname, emptyToken);
 				return EDBReturnType::OK;
 			}
+			guard->ClearStmt();
 		}
 
-		// 존재하지 않는데도 INSERT가 실패 — 중복 키가 아닌 다른 오류(연결
-		// 끊김, 문법 오류, 제약조건 위반 등).
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-		return EDBReturnType::OK;
+		return EDBReturnType::INVALID;
 	}
 	else
 	{
 		// ── 재접속 검증 ────────────────────────────────────────────
 		if( !guard->PrepareQuery(_T("SELECT token_hash FROM users WHERE nickname = ?")) )
 		{
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
 
 		_tstring nicknameT = ToTStringAscii(nickname);
@@ -195,33 +202,34 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 
 		if( !guard->Execute() )
 		{
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
 
 		if( !guard->Fetch() )
 		{
-			// 결과 없음 — 해당 닉네임 계정이 없다.
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::AccountNotFound, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::FETCH_NOT_FIND;
 		}
 
 		TCHAR hashBuf[65] = {};
 		int32 hashBufLen = static_cast<int32>(std::size(hashBuf));
 		if( !guard->GetData(1, hashBuf, hashBufLen) )
 		{
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
+		guard->ClearStmt();
 
 		const std::string storedHashHex = FromTStringAscii(hashBuf, ::_tcslen(hashBuf));
 		const std::string providedHashHex = HashTokenHex(req->token, sizeof(req->token));
 
-		// 상수시간 비교 — 두 해시 문자열 길이(항상 64)는 알려져 있으므로
-		// 미리 길이만 확인하고 내용 비교는 ConstantTimeEquals로.
 		const bool tokenMatches =
 			storedHashHex.size() == providedHashHex.size() &&
 			Crypto::CCryptoUtil::ConstantTimeEquals(
@@ -242,17 +250,17 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 		{
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
 
 		const std::string rotatedHashHex = HashTokenHex(rotatedToken.data(), rotatedToken.size());
 
-		guard->ClearStmt();
 		if( !guard->PrepareQuery(_T("UPDATE users SET token_hash = ?, updated_at = NOW() WHERE nickname = ?")) )
 		{
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
 
 		_tstring rotatedHashHexT = ToTStringAscii(rotatedHashHex);
@@ -262,10 +270,12 @@ EDBReturnType CAccountDBHandler::ProcessAsyncCall(st_DBAsyncRq* pStAsync)
 
 		if( !guard->Execute() )
 		{
+			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyToken);
-			return EDBReturnType::OK;
+			return EDBReturnType::INVALID;
 		}
+		guard->ClearStmt();
 
 		if( req->onComplete )
 			req->onComplete(ELoginResult::Ok, nickname, rotatedToken);

@@ -106,7 +106,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="DBAsyncHandler.h" />
     <ClInclude Include="DBAsyncStruct.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
       <Filter>UtilCore\JSON</Filter>
@@ -155,6 +154,12 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
       <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
