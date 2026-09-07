@@ -75,6 +75,7 @@ using namespace std;
 #include <DB/MySQL/MySQLConnPool.h>
 #include <DB/MySQL/MySQLAsyncSrv.h>
 
+#include "DbServiceManager.h"
 #include "DBAsyncStruct.h"
 
 #endif //PCH_H

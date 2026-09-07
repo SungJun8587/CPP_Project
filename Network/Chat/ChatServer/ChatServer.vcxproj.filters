@@ -379,6 +379,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h">
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
+    <ClInclude Include="DbServiceManager.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

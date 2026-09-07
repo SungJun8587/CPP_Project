@@ -9,11 +9,11 @@
 
 extern std::atomic<int64> g_totalConsumedRows;
 
-DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_ADD_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_ADD_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
-	AdoConnGuard pConn(CAdoAsyncSrv::Instance()->GetAccountAdoConnPool());
+	AdoConnGuard pConn(MEMBER_DB_ASYNC.GetAdoConnPool());
 	if( pConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_ADD_PRODUCER_REQ: No available ADO connection in pool."));
@@ -37,11 +37,11 @@ DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_ADD_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_GET_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_GET_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
-	AdoConnGuard pConn(CAdoAsyncSrv::Instance()->GetAccountAdoConnPool());
+	AdoConnGuard pConn(MEMBER_DB_ASYNC.GetAdoConnPool());
 	if( pConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_GET_PRODUCER_REQ: No available ADO connection in pool."));
@@ -86,11 +86,11 @@ DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_GET_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_LIST_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_LIST_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
-	AdoConnGuard pConn(CAdoAsyncSrv::Instance()->GetAccountAdoConnPool());
+	AdoConnGuard pConn(MEMBER_DB_ASYNC.GetAdoConnPool());
 	if( pConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_LIST_PRODUCER_REQ: No available ADO connection in pool."));
@@ -160,11 +160,11 @@ DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_LIST_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_BULKADD_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
-	AdoConnGuard pConn(CAdoAsyncSrv::Instance()->GetAccountAdoConnPool());
+	AdoConnGuard pConn(MEMBER_DB_ASYNC.GetAdoConnPool());
 	if( pConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_BULKADD_PRODUCER_REQ: No available ADO connection in pool."));
@@ -213,11 +213,11 @@ DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_BULKADD_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(CAdoAsyncSrv, DBASYNC_BULKADD_CONSUMER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ)
 {
 	CONSUMER_DATA_BATCH_REQ* pDBParam = (CONSUMER_DATA_BATCH_REQ*)pStAsync;
 
-	AdoConnGuard pConn(CAdoAsyncSrv::Instance()->GetAccountAdoConnPool());
+	AdoConnGuard pConn(MEMBER_DB_ASYNC.GetAdoConnPool());
 	if( pConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_BULKADD_CONSUMER_REQ: No available ADO connection in pool."));

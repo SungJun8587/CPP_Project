@@ -151,6 +151,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="DBAsyncStruct.h" />
+    <ClInclude Include="DbServiceManager.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

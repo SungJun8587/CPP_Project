@@ -30,16 +30,15 @@ const size_t MAX_QUEUE_CAPACITY = 10000;				// 큐 최대 허용 크기 (Back-pr
 
 static std::atomic<int> g_nProducerIndex(1);
 std::atomic<bool>		g_bStopProducerThread(false);	// Producer 스레드 종료 플래그
+std::atomic<int32>		g_sharedLastNo(0);				// 중복 없는 페이징을 위한 공유 PK 변수
+std::atomic<int64>		g_totalProducedRows(0);			// 총 생산 건수
+std::atomic<int64>		g_totalConsumedRows(0);			// 총 소비 처리 건수
+std::atomic<bool>		g_bProducerFinished(false);		// 생산자 스레드 작업 완료 플래그
 
 std::mutex				g_producerMutex;				// 고응답성 슬립용 뮤텍스
 std::condition_variable g_producerCv;					// 고응답성 슬립용 조건 변수
 
-CMySQLConnPool* g_pProducerConnPool = nullptr;			// 생산자 DB 커넥션풀
-std::atomic<int32>	g_sharedLastNo(0);					// 중복 없는 페이징을 위한 공유 PK 변수
-
-std::atomic<int64> g_totalProducedRows(0);				// 총 생산 건수
-std::atomic<int64> g_totalConsumedRows(0);				// 총 소비 처리 건수
-std::atomic<bool>  g_bProducerFinished(false);			// 생산자 스레드 작업 완료 플래그
+CMySQLConnPool*		g_pProducerConnPool = nullptr;		// 생산자 DB 커넥션풀
 
 //***************************************************************************
 // @brief 메모리 상에서 가상 더미 데이터를 생성하여 Async Queue에 푸시하는 함수
@@ -60,7 +59,7 @@ void ProducerThread()
 			g_totalProducedRows.fetch_add(currentBatchSize);
 
 			// 1-3. 생성된 더미 데이터를 비동기 DB 작업 요청 큐에 푸시
-			TryPushDBAsyncRequest<CMySQLAsyncSrv, PRODUCER_DATA_BATCH_REQ>(DBASYNC_BULKADD_PRODUCER_REQ, [i, currentBatchSize](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+			TryPushDBAsyncRequest<CMySQLAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ, [i, currentBatchSize](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 				for( int j = 0; j < currentBatchSize; j++ )
 				{
 					int rowIdx = i + j + 1;
@@ -206,7 +205,7 @@ void DBProducerThread()
 		PRODUCER_DATA* rawProducers = pBatchReq.release();
 
 		// 1-4. Consumer가 처리할 비동기 DB 작업 요청 큐에 푸시
-		TryPushDBAsyncRequest<CMySQLAsyncSrv, CONSUMER_DATA_BATCH_REQ>(DBASYNC_BULKADD_CONSUMER_REQ, [rawProducers, fetchedCount](CONSUMER_DATA_BATCH_REQ* pDBAsync) {
+		TryPushDBAsyncRequest<CMySQLAsyncSrv, CONSUMER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ, [rawProducers, fetchedCount](CONSUMER_DATA_BATCH_REQ* pDBAsync) {
 			pDBAsync->_dataCount = fetchedCount;
 			for( int j = 0; j < fetchedCount; j++ )
 			{
@@ -243,8 +242,39 @@ void DBProducerThread()
 	g_bProducerFinished.store(true);
 }
 
+void SubAddTest()
+{
+	for( int i = 1; i <= 20; i++ )
+	{
+		TryPushDBAsyncRequest<CMySQLAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_ADD_PRODUCER_REQ, [c_i = i](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+			pDBAsync->_producers[0].nNo = c_i;
+			_stprintf_s(pDBAsync->_producers[0].tszName1, 50, _T("이름_%d"), c_i);
+			_stprintf_s(pDBAsync->_producers[0].tszName2, 50, _T("LastName_%d"), c_i);
+			pDBAsync->_producers[0].bFlag = (c_i % 2) != 0;
+			pDBAsync->_producers[0].nAge = 20 + (c_i % 50);
+			}, MAX_QUEUE_CAPACITY);
+	}
+}
+
+void SubGetTest()
+{
+	TryPushDBAsyncRequest<CMySQLAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_GET_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+		}, MAX_QUEUE_CAPACITY);
+}
+
+void SubListTest()
+{
+	TryPushDBAsyncRequest<CMySQLAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_LIST_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+		}, MAX_QUEUE_CAPACITY);
+}
+
 //***************************************************************************
 // @brief 프로그램 종료 시 인프라 자원 및 동적 할당 객체를 정해진 순서대로 해제하는 함수
+// @details
+// ShutdownAll()은 Stop()/Join()에 더해 실제 파괴(reset)까지 수행하며,
+// 반드시 BaseGlobal::Destroy()보다 먼저 호출되어야 한다. 
+// 그래야 CMySQLConnPool의 헬스체크/재연결 워커 스레드가 gpMemory/gpThreadManager가
+// 살아있는 동안 안전하게 정리된다(DbServiceManager.h의 [소멸 순서] 설명 참고).
 //***************************************************************************
 void MainClose()
 {
@@ -255,8 +285,8 @@ void MainClose()
 		g_pProducerConnPool = nullptr;
 	}
 
-	// 2. Async 서비스 및 글로벌 싱글톤 인스턴스 자원 해제
-	CMySQLAsyncSrv::ReleaseInstance();
+	// 2. DB 비동기 서비스 정리 — 반드시 BaseGlobal::Destroy()보다 먼저 호출
+	CDbServiceManager::Instance().ShutdownAll();
 	SERVER_CONFIG->ReleaseInstance();
 	BaseGlobal::Destroy();
 }
@@ -283,7 +313,6 @@ int main()
 
 	// 4. 서버 DB 설정 파일 로드
 	_sntprintf_s(tszTempArgv, FULLPATH_STRLEN, _TRUNCATE, _T("..\\Config\\server_config_mysql.json"));
-
 	if( false == SERVER_CONFIG->Init(tszTempArgv) )
 	{
 		LOG_ERROR(_T("SERVER_CONFIG->Init Fail. (Path: %s)"), tszTempArgv);
@@ -304,6 +333,7 @@ int main()
 
 	// 6. Producer 및 Consumer 스레드 개수 설정 (데이터 정합성을 위해 Producer는 1개 사용)
 	int32 producerThreadCnt = 1;
+	//int32 consumerThreadCnt = 1;
 	int32 consumerThreadCnt = static_cast<int32>(SYSTEM::CoreCount());
 
 	// 7. Producer 전용 DB 커넥션 풀 생성 및 초기화
@@ -325,23 +355,23 @@ int main()
 	}
 
 	// 8. 비동기 DB 처리 서버(Consumer 서비스) 구동
-	if( false == CMySQLAsyncSrv::Instance()->StartService(SERVER_CONFIG->GetDBNodeVec(), consumerThreadCnt) )
+	if( false == MEMBER_DB_ASYNC.StartService(dbNodeVec, consumerThreadCnt) )
 	{
-		LOG_ERROR(_T("Failed to CMySQLAsyncSrv initialize."));
+		LOG_ERROR(_T("Failed to CAdoAsyncSrv initialize."));
 
 		MainClose();
 		return -1;
 	}
-
-	CMySQLAsyncSrv::Instance()->StartIoThreads();
-	std::cout << "Consumer " << CMySQLAsyncSrv::Instance()->_nMaxThreadCnt << " threads started." << std::endl;
+	std::cout << "Consumer " << consumerThreadCnt << " threads started." << std::endl;
 
 	// 9. Producer 스레드 생성 및 구동
 	for( int i = 0; i < producerThreadCnt; ++i )
 	{
 		gpThreadManager->CreateThread([=]() {
 			try {
+				//ProducerThread();
 				DBProducerThread();
+				//g_bProducerFinished.store(true);
 			}
 			catch( const std::exception& e ) {
 				LOG_ERROR(_T("Unhandled exception in producer thread: %S"), e.what());
@@ -362,10 +392,9 @@ int main()
 	while( 1 )
 	{
 		// 10-1. 생산이 완료되고 Consumer 큐의 모든 작업이 소진되었는지 확인 후 정상 완료 처리
-		if( g_bProducerFinished.load() && CMySQLAsyncSrv::Instance()->GetOutstandingRequests() == 0 )
+		if( g_bProducerFinished.load() && MEMBER_DB_ASYNC.GetOutstandingRequests() == 0 )
 		{
 			std::cout << "\n[SUCCESS] All migration data has been successfully produced and consumed!" << std::endl;
-
 			if( g_totalProducedRows.load() > 0 )
 				std::cout << "[통계] 총 생산(Producer) 건수: " << g_totalProducedRows.load()
 				<< " 건 / 총 처리(Consumer) 건수: " << g_totalConsumedRows.load() << " 건" << std::endl;
@@ -388,7 +417,7 @@ int main()
 	// 11. 스레드 안전 종료 시퀀스 수행
 	g_bStopProducerThread = true;
 
-	// 11-1. 대기 중인 Producer 스레드의 condition_variable 깨우기
+	// 10-1. 대기 중인 Producer 스레드의 condition_variable 깨우기
 	{
 		std::lock_guard<std::mutex> lock(g_producerMutex);
 		g_producerCv.notify_all();
@@ -401,11 +430,10 @@ int main()
 
 	// 11-3. Consumer 큐에 남아 있는 잔여 DB 처리 완전 소진 대기
 	std::cout << "Waiting for worker threads to process all remaining requests..." << std::endl;
-	while( CMySQLAsyncSrv::Instance()->GetOutstandingRequests() > 0 )
+	while( MEMBER_DB_ASYNC.GetOutstandingRequests() > 0 )
 	{
 		std::this_thread::sleep_for(std::chrono::milliseconds(50));
 	}
-
 	std::cout << "All queue tasks and in-flight DB operations fully processed." << std::endl;
 
 	// 11-4. 최종 처리 건수 통계 검증 출력
@@ -413,10 +441,11 @@ int main()
 		std::cout << " 최종 검증 -> 생산된 총 데이터: " << g_totalProducedRows.load()
 		<< " 건, 처리된 총 데이터: " << g_totalConsumedRows.load() << " 건" << std::endl;
 
-	// 12. DB 비동기 서버 정지 및 나머지 스레드 정리
-	CMySQLAsyncSrv::Instance()->StopThread();
-	gpThreadManager->JoinThreads();
-
+	// 12. DB 비동기 서버 정지
+	// 실제 정지/파괴는 뒤이은 MainClose()의 ShutdownAll()이 담당한다
+	// (Stop()/Join()은 멱등이라 이 지점에서 미리 한 번 더 불러도 안전하다).
+	MEMBER_DB_ASYNC.Stop();
+	MEMBER_DB_ASYNC.Join();
 	std::cout << "Thread processing completed." << std::endl;
 
 	// 13. 전체 시스템 종료 자원 해제 처리

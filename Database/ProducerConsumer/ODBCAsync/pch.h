@@ -75,6 +75,7 @@ using namespace std;
 #include <DB/OdbcConnPool.h>
 #include <DB/OdbcAsyncSrv.h>
 
+#include "DbServiceManager.h"
 #include "DBAsyncStruct.h"
 
 #endif //PCH_H

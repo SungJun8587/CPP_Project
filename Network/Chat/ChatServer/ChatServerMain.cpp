@@ -8,6 +8,7 @@
 #include <DB/DBAsyncPushHelper.h>
 #include "ChatServerMain.h"
 #include "ChatSession.h"
+#include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 
 #include <cstring>
@@ -55,13 +56,16 @@ bool CChatServerMain::Start(
 		return false;
 
 	// 2-1. 회원 DB(ODBC) 초기화. 회원가입/재접속 검증 핸들러(kDbCallIdent_Signup)는
-	// AccountDBHandler.cpp의 DECLARE_ODBC_DBASYNC_HANDLER 매크로가 정적
-	// 초기화 시점(main() 진입 전)에 COdbcAsyncSrv::Instance()->Regist()로
-	// 이미 등록해뒀으므로 여기서 별도로 만들거나 등록할 필요가 없다.
-	// COdbcAsyncSrv는 싱글턴 — 다른 서버 모듈과 공유될 수 있으므로 여기서
-	// 실행 중인 서비스를 덮어쓰지 않도록 StartService()가 멱등인지(이미 열려
-	// 있으면 재호출을 무시하는지) 여부는 실제 구현 확인이 필요합니다.
-	if( !COdbcAsyncSrv::Instance()->StartService(dbNodeVec, dbMaxThreadCnt) )
+	// AccountDBHandler.cpp의 DECLARE_DBASYNC_HANDLER_EX 매크로가 정적
+	// 초기화 시점(main() 진입 전)에 CDbServiceManager::Instance().Member()에
+	// 이미 등록해뒀으므로 여기서 핸들러를 별도로 만들거나 등록할 필요는
+	// 없다. 다만 COdbcAsyncSrv 자신은 이제 싱글턴이 아니라 CDbServiceManager가
+	// 도메인별로 소유하는 재사용 가능한 부품이므로, 실제 DB 접속/워커
+	// 스레드 기동(StartService())은 여기서 명시적으로 호출해야 한다.
+	// [주의] StartService()는 인스턴스당 1회만 허용된다(재호출 시
+	// false 반환) — 이 함수가 여러 번 불리는 경로가 있다면 여기서
+	// 실패로 걸린다.
+	if( !MEMBER_DB_ASYNC.StartService(dbNodeVec, dbMaxThreadCnt) )
 		return false;
 
 	// 3. IOCP 서버 서비스 시작 — 세션 팩토리가 CChatSession을 생성하며 this를 주입
@@ -182,18 +186,23 @@ void CChatServerMain::Broadcast(const void* data, uint16 size)
 //***************************************************************************
 // @brief 회원가입/재접속 검증을 DB 비동기 워커에 요청합니다.
 // @details
-// [스레드 이관] AccountDBHandler.cpp의 핸들러는 DB 비동기 워커 스레드
-// (COdbcAsyncSrv 내부 워커)에서 실행되며, 그 안에서 req->onComplete()를 직접
-// 호출한다. 여기서 그 결과를 곧바로 넘기는 대신 _jobQueue로 한 번 이관해
-// CRedisService 콜백과 동일한 스레드 모델로 통일한다.
+// [스레드 이관] 
+//	- AccountDBHandler.cpp의 핸들러는 DB 비동기 워커 스레드 
+//    (CDbServiceManager::Instance().Member() 내부 워커)에서 실행되며, 그
+//    안에서 req->onComplete()를 직접 호출한다. 여기서 그 결과를 곧바로
+//    넘기는 대신 _jobQueue로 한 번 이관해 CRedisService 콜백과 동일한
+//    스레드 모델로 통일한다.
 //
-// [설계] 요청 생성+백프레셔+AddOutstandingRequest/Push 대칭 처리를
-// TryPushDBAsyncRequest() 헬퍼로 위임했다. 이 헬퍼의 백프레셔는
-// COdbcAsyncSrv::WaitPushCapacity()(블로킹) 대신 큐 크기를 논블로킹으로
-// 확인만 하고 초과 시 즉시 실패시키는 방식이다 — 이 함수가 IOCP 워커
-// 스레드(ChatLoginHandler.cpp::HandleLoginReq())에서 호출되므로, 여기서
-// 블로킹 대기를 걸면 그 워커가 담당하는 다른 세션들의 I/O 처리까지 함께
-// 지연되기 때문이다.
+// [설계] 
+//	- 요청 생성+백프레셔+AddOutstandingRequest/Push 대칭 처리를
+//	  TryPushDBAsyncRequest() 헬퍼로 위임했다. 
+//	- COdbcAsyncSrv 자신은 이제 Instance()가 없어서(도메인별 다중 
+//    인스턴스를 CDbServiceManager가 소유) 인스턴스를 직접 넘기는 
+//    오버로드를 쓴다. 이 헬퍼의 백프레셔는 COdbcAsyncSrv::WaitPushCapacity()(블로킹) 
+//    대신 큐 크기를 논블로킹으로 확인만 하고 초과 시 즉시 실패시키는 방식이다 
+//    이 함수가 IOCP 워커 스레드(ChatLoginHandler.cpp::HandleLoginReq())에서 호출되므로, 
+//    여기서 블로킹 대기를 걸면 그 워커가 담당하는 다른 세션들의 I/O 처리까지 함께
+//    지연되기 때문이다.
 //***************************************************************************
 void CChatServerMain::RequestSignup(
 	std::shared_ptr<CChatSession> session,
@@ -224,6 +233,7 @@ void CChatServerMain::RequestSignup(
 		};
 
 	const bool pushed = TryPushDBAsyncRequest<COdbcAsyncSrv, ST_SIGNUP_REQ>(
+		MEMBER_DB_ASYNC,
 		kDbCallIdent_Signup,
 		[&nickname, hasToken, &token, dispatchToJobQueue](ST_SIGNUP_REQ* req)
 		{

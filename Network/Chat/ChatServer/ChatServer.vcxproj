@@ -215,6 +215,7 @@
     <ClInclude Include="ChatPacketDispatcher.h" />
     <ClInclude Include="ChatServerMain.h" />
     <ClInclude Include="ChatSession.h" />
+    <ClInclude Include="DbServiceManager.h" />
     <ClInclude Include="DBSignupRequest.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>

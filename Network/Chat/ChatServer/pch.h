@@ -88,6 +88,7 @@ using namespace std;
 
 #include "ChatPacket.h"
 #include "ChatPacketDispatcher.h"
+#include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 #include "ChatSession.h"
 #include "ChatServerMain.h"

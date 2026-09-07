@@ -5,6 +5,10 @@
     "UseTestMode": "OFF",
     "KeepAliveSec": 3000,
     "MaxUser": 2000,
+    "RedisPoolSize": 8,
+    "DbWorkerThreadCnt": 4,
+    "HeartbeatTtlSec": 15,
+    "HeartbeatIntervalSec": 5,
     "GameType": "ALL",
     "DBNode": [
         {
@@ -13,12 +17,22 @@
             "DSNDriver": "{ODBC Driver 18 for SQL Server}",
             "IP": "127.0.0.1",
             "Port": 1433,
-            "DBName": "Common",
+            "DBName": "Chat",
             "UID": "sa",
             "PWD": "dnpqxlaA123!@"
         }    
     ],
-	"ServerNode":[        
+    "RedisNode": [
+        {
+            "ID": 1,
+            "IP": "127.0.0.1",
+            "Port": 16379,
+            "UID": "",
+            "PWD": "",
+            "DBIndex": 0
+        }    
+    ],
+    "ServerNode":[        
 	    {
             "ID": 1,
             "Name": "AuthServer",

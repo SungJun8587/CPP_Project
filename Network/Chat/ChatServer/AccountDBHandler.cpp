@@ -5,10 +5,11 @@
 //***************************************************************************
 
 #include "pch.h"
+// [가정] 실제 경로 — DB/DBAsyncSrv.h, DB/OdbcConnPool.h와 동일한 폴더 컨벤션으로 추정.
 #include <DB/DBAsyncHandler.h>
-#include <DB/OdbcAsyncSrv.h>
 #include <Crypto/CryptoUtil.h>
 
+#include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 #include "ChatSession.h"
 
@@ -79,17 +80,21 @@ namespace
 
 //***************************************************************************
 // @brief 회원가입(hasToken==false) 또는 재접속 검증(hasToken==true)을 처리합니다.
-// @details [설계 변경] DECLARE_DBASYNC_HANDLER 매크로 채택 — 이 매크로가
-//          만드는 핸들러 클래스는 기본 생성자만 가지므로(생성자 파라미터로
-//          풀을 주입받을 수 없음), 다른 DB 핸들러들과 동일하게 매 호출마다
-//          COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool()로 풀을 새로
-//          얻는다. 이 등록 자체는 정적 초기화 시점(main() 진입 전)에
-//          COdbcAsyncSrv::Instance()->Regist()를 통해 이루어지는데, 그
-//          시점엔 아직 StartService()로 풀이 만들어지기 전이므로 애초에
-//          "생성자에서 풀을 미리 캡처해두는" 설계 자체가 위험했다 — 이
-//          패턴을 따르면 그 문제가 구조적으로 사라진다.
+// @details [설계 변경] COdbcAsyncSrv 자신의 Instance()가 없어져서(도메인별
+//          다중 인스턴스를 지원하도록 CDbServiceManager로 소유권이 옮겨감),
+//          DECLARE_DBASYNC_HANDLER_VIA(command, instanceExpr) 매크로로
+//          "이 요청은 CDbServiceManager::Instance().Member() 인스턴스에
+//          등록된다"는 걸 명시한다. 매크로가 만드는 핸들러 클래스는
+//          기본 생성자만 가지므로(생성자로 풀을 주입받을 수 없음), 매
+//          호출마다 MEMBER_DB_ASYNC.GetOdbcConnPool()로
+//          풀을 새로 얻는다. 이 등록 자체는 정적 초기화 시점(main() 진입
+//          전)에 일어나는데, CDbServiceManager::Instance()는 함수 지역
+//          static(최초 사용 시점 생성)이라 다른 정적 초기화식과의 순서
+//          경쟁에서 자유롭다 — 이 시점엔 아직 StartService()로 실제 DB
+//          풀이 만들어지기 전이지만, "생성자에서 풀을 미리 캡처"하는 게
+//          아니라 매 호출마다 다시 조회하므로 문제되지 않는다.
 //***************************************************************************
-DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, kDbCallIdent_Signup)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 {
 	ST_SIGNUP_REQ* req = static_cast<ST_SIGNUP_REQ*>(pStAsync);
 
@@ -105,7 +110,7 @@ DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, kDbCallIdent_Signup)
 
 	const std::string nickname(req->nickname, nicknameLen);
 
-	OdbcConnGuard guard(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
+	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( guard == nullptr )
 	{
 		LOG_ERROR(_T("kDbCallIdent_Signup: No available ODBC connection in pool."));

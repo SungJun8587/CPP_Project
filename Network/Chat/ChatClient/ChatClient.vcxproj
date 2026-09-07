@@ -113,7 +113,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="ChatClient.cpp" />
     <ClCompile Include="ChatClientLoginHandler.cpp" />
     <ClCompile Include="ChatClientMain.cpp" />
@@ -163,7 +165,9 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="ChatClientMain.h" />
     <ClInclude Include="ChatClientPacketDispatcher.h" />
     <ClInclude Include="ChatClientSession.h" />

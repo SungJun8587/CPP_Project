@@ -1,10 +1,14 @@
 {
-    "Name": "ChatServer",
+    "Name": "GameServer",
     "IP": "127.0.0.1",
     "Port": 30201,
     "UseTestMode": "OFF",
     "KeepAliveSec": 3000,
     "MaxUser": 2000,
+    "RedisPoolSize": 8,
+    "DbWorkerThreadCnt": 4,
+    "HeartbeatTtlSec": 15,
+    "HeartbeatIntervalSec": 5,
     "GameType": "ALL",
     "DBNode": [
         {
@@ -18,20 +22,20 @@
             "PWD": "villdev!@"
         }
     ],
-    "RedisNode":[        
-	    {
+    "RedisNode": [
+        {
             "ID": 1,
             "IP": "127.0.0.1",
-            "Port": 6379,
+            "Port": 16379,
             "UID": "",
             "PWD": "",
-            "DBIndex": 0            
-        }
-	],
-    "ServerNode":[        
+            "DBIndex": 0
+        }    
+    ],    
+	"ServerNode":[        
 	    {
             "ID": 1,
-            "Name": "ChatServer",
+            "Name": "AuthServer",
             "IP": "127.0.0.1",
             "Port": 32101
         }

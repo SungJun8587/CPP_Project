@@ -9,11 +9,11 @@
 
 extern std::atomic<int64> g_totalConsumedRows;
 
-DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_ADD_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_ADD_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
-	OdbcConnGuard pOdbcConn(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
+	OdbcConnGuard pOdbcConn(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( pOdbcConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_ADD_PRODUCER_REQ: No available ODBC connection in pool."));
@@ -42,11 +42,11 @@ DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_ADD_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_GET_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_GET_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
-	OdbcConnGuard pOdbcConn(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
+	OdbcConnGuard pOdbcConn(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( pOdbcConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_GET_PRODUCER_REQ: No available ODBC connection in pool."));
@@ -82,13 +82,13 @@ DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_GET_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_LIST_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_LIST_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
 	_tstring query = _T("");
 
-	OdbcConnGuard pOdbcConn(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
+	OdbcConnGuard pOdbcConn(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( pOdbcConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_LIST_PRODUCER_REQ: No available ODBC connection in pool."));
@@ -156,12 +156,12 @@ DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_LIST_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_LIST_ALLSETS_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_LIST_ALLSETS_PRODUCER_REQ)
 {
 	_tstring query = _T("");
 	int32 iCount = 0;
 
-	OdbcConnGuard pOdbcConn(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
+	OdbcConnGuard pOdbcConn(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( pOdbcConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_LIST_PRODUCER_REQ: No available ODBC connection in pool."));
@@ -235,11 +235,11 @@ DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_LIST_ALLSETS_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_BULKADD_PRODUCER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ)
 {
 	PRODUCER_DATA_BATCH_REQ* pDBParam = (PRODUCER_DATA_BATCH_REQ*)pStAsync;
 
-	OdbcConnGuard pOdbcConn(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
+	OdbcConnGuard pOdbcConn(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( pOdbcConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_BULKADD_PRODUCER_REQ: No available ODBC connection in pool."));
@@ -300,11 +300,11 @@ DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_BULKADD_PRODUCER_REQ)
 	return EDBReturnType::OK;
 }
 
-DECLARE_DBASYNC_HANDLER_EX(COdbcAsyncSrv, DBASYNC_BULKADD_CONSUMER_REQ)
+DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ)
 {
 	CONSUMER_DATA_BATCH_REQ* pDBParam = (CONSUMER_DATA_BATCH_REQ*)pStAsync;
 
-	OdbcConnGuard pOdbcConn(COdbcAsyncSrv::Instance()->GetAccountOdbcConnPool());
+	OdbcConnGuard pOdbcConn(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( pOdbcConn == nullptr )
 	{
 		LOG_ERROR(_T("DBASYNC_BULKADD_CONSUMER_REQ: No available ODBC connection in pool."));
