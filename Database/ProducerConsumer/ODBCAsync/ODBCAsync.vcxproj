@@ -125,6 +125,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\QueueCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncSrv.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBEnum.h" />

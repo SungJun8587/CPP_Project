@@ -1,5 +1,4 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // DBAsyncHandler.cpp : implementation of the DBAsyncHandler class.
 //
 //***************************************************************************
@@ -250,6 +249,19 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ)
 	if( rowCount == 0 )
 		return EDBReturnType::OK;
 
+	// [수정 — 방어 코드] 이 핸들러는 "_producers가 이미 rowCount만큼
+	// resize()되어 있다"는 걸 호출부(생산자 스레드)가 지켜준다는 전제로
+	// row-wise 바인딩을 건다. 이번에 고친 힙 버퍼 오버플로도 정확히
+	// 이런 크기 불일치에서 시작된 문제였으므로, 다른 호출부가 나중에
+	// 이 전제를 깜빡하고 어긋난 크기로 넘겨도 오버런이 나지 않도록
+	// 여기서 한 번 더 확인해 둔다.
+	if( pDBParam->_producers.size() < rowCount )
+	{
+		LOG_ERROR(_T("DBASYNC_BULKADD_PRODUCER_REQ: _producers buffer(%zu) smaller than rowCount(%llu) — resizing defensively."),
+			pDBParam->_producers.size(), rowCount);
+		pDBParam->_producers.resize(rowCount);
+	}
+
 	// 자동 커밋 모드 Off 설정
 	pOdbcConn->SetAutoCommitMode((SQLPOINTER)SQL_AUTOCOMMIT_OFF);
 
@@ -269,6 +281,14 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ)
 
 	if( !pOdbcConn->ExecDirect(_T("SELECT Name1, Name2, Flag, Age FROM Producer WHERE 1=0")) )
 	{
+		// [수정 — autocommit 복구 누락] 실패 경로에서도 autocommit을 OFF인 채로
+		// 두고 리턴하면, 이 커넥션이 풀에 반납된 뒤 그걸 물려받는 무관한 다음
+		// 요청이 트랜잭션 관리를 전혀 안 했는데도 조용히 autocommit OFF
+		// 상태로 동작하게 된다 — 쓰기가 커밋 안 된 채 쌓이거나 락이 방치될
+		// 수 있는 심각한 버그다. 실패 시에는 반드시 Rollback() 후 autocommit을
+		// 원상복구한다.
+		pOdbcConn->Rollback();
+		pOdbcConn->SetAutoCommitMode((SQLPOINTER)SQL_AUTOCOMMIT_ON);
 		pOdbcConn->ClearStmt();
 		return EDBReturnType::INVALID;
 	}
@@ -283,6 +303,10 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ)
 
 	if( !pOdbcConn->BulkOperations(SQL_ADD) )
 	{
+		// [수정 — autocommit 복구 누락] 위와 동일한 이유로 실패 시에도
+		// Rollback() + autocommit 복구가 필요하다.
+		pOdbcConn->Rollback();
+		pOdbcConn->SetAutoCommitMode((SQLPOINTER)SQL_AUTOCOMMIT_ON);
 		pOdbcConn->ClearStmt();
 		return EDBReturnType::INVALID;
 	}
@@ -315,6 +339,14 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ)
 	if( rowCount == 0 )
 		return EDBReturnType::OK;
 
+	// [수정 — 방어 코드] BULKADD_PRODUCER_REQ와 동일한 이유.
+	if( pDBParam->_consumers.size() < rowCount )
+	{
+		LOG_ERROR(_T("DBASYNC_BULKADD_CONSUMER_REQ: _consumers buffer(%zu) smaller than rowCount(%llu) — resizing defensively."),
+			pDBParam->_consumers.size(), rowCount);
+		pDBParam->_consumers.resize(rowCount);
+	}
+
 	// 자동 커밋 모드 Off 설정
 	pOdbcConn->SetAutoCommitMode((SQLPOINTER)SQL_AUTOCOMMIT_OFF);
 
@@ -334,6 +366,9 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ)
 
 	if( !pOdbcConn->ExecDirect(_T("SELECT Name1, Name2, Flag, Age FROM Consumer WHERE 1=0")) )
 	{
+		// [수정 — autocommit 복구 누락] BULKADD_PRODUCER_REQ와 동일한 이유.
+		pOdbcConn->Rollback();
+		pOdbcConn->SetAutoCommitMode((SQLPOINTER)SQL_AUTOCOMMIT_ON);
 		pOdbcConn->ClearStmt();
 		return EDBReturnType::INVALID;
 	}
@@ -348,6 +383,9 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ)
 
 	if( !pOdbcConn->BulkOperations(SQL_ADD) )
 	{
+		// [수정 — autocommit 복구 누락] 위와 동일한 이유.
+		pOdbcConn->Rollback();
+		pOdbcConn->SetAutoCommitMode((SQLPOINTER)SQL_AUTOCOMMIT_ON);
 		pOdbcConn->ClearStmt();
 		return EDBReturnType::INVALID;
 	}
@@ -356,7 +394,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ)
 
 	// 자동 커밋 모드 On 설정
 	pOdbcConn->SetAutoCommitMode((SQLPOINTER)SQL_AUTOCOMMIT_ON);
-	
+
 	pOdbcConn->ClearStmt();
 
 	// DB 반영이 최종 완료된 시점에 전역 소비 건수 누적

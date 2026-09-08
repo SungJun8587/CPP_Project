@@ -162,6 +162,9 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="DbServiceManager.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

@@ -35,9 +35,19 @@ struct PacketHeader
 //              본인 확인을 시도한다. 성공하든 실패하든 서버는 이 token을
 //              평문 그대로 저장/비교하지 않는다(SHA-256 해시로만 비교).
 //***************************************************************************
+//***************************************************************************
+// @brief 닉네임 필드의 바이트 크기.
+// @details UTF-8 기준 — 한글 완성형 한 글자가 3바이트라, "최대 16글자"를
+//          전부 한글로 채워도 담을 수 있게 16*3=48바이트 + NUL 여유를 뒀다.
+//          실제 "글자 수" 상한(16)은 AccountDBHandler.cpp::IsValidNickname()이
+//          코드포인트 단위로 별도 검증한다 — 이 바이트 크기 자체는 상한
+//          검증이 아니라 "그 상한을 담을 수 있는 그릇" 역할만 한다.
+//***************************************************************************
+constexpr size_t kNicknameBytes = 50;
+
 struct LoginReqPacket : PacketHeader
 {
-	char	userId[32];		// 닉네임. NUL로 안 끝날 수 있음(경계값) — 파싱 쪽에서 방어 필요
+	char	userId[kNicknameBytes];	// 닉네임(UTF-8). NUL로 안 끝날 수 있음(경계값) — 파싱 쪽에서 방어 필요
 	uint8	hasToken;		// 1: token 필드 유효(재접속), 0: 신규 가입 시도
 	BYTE	token[kTokenBytes];		// 재접속 토큰 원문(256비트). hasToken==0이면 의미 없음(전송은 하되 무시됨)
 };
@@ -97,6 +107,25 @@ struct NicknameGenerateResPacket : PacketHeader
 	char	nickname[32];
 };
 
+//***************************************************************************
+// @brief 닉네임 변경 요청 (Client -> Server)
+// @details 로그인된 세션만 유효 — 로그인 전에 오면 서버가 조용히 무시한다
+//          (HandleChangeNicknameReq()에서 IsLoggedIn() 확인).
+//***************************************************************************
+struct ChangeNicknameReqPacket : PacketHeader
+{
+	char	newNickname[kNicknameBytes];	// 새 닉네임(UTF-8). NUL로 안 끝날 수 있음(경계값)
+};
+
+//***************************************************************************
+// @brief 닉네임 변경 응답 (Server -> Client)
+//***************************************************************************
+struct ChangeNicknameResPacket : PacketHeader
+{
+	uint8	success;	// 1: 성공, 0: 실패
+	uint8	reason;		// ELoginResult 재사용 — Ok/NicknameTaken/InvalidNickname/DbError만 쓰임
+};
+
 #pragma pack(pop)
 
 //***************************************************************************
@@ -109,6 +138,8 @@ enum class EChatPacketType : uint16
 	Chat = 3,
 	NicknameGenerateReq = 4,
 	NicknameGenerateRes = 5,
+	ChangeNicknameReq = 6,
+	ChangeNicknameRes = 7,
 	// 명시적 LogoutReq는 기본 뼈대엔 없음 — 로그아웃은 연결 종료(OnDisconnected)로만 트리거
 };
 

@@ -129,6 +129,8 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
+    <ClCompile Include="ChatChangeNicknameHandler.cpp" />
+    <ClCompile Include="ChangeNicknameDBHandler.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -380,6 +382,8 @@
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
     <ClInclude Include="DbServiceManager.h" />
+    <ClInclude Include="NicknameValidation.h" />
+    <ClInclude Include="DBChangeNicknameRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

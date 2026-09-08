@@ -5,66 +5,33 @@
 //***************************************************************************
 
 #include "pch.h"
-// [가정] 실제 경로 — DB/DBAsyncSrv.h, DB/OdbcConnPool.h와 동일한 폴더 컨벤션으로 추정.
-#include <DB/DBAsyncHandler.h>
+#include <Util/EncodingConvert.h>
 #include <Crypto/CryptoUtil.h>
+#include <DB/DBAsyncHandler.h>
 
 #include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 #include "ChatSession.h"
+#include "NicknameValidation.h"
 
 #include <cstring>
 #include <cctype>
+#include <cstdint>
 #include <array>
 
 namespace
 {
-	//***************************************************************************
-	// @brief 닉네임 형식을 검증합니다: 영문 대소문자/숫자/밑줄, 1~31자.
-	// @details SQL 인젝션 방어의 1차 방어선이기도 하다. 실제 방어는 아래
-	//          PrepareQuery+BindParamInput(파라미터 바인딩)이 담당한다 —
-	//          이 화이트리스트는 형식이 이상한 닉네임을 조기에 걸러 DB
-	//          워커 부하를 아끼기 위한 것.
-	//***************************************************************************
-	bool IsValidNickname(const char* nickname, size_t len)
-	{
-		if( len == 0 || len >= 32 )
-			return false;
+	using NicknameValidation::IsValidNickname;
 
-		for( size_t i = 0; i < len; ++i )
-		{
-			const unsigned char c = static_cast<unsigned char>(nickname[i]);
-			if( !std::isalnum(c) && c != '_' )
-				return false;
-		}
-		return true;
-	}
+	// [수정] IsAllowedCodepoint()/IsValidNickname() 직접 구현을 제거했다 —
+	// ChangeNicknameDBHandler.cpp도 정확히 같은 규칙이 필요해서
+	// NicknameValidation.h 공용 헤더로 뺐다.
 
-	//***************************************************************************
-	// @brief ASCII 전용 narrow -> TCHAR 변환.
-	// @details nickname/16진 해시 문자열은 전부 ASCII로만 구성됨이 이미
-	//          검증되어 있으므로, 코드포인트가 128 미만인 문자는 ANSI/
-	//          UNICODE 빌드 어느 쪽이든 값 자체가 동일하다 — 일반적인
-	//          사용자 텍스트라면 EncodingConvert.h의 AnsiToUnicode() 등
-	//          정식 인코딩 변환 함수를 써야 하지만, 여기서는 해당하지 않는다.
-	//***************************************************************************
-	_tstring ToTStringAscii(const std::string& s)
-	{
-		return _tstring(s.begin(), s.end());
-	}
-
-	std::string FromTStringAscii(const TCHAR* s, size_t len)
-	{
-		// std::string(s, s+len) 이터레이터 범위 생성자를 그대로 쓰면
-		// UNICODE 빌드에서 TCHAR(wchar_t) -> char 암묵적 축소 변환으로
-		// C4244 경고가 난다(ASCII 전용이라 실제 데이터 손실은 없지만
-		// 경고는 명시적 캐스팅으로 없애는 게 맞다).
-		std::string result;
-		result.reserve(len);
-		for( size_t i = 0; i < len; ++i )
-			result.push_back(static_cast<char>(s[i]));
-		return result;
-	}
+	// [수정] Utf8ToTString()/TStringToUtf8() 직접 구현을 제거했다 — 이름까지
+	// 똑같은 정식 함수가 이미 <EncodingConvert.h>에 있다(내부적으로
+	// CIconvUtil 또는 Windows API로 실제 UTF-8<->UTF-16 변환을 함).
+	// IsValidNickname()의 UTF-8 구조 검증(오버롱/서로게이트 등)은 이
+	// 헤더에 없는 기능이라 여기 그대로 남겨둔다.
 
 	//***************************************************************************
 	// @brief 재접속 토큰(원문 32바이트)의 SHA-256 해시를 16진 문자열로 계산합니다.
@@ -86,7 +53,7 @@ namespace
 //          "이 요청은 CDbServiceManager::Instance().Member() 인스턴스에
 //          등록된다"는 걸 명시한다. 매크로가 만드는 핸들러 클래스는
 //          기본 생성자만 가지므로(생성자로 풀을 주입받을 수 없음), 매
-//          호출마다 MEMBER_DB_ASYNC.GetOdbcConnPool()로
+//          호출마다 CDbServiceManager::Instance().Member().GetOdbcConnPool()로
 //          풀을 새로 얻는다. 이 등록 자체는 정적 초기화 시점(main() 진입
 //          전)에 일어나는데, CDbServiceManager::Instance()는 함수 지역
 //          static(최초 사용 시점 생성)이라 다른 정적 초기화식과의 순서
@@ -148,8 +115,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 			return EDBReturnType::INVALID;
 		}
 
-		_tstring nicknameT = ToTStringAscii(nickname);
-		_tstring hashHexT = ToTStringAscii(hashHex);
+		_tstring nicknameT = Utf8ToTString(nickname);
+		_tstring hashHexT = Utf8ToTString(hashHex);
 		SQLLEN nicknameLenInd = SQL_NTS;
 		SQLLEN hashHexLenInd = SQL_NTS;
 
@@ -201,7 +168,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 			return EDBReturnType::INVALID;
 		}
 
-		_tstring nicknameT = ToTStringAscii(nickname);
+		_tstring nicknameT = Utf8ToTString(nickname);
 		SQLLEN nicknameLenInd = SQL_NTS;
 		guard->BindParamInput(1, nicknameT.c_str(), nicknameLenInd);
 
@@ -232,7 +199,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		}
 		guard->ClearStmt();
 
-		const std::string storedHashHex = FromTStringAscii(hashBuf, ::_tcslen(hashBuf));
+		const std::string storedHashHex = TStringToUtf8(_tstring(hashBuf));
 		const std::string providedHashHex = HashTokenHex(req->token, sizeof(req->token));
 
 		const bool tokenMatches =
@@ -268,7 +235,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 			return EDBReturnType::INVALID;
 		}
 
-		_tstring rotatedHashHexT = ToTStringAscii(rotatedHashHex);
+		_tstring rotatedHashHexT = Utf8ToTString(rotatedHashHex);
 		SQLLEN rotatedHashLenInd = SQL_NTS;
 		guard->BindParamInput(1, rotatedHashHexT.c_str(), rotatedHashLenInd);
 		guard->BindParamInput(2, nicknameT.c_str(), nicknameLenInd);

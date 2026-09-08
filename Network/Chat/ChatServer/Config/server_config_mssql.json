@@ -1,10 +1,11 @@
 {
-    "Name": "GameServer",
+    "Name": "ChatServer",
     "IP": "127.0.0.1",
     "Port": 30201,
     "UseTestMode": "OFF",
     "KeepAliveSec": 3000,
-    "MaxUser": 2000,
+    "MaxSessionCount": 2000,
+    "WorkerThreadCnt": 0,
     "RedisPoolSize": 8,
     "DbWorkerThreadCnt": 4,
     "HeartbeatTtlSec": 15,
@@ -31,15 +32,7 @@
             "PWD": "",
             "DBIndex": 0
         }    
-    ],
-    "ServerNode":[        
-	    {
-            "ID": 1,
-            "Name": "AuthServer",
-            "IP": "127.0.0.1",
-            "Port": 32101
-        }
-	]
+    ]
 }
 
 

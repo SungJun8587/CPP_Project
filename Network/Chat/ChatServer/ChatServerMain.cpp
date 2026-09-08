@@ -10,6 +10,7 @@
 #include "ChatSession.h"
 #include "DbServiceManager.h"
 #include "DBSignupRequest.h"
+#include "DBChangeNicknameRequest.h"
 
 #include <cstring>
 
@@ -56,7 +57,7 @@ bool CChatServerMain::Start(
 		return false;
 
 	// 2-1. 회원 DB(ODBC) 초기화. 회원가입/재접속 검증 핸들러(kDbCallIdent_Signup)는
-	// AccountDBHandler.cpp의 DECLARE_DBASYNC_HANDLER_EX 매크로가 정적
+	// AccountDBHandler.cpp의 DECLARE_DBASYNC_HANDLER_VIA 매크로가 정적
 	// 초기화 시점(main() 진입 전)에 CDbServiceManager::Instance().Member()에
 	// 이미 등록해뒀으므로 여기서 핸들러를 별도로 만들거나 등록할 필요는
 	// 없다. 다만 COdbcAsyncSrv 자신은 이제 싱글턴이 아니라 CDbServiceManager가
@@ -175,6 +176,22 @@ void CChatServerMain::OnUserLogout(const std::string& userId)
 }
 
 //***************************************************************************
+// @brief 유저의 온라인 상태 Redis 키를 oldUserId -> newUserId로 이전합니다.
+//***************************************************************************
+void CChatServerMain::OnUserNicknameChanged(const std::string& oldUserId, const std::string& newUserId)
+{
+	if( _redisService == nullptr )
+		return;
+
+	CVector<std::string> args;
+	args.push_back("RENAME");
+	args.push_back(BuildUserKey(oldUserId));
+	args.push_back(BuildUserKey(newUserId));
+
+	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+}
+
+//***************************************************************************
 // @brief 모든 접속 세션에게 브로드캐스트합니다.
 //***************************************************************************
 void CChatServerMain::Broadcast(const void* data, uint16 size)
@@ -186,23 +203,21 @@ void CChatServerMain::Broadcast(const void* data, uint16 size)
 //***************************************************************************
 // @brief 회원가입/재접속 검증을 DB 비동기 워커에 요청합니다.
 // @details
-// [스레드 이관] 
-//	- AccountDBHandler.cpp의 핸들러는 DB 비동기 워커 스레드 
-//    (CDbServiceManager::Instance().Member() 내부 워커)에서 실행되며, 그
-//    안에서 req->onComplete()를 직접 호출한다. 여기서 그 결과를 곧바로
-//    넘기는 대신 _jobQueue로 한 번 이관해 CRedisService 콜백과 동일한
-//    스레드 모델로 통일한다.
+// [스레드 이관] AccountDBHandler.cpp의 핸들러는 DB 비동기 워커 스레드
+// (CDbServiceManager::Instance().Member() 내부 워커)에서 실행되며, 그
+// 안에서 req->onComplete()를 직접 호출한다. 여기서 그 결과를 곧바로
+// 넘기는 대신 _jobQueue로 한 번 이관해 CRedisService 콜백과 동일한
+// 스레드 모델로 통일한다.
 //
-// [설계] 
-//	- 요청 생성+백프레셔+AddOutstandingRequest/Push 대칭 처리를
-//	  TryPushDBAsyncRequest() 헬퍼로 위임했다. 
-//	- COdbcAsyncSrv 자신은 이제 Instance()가 없어서(도메인별 다중 
-//    인스턴스를 CDbServiceManager가 소유) 인스턴스를 직접 넘기는 
-//    오버로드를 쓴다. 이 헬퍼의 백프레셔는 COdbcAsyncSrv::WaitPushCapacity()(블로킹) 
-//    대신 큐 크기를 논블로킹으로 확인만 하고 초과 시 즉시 실패시키는 방식이다 
-//    이 함수가 IOCP 워커 스레드(ChatLoginHandler.cpp::HandleLoginReq())에서 호출되므로, 
-//    여기서 블로킹 대기를 걸면 그 워커가 담당하는 다른 세션들의 I/O 처리까지 함께
-//    지연되기 때문이다.
+// [설계] 요청 생성+백프레셔+AddOutstandingRequest/Push 대칭 처리를
+// TryPushDBAsyncRequest() 헬퍼로 위임했다. COdbcAsyncSrv 자신은 이제
+// Instance()가 없어서(도메인별 다중 인스턴스를 CDbServiceManager가
+// 소유) 인스턴스를 직접 넘기는 오버로드를 쓴다. 이 헬퍼의 백프레셔는
+// COdbcAsyncSrv::WaitPushCapacity()(블로킹) 대신 큐 크기를 논블로킹으로
+// 확인만 하고 초과 시 즉시 실패시키는 방식이다 — 이 함수가 IOCP 워커
+// 스레드(ChatLoginHandler.cpp::HandleLoginReq())에서 호출되므로, 여기서
+// 블로킹 대기를 걸면 그 워커가 담당하는 다른 세션들의 I/O 처리까지 함께
+// 지연되기 때문이다.
 //***************************************************************************
 void CChatServerMain::RequestSignup(
 	std::shared_ptr<CChatSession> session,
@@ -232,7 +247,7 @@ void CChatServerMain::RequestSignup(
 				});
 		};
 
-	const bool pushed = TryPushDBAsyncRequest<COdbcAsyncSrv, ST_SIGNUP_REQ>(
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SIGNUP_REQ>(
 		MEMBER_DB_ASYNC,
 		kDbCallIdent_Signup,
 		[&nickname, hasToken, &token, dispatchToJobQueue](ST_SIGNUP_REQ* req)
@@ -257,5 +272,57 @@ void CChatServerMain::RequestSignup(
 		// 응답을 무한정 기다리지 않게 한다.
 		if( onComplete )
 			onComplete(ELoginResult::DbError, nickname, std::array<BYTE, kTokenBytes>{});
+	}
+}
+
+//***************************************************************************
+// @brief 닉네임 변경을 DB 비동기 워커에 요청합니다.
+// @details RequestSignup()과 완전히 동일한 구조(백프레셔/JobQueue 이관)를
+// 따른다 — 차이는 요청/콜백 타입뿐이다.
+//***************************************************************************
+void CChatServerMain::RequestChangeNickname(
+	std::shared_ptr<CChatSession> session,
+	const std::string& oldNickname,
+	const std::string& newNickname,
+	std::function<void(ELoginResult result, const std::string& oldNickname,
+		const std::string& newNickname)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, const std::string& completedOldNickname,
+		const std::string& completedNewNickname)
+		{
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, result, completedOldNickname, completedNewNickname]()
+				{
+					if( onComplete )
+						onComplete(result, completedOldNickname, completedNewNickname);
+				});
+		};
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_CHANGE_NICKNAME_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_ChangeNickname,
+		[&oldNickname, &newNickname, dispatchToJobQueue](ST_CHANGE_NICKNAME_REQ* req)
+		{
+			const size_t oldCopyLen = (std::min)(oldNickname.size(), sizeof(req->oldNickname) - 1);
+			::memcpy(req->oldNickname, oldNickname.data(), oldCopyLen);
+
+			const size_t newCopyLen = (std::min)(newNickname.size(), sizeof(req->newNickname) - 1);
+			::memcpy(req->newNickname, newNickname.data(), newCopyLen);
+
+			req->onComplete = dispatchToJobQueue;
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ELoginResult::DbError, oldNickname, newNickname);
 	}
 }

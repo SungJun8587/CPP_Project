@@ -61,6 +61,14 @@ public:
 	//***************************************************************************
 	void MarkLoggedIn(std::string userId) { _userId = std::move(userId); _loggedIn = true; }
 
+	//***************************************************************************
+	// @brief 닉네임 변경 성공 후 세션의 아이덴티티를 갱신합니다.
+	// @details MarkLoggedIn()과 동일한 좁은 용도 API — ChatChangeNicknameHandler.cpp만
+	//          호출하는 것을 의도한다. 로그인 상태(_loggedIn)는 건드리지
+	//          않는다(이미 로그인된 세션에서만 호출되는 게 전제).
+	//***************************************************************************
+	void UpdateNickname(std::string newUserId) { _userId = std::move(newUserId); }
+
 private:
 	void	HandlePacket(const PacketHeader* header);
 

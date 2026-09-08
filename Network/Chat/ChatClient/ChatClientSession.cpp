@@ -6,6 +6,11 @@
 
 #include "pch.h"
 #include "ChatClientSession.h"
+#include "ChatClientMain.h"
+#include "ChatClientPacketDispatcher.h"
+
+#include <cstring>
+#include <algorithm>
 
 //***************************************************************************
 // @brief CChatClientSession 생성자
@@ -129,6 +134,28 @@ void CChatClientSession::SendNicknameGenerateReq()
 	NicknameGenerateReqPacket req{};
 	req.type = static_cast<uint16>(EChatPacketType::NicknameGenerateReq);
 	req.size = sizeof(req);
+
+	Send(&req, sizeof(req));
+}
+
+//***************************************************************************
+// @brief 서버에 닉네임 변경을 요청합니다. newNickname이 kNicknameBytes-1을
+//        넘으면 잘립니다(UTF-8 바이트 경계 확인은 호출부 책임 — 실제
+//        검증은 서버 쪽 ChangeNicknameDBHandler.cpp가 다시 한번 함).
+//***************************************************************************
+void CChatClientSession::SendChangeNicknameReq(const std::string& newNickname)
+{
+	// 응답 패킷(ChangeNicknameResPacket)엔 success/reason만 실려 있고 새
+	// 닉네임 문자열 자체는 없다 — 요청 시점의 값을 여기 잠깐 저장해뒀다가
+	// 응답 처리(GetPendingNewNickname())에서 꺼내 쓴다.
+	_pendingNewNickname = newNickname;
+
+	ChangeNicknameReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::ChangeNicknameReq);
+	req.size = sizeof(req);
+
+	const size_t copyLen = (std::min)(newNickname.size(), sizeof(req.newNickname) - 1);
+	::memcpy(req.newNickname, newNickname.data(), copyLen);
 
 	Send(&req, sizeof(req));
 }

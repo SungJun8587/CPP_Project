@@ -7,17 +7,14 @@
 #ifndef UC_CHATCLIENTMAIN_H
 #define UC_CHATCLIENTMAIN_H
 
-#include <Crypto/CryptoUtil.h>
 #include <Network/NetworkCommon.h>
-#include "ChatPacket.h"		
-#include "ChatClientSession.h"
+#include <Crypto/CryptoUtil.h>
+#include "ChatPacket.h"
 
 #include <string>
 #include <functional>
 #include <memory>
 #include <array>
-#include <fstream>
-#include <sstream>
 
 class CChatClientSession;
 
@@ -77,16 +74,29 @@ public:
 	//***************************************************************************
 	void RequestNicknameGeneration();
 
+	//***************************************************************************
+	// @brief 서버에 닉네임 변경을 요청합니다. 아직 연결/로그인 전이면 조용히
+	//        무시됩니다(서버 쪽 HandleChangeNicknameReq()도 동일하게 확인).
+	// @details 성공 응답을 받으면(OnNicknameChangeResult()) 내부적으로
+	//          로컬 토큰 파일을 옛 닉네임 -> 새 닉네임으로 이전한다 —
+	//          다음 실행 시 Connect(newNickname, ...)를 호출해야 그 토큰을
+	//          찾을 수 있다는 뜻이다(호출부가 새 닉네임을 기억해뒀다가
+	//          다음 실행 시 그대로 써야 함).
+	//***************************************************************************
+	void RequestChangeNickname(const std::string& newNickname);
+
 public:
-	using LoginResultHandler	= std::function<void(bool success, ELoginResult reason)>;
-	using ChatMessageHandler	= std::function<void(const std::string& message)>;
-	using DisconnectedHandler	= std::function<void()>;
-	using NicknameGeneratedHandler	= std::function<void(const std::string& nickname)>;
+	using LoginResultHandler = std::function<void(bool success, ELoginResult reason)>;
+	using ChatMessageHandler = std::function<void(const std::string& message)>;
+	using DisconnectedHandler = std::function<void()>;
+	using NicknameGeneratedHandler = std::function<void(const std::string& nickname)>;
+	using NicknameChangeResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& newNickname)>;
 
 	void SetOnLoginResult(LoginResultHandler handler) { _onLoginResult = std::move(handler); }
 	void SetOnChatMessage(ChatMessageHandler handler) { _onChatMessage = std::move(handler); }
 	void SetOnDisconnected(DisconnectedHandler handler) { _onDisconnected = std::move(handler); }
 	void SetOnNicknameGenerated(NicknameGeneratedHandler handler) { _onNicknameGenerated = std::move(handler); }
+	void SetOnNicknameChangeResult(NicknameChangeResultHandler handler) { _onNicknameChangeResult = std::move(handler); }
 
 public:
 	// CChatClientSession에서 호출하는 콜백들 (IOCP 워커 스레드에서 호출됨 — 클래스 상단 주석 참고)
@@ -98,10 +108,31 @@ public:
 	void OnSessionClosed();
 	void OnNicknameGenerated(const std::string& nickname);
 
+	//***************************************************************************
+	// @brief 닉네임 변경 응답 수신 시 CChatClientSession이 호출합니다.
+	// @details 성공 시 로컬 토큰 파일을 _userId(옛 닉네임) -> newNickname으로
+	//          이전(rename)하고 _userId를 갱신한다 — 그 뒤에야 앱 쪽 콜백을
+	//          부른다(토큰 파일 이전도 로그인 토큰 저장과 마찬가지로 이
+	//          클래스가 전담하는 내부 구현 세부사항).
+	//***************************************************************************
+	void OnNicknameChangeResult(bool success, ELoginResult reason, const std::string& newNickname);
+
 private:
 	static std::string TokenFilePath(const std::string& nickname);
 	static bool LoadToken(const std::string& nickname, std::array<BYTE, kTokenBytes>& outToken);
 	static void SaveToken(const std::string& nickname, const std::array<BYTE, kTokenBytes>& token);
+
+	//***************************************************************************
+	// @brief 로컬 토큰 파일을 oldNickname -> newNickname 이름으로 옮깁니다.
+	// @details [알려진 한계] 파일 경로에 닉네임 바이트를 그대로 쓰는데(UTF-8),
+	//          Windows의 narrow 문자열 파일 API(std::rename 등)는 현재
+	//          ANSI 코드페이지로 해석한다 — 한글 등 비ASCII 닉네임이면
+	//          실제 생성되는 파일명이 깨질 수 있다(TokenFilePath()의 기존
+	//          SaveToken()/LoadToken()에도 이미 있던 한계를 그대로 물려받음
+	//          — 완전히 고치려면 std::filesystem::path + 와이드 문자열
+	//          기반으로 파일 경로 처리를 바꿔야 하는데 지금은 범위 밖).
+	//***************************************************************************
+	static void RenameTokenFile(const std::string& oldNickname, const std::string& newNickname);
 
 private:
 	CIocpCoreRef				_iocpCore;
@@ -113,6 +144,7 @@ private:
 	ChatMessageHandler		_onChatMessage;
 	DisconnectedHandler		_onDisconnected;
 	NicknameGeneratedHandler	_onNicknameGenerated;
+	NicknameChangeResultHandler	_onNicknameChangeResult;
 };
 
 #endif // ndef UC_CHATCLIENTMAIN_H

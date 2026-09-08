@@ -10,13 +10,9 @@
 #include <Crypto/CryptoUtil.h>
 #include <Network/IOCP/IocpSession.h>
 #include "ChatPacket.h"
-#include "ChatClientMain.h"
-#include "ChatClientPacketDispatcher.h"
 
 #include <string>
 #include <array>
-#include <cstring>
-#include <algorithm>
 
 class CChatClientMain;
 
@@ -56,6 +52,25 @@ public:
 	void	SendNicknameGenerateReq();
 
 	//***************************************************************************
+	// @brief 서버에 닉네임 변경을 요청합니다.
+	// @details 로그인 전에 보내도 패킷 자체는 전송되지만, 서버가
+	//          HandleChangeNicknameReq()에서 로그인 여부를 확인해 조용히
+	//          무시한다(HandleChat()과 동일한 정책) — 클라이언트가 이중으로
+	//          체크할 필요 없음.
+	//***************************************************************************
+	void	SendChangeNicknameReq(const std::string& newNickname);
+
+	//***************************************************************************
+	// @brief 가장 최근에 SendChangeNicknameReq()로 요청한 닉네임을 반환합니다.
+	// @details ChangeNicknameResPacket 자체엔 새 닉네임 문자열이 실려 있지
+	//          않다(success/reason만 있음) — ChatClientChangeNicknameHandler.cpp가
+	//          응답 처리 시 "무엇으로 바꾸려던 요청이었는지" 알아내는 용도.
+	//          동시에 여러 개의 변경 요청이 진행 중일 수 있다는 걸 지원하지
+	//          않는(한 번에 요청 하나만 진행 중이라고 가정하는) 단순화다.
+	//***************************************************************************
+	const std::string& GetPendingNewNickname() const { return _pendingNewNickname; }
+
+	//***************************************************************************
 	// @brief 이 세션을 소유한 클라이언트 파사드를 반환합니다.
 	// @details [설계 노트] 자체 등록형 패킷 핸들러(ChatClientLoginHandler.cpp 등)가
 	//          별도 파일의 자유 함수로 분리되면서 더 이상 이 세션의 private 멤버에
@@ -77,6 +92,7 @@ private:
 	bool									_hasToken = false;
 	std::array<BYTE, kTokenBytes>	_token{};
 	CChatClientMain* _client = nullptr;	// 뒤로 참조 — Client가 세션보다 오래 살아있음을 CChatClientMain::Disconnect()가 보장
+	std::string								_pendingNewNickname;	// SendChangeNicknameReq()가 요청한 닉네임 — 응답(success/reason만 있음) 처리 시 참고용
 };
 
 #endif // ndef UC_CHATCLIENTSESSION_H

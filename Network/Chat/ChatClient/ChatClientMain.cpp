@@ -5,7 +5,13 @@
 //***************************************************************************
 
 #include "pch.h"
+#include <Crypto/CryptoUtil.h>
 #include "ChatClientMain.h"
+#include "ChatClientSession.h"
+
+#include <fstream>
+#include <sstream>
+#include <cstdio>	// ::rename, ::remove (닉네임 변경 시 토큰 파일 이전용)
 
 //***************************************************************************
 // @brief 소멸자 — 아직 연결 중이면 Disconnect()로 정리합니다.
@@ -48,6 +54,27 @@ void CChatClientMain::SaveToken(const std::string& nickname, const std::array<BY
 		return;
 
 	out << Crypto::CCryptoUtil::ToHex(token.data(), token.size());
+}
+
+//***************************************************************************
+// @brief 로컬 토큰 파일을 oldNickname -> newNickname 이름으로 옮깁니다.
+// @details std::rename()이 실패해도(예: oldNickname 파일이 애초에 없던
+// 경우 — 아직 한 번도 로그인 성공을 못 해 토큰 파일 자체가 없는 상태에서
+// 닉네임 변경에 성공하는 것도 이론상 가능함) 조용히 넘어간다 — 이건
+// "다음 접속 때 재접속 대신 새 토큰을 다시 받는" 정도의 부작용만 있고
+// 치명적이지 않다.
+//***************************************************************************
+void CChatClientMain::RenameTokenFile(const std::string& oldNickname, const std::string& newNickname)
+{
+	const std::string oldPath = TokenFilePath(oldNickname);
+	const std::string newPath = TokenFilePath(newNickname);
+
+	// 대상 경로에 이미 파일이 있으면 std::rename()이 플랫폼에 따라 실패할
+	// 수 있다(POSIX는 덮어쓰지만 Windows CRT의 rename()은 실패한다) — 새
+	// 닉네임으로 된 낡은 토큰 파일이 남아있을 가능성은 낮지만(그 닉네임을
+	// 예전에 다른 계정으로 써본 적이 있어야 함), 방어적으로 먼저 지운다.
+	::remove(newPath.c_str());
+	::rename(oldPath.c_str(), newPath.c_str());
 }
 
 //***************************************************************************
@@ -123,6 +150,18 @@ void CChatClientMain::RequestNicknameGeneration()
 }
 
 //***************************************************************************
+// @brief 서버에 닉네임 변경을 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestChangeNickname(const std::string& newNickname)
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendChangeNicknameReq(newNickname);
+}
+
+//***************************************************************************
 // @brief 로그인 응답 수신 시 CChatClientSession이 호출합니다.
 // @details 성공 시 서버가 회전 발급한 새 토큰을 로컬 파일에 저장한 뒤,
 //          앱 쪽 콜백에는 success/reason만 전달한다(토큰 저장은 내부 구현
@@ -163,4 +202,22 @@ void CChatClientMain::OnNicknameGenerated(const std::string& nickname)
 {
 	if( _onNicknameGenerated )
 		_onNicknameGenerated(nickname);
+}
+
+//***************************************************************************
+// @brief 닉네임 변경 응답 수신 시 핸들러가 호출합니다.
+// @details 성공 시 로컬 토큰 파일을 옛 닉네임(_userId) -> newNickname으로
+//          이전한 뒤 _userId를 갱신한다 — 그래야 다음 접속 때 새 닉네임
+//          기준으로 토큰 파일을 찾는다.
+//***************************************************************************
+void CChatClientMain::OnNicknameChangeResult(bool success, ELoginResult reason, const std::string& newNickname)
+{
+	if( success )
+	{
+		RenameTokenFile(_userId, newNickname);
+		_userId = newNickname;
+	}
+
+	if( _onNicknameChangeResult )
+		_onNicknameChangeResult(success, reason, newNickname);
 }

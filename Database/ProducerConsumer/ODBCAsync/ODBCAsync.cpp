@@ -57,7 +57,7 @@ void ProducerThread()
 			g_totalProducedRows.fetch_add(currentBatchSize);
 
 			// 1-3. 생성된 더미 데이터를 비동기 DB 작업 요청 큐에 푸시
-			TryPushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ, [i, currentBatchSize](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+			PushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_BULKADD_PRODUCER_REQ, [i, currentBatchSize](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 				for( int j = 0; j < currentBatchSize; j++ )
 				{
 					int rowIdx = i + j + 1;
@@ -210,7 +210,7 @@ void DBProducerThread()
 		PRODUCER_DATA* rawProducers = pBatchReq.release();
 
 		// 1-4. Consumer가 처리할 비동기 DB 작업 요청 큐에 푸시
-		TryPushDBAsyncRequest<COdbcAsyncSrv, CONSUMER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ, [rawProducers, fetchedCount](CONSUMER_DATA_BATCH_REQ* pDBAsync) {
+		PushDBAsyncRequest<COdbcAsyncSrv, CONSUMER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_BULKADD_CONSUMER_REQ, [rawProducers, fetchedCount](CONSUMER_DATA_BATCH_REQ* pDBAsync) {
 			pDBAsync->_dataCount = fetchedCount;
 			for( int j = 0; j < fetchedCount; j++ )
 			{
@@ -253,7 +253,7 @@ void SubAddTest()
 {
 	for( int i = 1; i <= 20; i++ )
 	{
-		TryPushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_ADD_PRODUCER_REQ, [c_i = i](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+		PushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_ADD_PRODUCER_REQ, [c_i = i](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 			pDBAsync->_producers[0].nNo = c_i;
 			_stprintf_s(pDBAsync->_producers[0].tszName1, _countof(pDBAsync->_producers[0].tszName1), _T("이름_%d"), c_i);
 			pDBAsync->_producers[0].nName1Ind = static_cast<SQLLEN>(_tcslen(pDBAsync->_producers[0].tszName1) * sizeof(TCHAR));;
@@ -267,19 +267,19 @@ void SubAddTest()
 
 void SubGetTest()
 {
-	TryPushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_GET_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+	PushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_GET_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 		}, MAX_QUEUE_CAPACITY);
 }
 
 void SubListTest()
 {
-	TryPushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_LIST_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+	PushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_LIST_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 		}, MAX_QUEUE_CAPACITY);
 }
 
 void SubListAllsetsTest()
 {
-	TryPushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_LIST_ALLSETS_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
+	PushDBAsyncRequest<COdbcAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_LIST_ALLSETS_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 		}, MAX_QUEUE_CAPACITY);
 }
 

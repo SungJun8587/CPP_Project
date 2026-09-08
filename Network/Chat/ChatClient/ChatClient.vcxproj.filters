@@ -81,6 +81,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
+    <ClCompile Include="ChatClientChangeNicknameHandler.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

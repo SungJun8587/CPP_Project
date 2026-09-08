@@ -133,6 +133,8 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="AccountDBHandler.cpp" />
+    <ClCompile Include="ChangeNicknameDBHandler.cpp" />
+    <ClCompile Include="ChatChangeNicknameHandler.cpp" />
     <ClCompile Include="ChatLoginHandler.cpp" />
     <ClCompile Include="ChatMessageHandler.cpp" />
     <ClCompile Include="ChatPacketDispatcher.cpp" />
@@ -215,8 +217,10 @@
     <ClInclude Include="ChatPacketDispatcher.h" />
     <ClInclude Include="ChatServerMain.h" />
     <ClInclude Include="ChatSession.h" />
+    <ClInclude Include="DBChangeNicknameRequest.h" />
     <ClInclude Include="DbServiceManager.h" />
     <ClInclude Include="DBSignupRequest.h" />
+    <ClInclude Include="NicknameValidation.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

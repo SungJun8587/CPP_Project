@@ -1,11 +1,15 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // DbServiceManager.h : interface for the CDbServiceManager class.
 //
 //***************************************************************************
+
 #ifndef UC_DBSERVICEMANAGER_H
 #define UC_DBSERVICEMANAGER_H
+
 #include <DB/ADO/AdoAsyncSrv.h>
 #include <memory>
+
 //***************************************************************************
 // @class CDbServiceManager
 // @brief 멤버/게임/로그 등 도메인별 CAdoAsyncSrv 인스턴스를 소유하고 이름 있는 접근자로 노출하는 프로세스 전역 매니저.
@@ -29,18 +33,25 @@ public:
 
 	CDbServiceManager(const CDbServiceManager&) = delete;
 	CDbServiceManager& operator=(const CDbServiceManager&) = delete;
-	
+
 	//***************************************************************************
 	// @brief 멤버 DB 서비스 객체 참조를 반환합니다.
 	// @return CAdoAsyncSrv& 멤버 DB 서비스 인스턴스 참조
 	//***************************************************************************
 	CAdoAsyncSrv& MemberDB() { return *_memberDB; }
-	
+
 	//***************************************************************************
 	// @brief 등록된 모든 도메인 서비스를 한 번에 종료합니다.
+	// @details [수정 — 재호출 시 널 역참조] 이전 버전은 _memberDB가 이미
+	// reset()된 뒤 이 함수가 다시 호출되면(예: 종료 경로가 두 곳에서 호출)
+	// 바로 nullptr 역참조로 크래시가 났다. 멱등하게 동작하도록 널 체크를
+	// 추가한다 — 두 번째 호출부터는 아무 일도 하지 않고 조용히 반환한다.
 	//***************************************************************************
 	void ShutdownAll()
 	{
+		if( !_memberDB )
+			return;
+
 		_memberDB->Stop();
 		_memberDB->Join();
 		_memberDB.reset();
