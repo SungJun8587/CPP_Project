@@ -14,15 +14,18 @@
 
 //***************************************************************************
 // @brief CChatClientSession 생성자
-// @param userId 로그인에 사용할 닉네임
-// @param hasToken true면 token으로 재접속 시도, false면 신규 가입 시도
+// @param userId hasToken==false일 때만 의미: 신규 가입 시 원하는 닉네임
+// @param hasToken true면 publicId+token으로 재접속 시도, false면 신규 가입 시도
+// @param publicId hasToken==true일 때만 의미: 재접속 대상 계정의 안정 식별자
 // @param token 재접속 토큰 원문(hasToken==false면 무시됨)
 // @param client 이 세션을 소유한 클라이언트 파사드
 //***************************************************************************
 CChatClientSession::CChatClientSession(std::string userId, bool hasToken,
+	std::array<BYTE, kPublicIdBytes> publicId,
 	std::array<BYTE, kTokenBytes> token, CChatClientMain* client)
 	: _userId(std::move(userId))
 	, _hasToken(hasToken)
+	, _publicId(publicId)
 	, _token(token)
 	, _client(client)
 {
@@ -37,13 +40,21 @@ void CChatClientSession::OnConnected()
 	req.type = static_cast<uint16>(EChatPacketType::LoginReq);
 	req.size = sizeof(req);
 
-	const size_t copyLen = (std::min)(_userId.size(), sizeof(req.userId) - 1);
-	::memcpy(req.userId, _userId.data(), copyLen);
-	// 나머지 바이트는 {} 초기화로 이미 0-채움 → NUL 종단 보장
-
 	req.hasToken = _hasToken ? 1 : 0;
-	if( _hasToken )
+
+	if( !_hasToken )
+	{
+		// 신규 가입 — userId(원하는 닉네임)만 의미 있음
+		const size_t copyLen = (std::min)(_userId.size(), sizeof(req.userId) - 1);
+		::memcpy(req.userId, _userId.data(), copyLen);
+		// 나머지 바이트는 {} 초기화로 이미 0-채움 → NUL 종단 보장
+	}
+	else
+	{
+		// 재접속 — publicId+token만 의미 있음
+		::memcpy(req.publicId, _publicId.data(), _publicId.size());
 		::memcpy(req.token, _token.data(), _token.size());
+	}
 
 	Send(&req, sizeof(req));
 }
@@ -116,6 +127,9 @@ void CChatClientSession::HandlePacket(const PacketHeader* header)
 //***************************************************************************
 void CChatClientSession::SendChat(const std::string& message)
 {
+	// [참고] packet{}이 새로 추가된 nickname 필드까지 0으로 초기화해준다 —
+	// 클라이언트가 보낼 땐 이 필드가 무시되므로(서버가 세션의 실제
+	// 닉네임으로 채워 재브로드캐스트함) 별도로 채울 필요가 없다.
 	ChatPacket packet{};
 	packet.type = static_cast<uint16>(EChatPacketType::Chat);
 	packet.size = sizeof(packet);

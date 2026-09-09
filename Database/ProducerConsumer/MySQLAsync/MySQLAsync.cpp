@@ -242,7 +242,13 @@ void DBProducerThread()
 	g_bProducerFinished.store(true);
 }
 
-void SubAddTest()
+//***************************************************************************
+// @brief  20개의 생산자 데이터 추가 요청 등록
+// @details 루프를 돌며 20개의 생산자(Producer) 데이터를 생성하고, 
+//          람다 함수를 사용해 필드(번호, 이름, 플래그, 나이)를 초기화한 뒤 
+//          비동기 DB 작업 큐(MEMBER_DB_ASYNC)에 추가합니다.
+//***************************************************************************
+void DbAsyncAdd()
 {
 	for( int i = 1; i <= 20; i++ )
 	{
@@ -256,13 +262,23 @@ void SubAddTest()
 	}
 }
 
-void SubGetTest()
+//***************************************************************************
+// @brief  단일 생산자 데이터 조회 요청 등록
+// @details 특정 생산자의 정보 조회를 위한 비동기 DB 요청(DBASYNC_GET_PRODUCER_REQ)을 
+//          작업 큐에 등록합니다.
+//***************************************************************************
+void DbAsyncGet()
 {
 	PushDBAsyncRequest<CMySQLAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_GET_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 		}, MAX_QUEUE_CAPACITY);
 }
 
-void SubListTest()
+//***************************************************************************
+// @brief  생산자 데이터 목록 조회 요청 등록
+// @details 전체 또는 조건별 생산자 목록 조회를 위한 비동기 DB 요청(DBASYNC_LIST_PRODUCER_REQ)을 
+//          작업 큐에 등록합니다.
+//***************************************************************************
+void DbAsyncList()
 {
 	PushDBAsyncRequest<CMySQLAsyncSrv, PRODUCER_DATA_BATCH_REQ>(MEMBER_DB_ASYNC, DBASYNC_LIST_PRODUCER_REQ, [](PRODUCER_DATA_BATCH_REQ* pDBAsync) {
 		}, MAX_QUEUE_CAPACITY);
@@ -335,6 +351,10 @@ int main()
 	int32 producerThreadCnt = 1;
 	//int32 consumerThreadCnt = 1;
 	int32 consumerThreadCnt = static_cast<int32>(SYSTEM::CoreCount());
+
+	//DbAsyncAdd();
+	//DbAsyncGet();
+	//DbAsyncList();
 
 	// 7. Producer 전용 DB 커넥션 풀 생성 및 초기화
 	if( producerThreadCnt > 0 )

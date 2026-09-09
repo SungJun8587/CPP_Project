@@ -98,8 +98,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobTimer.cpp">
       <Filter>UtilCore\Job</Filter>
     </ClCompile>
-    <ClCompile Include="AccountDBHandler.cpp" />
-    <ClCompile Include="ChatLoginHandler.cpp" />
     <ClCompile Include="ChatPacketDispatcher.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp">
       <Filter>UtilCore\Crypto</Filter>
@@ -116,7 +114,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
       <Filter>UtilCore\JSON</Filter>
     </ClCompile>
-    <ClCompile Include="ChatMessageHandler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
@@ -129,8 +126,24 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
-    <ClCompile Include="ChatChangeNicknameHandler.cpp" />
-    <ClCompile Include="ChangeNicknameDBHandler.cpp" />
+    <ClCompile Include="Handler\AccountDBHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChangeNicknameDBHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChatChangeNicknameHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChatLoginHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChatMessageHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChatNicknameHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -174,6 +187,9 @@
     </Filter>
     <Filter Include="UtilCore\JSON">
       <UniqueIdentifier>{401716b6-1a79-4bc0-8d89-c54fd8187f72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Handler">
+      <UniqueIdentifier>{778d97be-aecd-4f7d-b583-d1f7755aa9cb}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

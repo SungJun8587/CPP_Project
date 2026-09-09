@@ -1,12 +1,16 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // ChatServer.cpp : CChatServerMain 구동 예시
 //
 //***************************************************************************
+
 #include "pch.h"
 #include "ChatServerMain.h"
+#include "DbServiceManager.h"
 #include <ServerConnectInfo.h>
 #include <ServerConfig.h>
 #include <iostream>
+
 namespace
 {
 	CChatServerMain* GServer = nullptr;
@@ -64,6 +68,9 @@ void MainClose()
 
 	// 3. 전역 프레임워크(메모리 풀 등) 정리
 	BaseGlobal::Destroy();
+
+	// 4. Winsock 라이브러리 자원(WSACleanup)을 해제
+	CSocketUtils::Clear();
 }
 
 int main()
@@ -76,23 +83,26 @@ int main()
 	// 2. 콘솔 유니코드/UTF-8 환경 및 기본 프레임워크 초기화
 	InitUtf8Console();
 
-	// 2-1. 서버 인스턴스 생성 + 콘솔 종료 시그널(Ctrl+C 등) 핸들러 등록
+	// 3. Winsock 라이브러리(WSAStartup) 및 IOCP 확장 함수 포인터를 초기화
+	CSocketUtils::Init();
+	std::cout << "[System] CSocketUtils::Init()...\n\n";
+
+	// 4. 전역 프레임워크(메모리 풀 등) 초기화 — 이후 모든 단계가 이 초기화가 끝났다는 전제로 동작한다.
+	BaseGlobal::Init();
+
+	// 5. 서버 인스턴스 생성 + 콘솔 종료 시그널(Ctrl+C 등) 핸들러 등록
 	//      — GServer 포인터를 먼저 세팅해둬야 핸들러가 실제로 Stop()을
 	//      호출할 대상을 찾을 수 있다.
 	CChatServerMain server;
 	GServer = &server;
 	::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
-	// 2-2. 전역 프레임워크(메모리 풀 등) 초기화 — 이후 모든 단계가
-	//      이 초기화가 끝났다는 전제로 동작한다.
-	BaseGlobal::Init();
-
-	// 3. 서버 설정 파일(JSON) 로드
-	// 3-1. 설정 파일 경로 지정
+	// 6. 서버 설정 파일(JSON) 로드
+	// 6-1. 설정 파일 경로 지정
 	TCHAR tszConfigPath[FULLPATH_STRLEN];
-	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("..\\Config\\server_config_mysql.json"));
+	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("Config\\server_config_mysql.json"));
 
-	// 3-2. 설정 파일 파싱 — 실패 시 여기까지 초기화된 자원(BaseGlobal 등)을
+	// 6-2. 설정 파일 파싱 — 실패 시 여기까지 초기화된 자원(BaseGlobal 등)을
 	//      MainClose()로 정리하고 종료
 	if( false == SERVER_CONFIG->Init(tszConfigPath) )
 	{
@@ -101,7 +111,7 @@ int main()
 		return -1;
 	}
 
-	// 3-3. 필수 설정값 검증 — DB 노드 목록이 비어있으면 서버가 의미 있게
+	// 6-3. 필수 설정값 검증 — DB 노드 목록이 비어있으면 서버가 의미 있게
 	//      동작할 수 없으므로 여기서 조기에 걸러낸다.
 	const auto& dbNodeVec = SERVER_CONFIG->GetDBNodeVec();
 	if( dbNodeVec.empty() )
@@ -111,11 +121,11 @@ int main()
 		return -1;
 	}
 
-	// 3-4. 로드된 설정 정보를 로그로 출력(운영 중 확인용)
+	// 6-4. 로드된 설정 정보를 로그로 출력(운영 중 확인용)
 	SERVER_CONFIG->PrintServerSettingInfo();
 
-	// 4. 서버 시작
-	// 4-1. CChatServerMain::Start() 호출 — IOCP/Redis/DB/하트비트를 전부
+	// 7. 서버 시작
+	// 7-1. CChatServerMain::Start() 호출 — IOCP/Redis/DB/하트비트를 전부
 	//      이 한 번의 호출 안에서 순서대로 초기화한다. Redis/DB 풀 크기,
 	//      DB 워커 스레드 수, 하트비트 TTL/주기는 전부 CServerConfig의
 	//      JSON 스키마에 이미 있는 값을 그대로 쓴다(더 이상 데모용
@@ -130,7 +140,7 @@ int main()
 		SERVER_CONFIG->GetHeartbeatTtlSec(), SERVER_CONFIG->GetHeartbeatIntervalSec()
 	);
 
-	// 4-2. 시작 실패 시 정리 후 종료
+	// 7-2. 시작 실패 시 정리 후 종료
 	if( !started )
 	{
 		LOG_ERROR(_T("CChatServerMain::Start Fail."));
@@ -140,19 +150,20 @@ int main()
 
 	std::cout << "ChatServer started. Press Ctrl+C to stop." << std::endl;
 
-	// 5. 메인 스레드 대기 루프 — 실제 I/O는 IOCP 워커 스레드들이 처리한다.
+	// 8. 메인 스레드 대기 루프 — 실제 I/O는 IOCP 워커 스레드들이 처리한다.
 	// Ctrl+C 등은 ConsoleCtrlHandler가 별도 스레드 컨텍스트에서
 	// GServer->Stop() + g_bShouldExit 세팅을 하므로, 이 루프는 그 플래그를
 	// 확인해 정상적으로 빠져나온다.
 	while( !g_bShouldExit.load() )
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 
-	// 6. 정상 종료 경로 — g_bShouldExit이 세팅되어 루프를 빠져나온 뒤
+	// 9. 정상 종료 경로 — g_bShouldExit이 세팅되어 루프를 빠져나온 뒤
 	// 실행된다. GServer->Stop()은 이미 ConsoleCtrlHandler에서 호출됐으므로
 	// (CChatServerMain::~CChatServerMain()도 Stop()을 다시 호출하지만
 	// 이미 정지된 상태에서는 안전하게 no-op에 가까움) 여기서는 DB
 	// 서비스/설정/전역 프레임워크만 정리하면 된다.
 	MainClose();
 	CloseConsole();
+	
 	return 0;
 }

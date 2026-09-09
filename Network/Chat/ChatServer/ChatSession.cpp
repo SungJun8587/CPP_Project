@@ -34,7 +34,7 @@ void CChatSession::OnDisconnected()
 {
 	if( _loggedIn )
 	{
-		_server->OnUserLogout(_userId);
+		_server->OnUserLogout(_publicId);
 		_loggedIn = false;
 	}
 }

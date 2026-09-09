@@ -8,7 +8,7 @@
 #define UC_DBSIGNUPREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ELoginResult
+#include "ChatPacket.h"		// ELoginResult, kPublicIdBytes
 
 #include <functional>
 #include <memory>
@@ -29,11 +29,15 @@ constexpr BYTE kDbCallIdent_Signup = 200;
 //***************************************************************************
 // @struct ST_SIGNUP_REQ
 // @brief 회원가입(hasToken==false) 또는 재접속 검증(hasToken==true) 요청.
-// @details
-// - hasToken==false: nickname으로 신규 INSERT를 시도. 성공 시 새로 발급한
-//   토큰을 onComplete로 돌려준다.
-// - hasToken==true: nickname으로 저장된 토큰 해시를 조회해 token과 비교.
-//   일치하면 토큰을 회전(재발급)하고 새 토큰을 onComplete로 돌려준다.
+// @details [설계 변경] nickname은 더 이상 계정 식별자가 아니다(users.uid가
+// 내부 PK, users.public_id가 외부 식별자 — create_chat_db.sql 참고).
+// - hasToken==false: nickname으로 신규 INSERT를 시도(새 public_id/token도
+//   이 요청 처리 중 서버가 생성). 성공 시 새로 발급한 public_id/token을
+//   onComplete로 돌려준다.
+// - hasToken==true: publicId로 저장된 토큰 해시를 조회해 token과 비교.
+//   일치하면 토큰을 회전(재발급)하고, 그 시점의 실제 닉네임(DB 기준 —
+//   요청자가 기억하는 값과 다를 수 있음)과 새 토큰을 onComplete로 돌려준다.
+//   publicId 자체는 안 바뀌므로 그대로 echo.
 //
 // onComplete는 이 프로젝트의 "공식" 응답 전달 경로(st_DBAsyncRp)를 못 찾아
 // 요청 구조체에 직접 콜백을 담아 DB 워커 스레드에서 정확히 1회 호출하는
@@ -49,13 +53,15 @@ struct ST_SIGNUP_REQ : public st_DBAsyncRq
 		bReTry = false;
 	}
 
-	char	nickname[32] = {};						// NUL 종단 보장은 호출부(ChatLoginHandler) 책임
+	char	nickname[kNicknameBytes] = {};			// hasToken==false일 때만 의미: 신규 가입 시 원하는 닉네임(UTF-8, NUL 종단 보장은 호출부 책임)
 	bool	hasToken = false;
-	BYTE	token[kTokenBytes] = {};	// hasToken==true일 때만 의미 있음 (원문 — DB엔 이 값의 해시만 비교/저장)
+	BYTE	publicId[kPublicIdBytes] = {};			// hasToken==true일 때만 의미: 재접속 대상 계정의 안정 식별자
+	BYTE	token[kTokenBytes] = {};				// hasToken==true일 때만 의미 있음 (원문 — DB엔 이 값의 해시만 비교/저장)
 
 	std::function<void(
 		ELoginResult result,
 		const std::string& nickname,
+		const std::array<BYTE, kPublicIdBytes>& publicId,
 		const std::array<BYTE, kTokenBytes>& newToken)>	onComplete;
 };
 

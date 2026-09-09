@@ -132,15 +132,16 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
-    <ClCompile Include="AccountDBHandler.cpp" />
-    <ClCompile Include="ChangeNicknameDBHandler.cpp" />
-    <ClCompile Include="ChatChangeNicknameHandler.cpp" />
-    <ClCompile Include="ChatLoginHandler.cpp" />
-    <ClCompile Include="ChatMessageHandler.cpp" />
     <ClCompile Include="ChatPacketDispatcher.cpp" />
     <ClCompile Include="ChatServer.cpp" />
     <ClCompile Include="ChatServerMain.cpp" />
     <ClCompile Include="ChatSession.cpp" />
+    <ClCompile Include="Handler\AccountDBHandler.cpp" />
+    <ClCompile Include="Handler\ChangeNicknameDBHandler.cpp" />
+    <ClCompile Include="Handler\ChatChangeNicknameHandler.cpp" />
+    <ClCompile Include="Handler\ChatLoginHandler.cpp" />
+    <ClCompile Include="Handler\ChatMessageHandler.cpp" />
+    <ClCompile Include="Handler\ChatNicknameHandler.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>

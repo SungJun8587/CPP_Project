@@ -7,8 +7,8 @@
 #ifndef UC_CHATCLIENTSESSION_H
 #define UC_CHATCLIENTSESSION_H
 
-#include <Crypto/CryptoUtil.h>
 #include <Network/IOCP/IocpSession.h>
+#include <Crypto/CryptoUtil.h>
 #include "ChatPacket.h"
 
 #include <string>
@@ -28,12 +28,14 @@ class CChatClientSession : public CIocpSession
 {
 public:
 	//***************************************************************************
-	// @param userId 로그인에 사용할 닉네임
-	// @param hasToken true면 token으로 재접속 시도, false면 신규 가입 시도
+	// @param userId hasToken==false일 때만 의미: 신규 가입 시 원하는 닉네임
+	// @param hasToken true면 publicId+token으로 재접속 시도, false면 신규 가입 시도
+	// @param publicId hasToken==true일 때만 의미: 재접속 대상 계정의 안정 식별자(로컬에 저장해 둔 값)
 	// @param token 재접속 토큰 원문(hasToken==false면 무시됨)
 	// @param client 이 세션을 소유한 클라이언트 파사드
 	//***************************************************************************
 	CChatClientSession(std::string userId, bool hasToken,
+		std::array<BYTE, kPublicIdBytes> publicId,
 		std::array<BYTE, kTokenBytes> token, CChatClientMain* client);
 	virtual ~CChatClientSession() = default;
 
@@ -90,6 +92,7 @@ private:
 private:
 	std::string								_userId;
 	bool									_hasToken = false;
+	std::array<BYTE, kPublicIdBytes>	_publicId{};	// hasToken==true일 때만 의미: 재접속 대상 계정의 안정 식별자
 	std::array<BYTE, kTokenBytes>	_token{};
 	CChatClientMain* _client = nullptr;	// 뒤로 참조 — Client가 세션보다 오래 살아있음을 CChatClientMain::Disconnect()가 보장
 	std::string								_pendingNewNickname;	// SendChangeNicknameReq()가 요청한 닉네임 — 응답(success/reason만 있음) 처리 시 참고용

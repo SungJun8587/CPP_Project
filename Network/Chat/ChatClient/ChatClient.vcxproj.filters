@@ -71,9 +71,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp">
       <Filter>UtilCore\Crypto</Filter>
     </ClCompile>
-    <ClCompile Include="ChatClientLoginHandler.cpp" />
-    <ClCompile Include="ChatClientMessageHandler.cpp" />
-    <ClCompile Include="ChatClientNicknameHandler.cpp" />
     <ClCompile Include="ChatClientPacketDispatcher.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
       <Filter>UtilCore\Util</Filter>
@@ -81,7 +78,18 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
-    <ClCompile Include="ChatClientChangeNicknameHandler.cpp" />
+    <ClCompile Include="Handler\ChatClientChangeNicknameHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChatClientLoginHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChatClientMessageHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\ChatClientNicknameHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -113,6 +121,9 @@
     </Filter>
     <Filter Include="UtilCore\Crypto">
       <UniqueIdentifier>{23f5596c-1294-47e9-a247-70fabdd5a067}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Handler">
+      <UniqueIdentifier>{dab601b8-c609-4904-a984-8378f22e801c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

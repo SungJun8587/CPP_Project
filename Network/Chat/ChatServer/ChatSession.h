@@ -11,6 +11,7 @@
 #include "ChatPacket.h"
 
 #include <string>
+#include <array>
 
 class CChatServerMain;
 
@@ -18,9 +19,17 @@ class CChatServerMain;
 // @class CChatSession
 // @brief CIocpSession을 상속받는 채팅 서버 전용 세션.
 // @details
-// 로그인 상태(_loggedIn/_userId)는 이 세션 객체 안에서만 관리하고, 실제
-// Redis 반영(등록/삭제)은 CChatServerMain에 위임합니다 — 세션은 프로토콜 처리와
-// 자기 상태만 알고, 인프라(Redis) 연동은 서버 파사드가 전담하는 구조입니다.
+// 로그인 상태(_loggedIn/_publicId/_nickname)는 이 세션 객체 안에서만 관리하고,
+// 실제 Redis 반영(등록/삭제)은 CChatServerMain에 위임합니다 — 세션은 프로토콜
+// 처리와 자기 상태만 알고, 인프라(Redis) 연동은 서버 파사드가 전담하는 구조입니다.
+//
+// [설계 변경 — 아이덴티티/표시명 분리] users.nickname이 더 이상 PRIMARY
+// KEY가 아니게 되면서(create_chat_db.sql 참고), 세션의 "진짜 정체성"과
+// "화면에 보이는 이름"이 서로 다른 값이 됐다:
+//   - _publicId : 로그인 성공 시 서버가 확정하는 안정 식별자. 닉네임이
+//     바뀌어도 절대 안 바뀐다 — Redis 키/DB 조회는 전부 이 값 기준.
+//   - _nickname : 표시용. ChatChangeNicknameHandler.cpp가 언제든 바꿀 수
+//     있고, 그래도 _publicId/Redis 키/세션 자체는 전혀 영향받지 않는다.
 //***************************************************************************
 class CChatSession : public CIocpSession
 {
@@ -41,9 +50,17 @@ public:
 	bool IsLoggedIn() const { return _loggedIn; }
 
 	//***************************************************************************
-	// @brief 로그인한 유저 ID를 반환합니다(로그인 전이면 빈 문자열).
+	// @brief 로그인한 계정의 안정 식별자를 반환합니다(로그인 전이면 전부 0).
+	// @details 닉네임 변경과 무관하게 고정 — Redis 키/DB 조회는 이 값을 쓴다.
 	//***************************************************************************
-	const std::string& GetUserId() const { return _userId; }
+	const std::array<BYTE, kPublicIdBytes>& GetPublicId() const { return _publicId; }
+
+	//***************************************************************************
+	// @brief 로그인한 유저의 표시용 닉네임을 반환합니다(로그인 전이면 빈 문자열).
+	// @details ChatChangeNicknameHandler.cpp가 성공적으로 바꾸면 이 값만
+	//          갱신된다 — GetPublicId()는 영향받지 않는다.
+	//***************************************************************************
+	const std::string& GetNickname() const { return _nickname; }
 
 	//***************************************************************************
 	// @brief 이 세션이 속한 채팅 서버를 반환합니다.
@@ -59,22 +76,28 @@ public:
 	//          (ChatLoginHandler.cpp)만 호출하는 것을 의도한 좁은 용도의 API이며,
 	//          컴파일러가 강제하지는 못하므로 컨벤션으로 지킨다.
 	//***************************************************************************
-	void MarkLoggedIn(std::string userId) { _userId = std::move(userId); _loggedIn = true; }
+	void MarkLoggedIn(const std::array<BYTE, kPublicIdBytes>& publicId, std::string nickname)
+	{
+		_publicId = publicId;
+		_nickname = std::move(nickname);
+		_loggedIn = true;
+	}
 
 	//***************************************************************************
-	// @brief 닉네임 변경 성공 후 세션의 아이덴티티를 갱신합니다.
+	// @brief 닉네임 변경 성공 후 세션의 표시용 닉네임만 갱신합니다.
 	// @details MarkLoggedIn()과 동일한 좁은 용도 API — ChatChangeNicknameHandler.cpp만
-	//          호출하는 것을 의도한다. 로그인 상태(_loggedIn)는 건드리지
-	//          않는다(이미 로그인된 세션에서만 호출되는 게 전제).
+	//          호출하는 것을 의도한다. _publicId/로그인 상태는 건드리지
+	//          않는다(닉네임 변경은 계정 식별자에 영향을 주지 않으므로).
 	//***************************************************************************
-	void UpdateNickname(std::string newUserId) { _userId = std::move(newUserId); }
+	void UpdateNickname(std::string newNickname) { _nickname = std::move(newNickname); }
 
 private:
 	void	HandlePacket(const PacketHeader* header);
 
 private:
 	CChatServerMain* _server = nullptr;	// 뒤로 참조 — 서버 소유 세션이라 세션보다 오래 살아있음이 보장됨
-	std::string		_userId;
+	std::array<BYTE, kPublicIdBytes>	_publicId{};	// 로그인된 계정의 안정 식별자(로그인 전엔 전부 0)
+	std::string		_nickname;						// 표시용 닉네임(변경 가능)
 	bool			_loggedIn = false;
 };
 

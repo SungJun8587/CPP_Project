@@ -15,11 +15,14 @@ namespace
 {
 	//***************************************************************************
 	// @brief 로그인된 세션의 닉네임 변경 요청 처리.
-	// @details CChatServerMain::RequestChangeNickname()으로 DB 비동기 워커에
-	//          위임한 뒤, 성공 시에만 세션 아이덴티티(UpdateNickname())와
-	//          Redis 온라인 상태 키(OnUserNicknameChanged())를 갱신한다 —
-	//          HandleLoginReq()와 동일하게 그 사이 세션이 끊길 수 있으므로
-	//          weak_ptr로 재확인한다.
+	// @details [설계 변경] CChatServerMain::RequestChangeNickname()으로 DB
+	//          비동기 워커에 위임한 뒤, 성공 시 세션의 표시용 닉네임만
+	//          갱신한다(UpdateNickname()). publicId(GetPublicId())는 절대
+	//          바뀌지 않으므로 Redis 키 갱신 자체가 필요 없다 — 예전엔
+	//          닉네임이 곧 식별자라 Redis RENAME이 필요했지만, 이제는
+	//          Redis 키가 애초에 publicId 기준이라 이 요청과 무관하다.
+	//          HandleLoginReq()와 동일하게 응답이 오기 전 세션이 끊길 수
+	//          있으므로 weak_ptr로 재확인한다.
 	//***************************************************************************
 	void HandleChangeNicknameReq(CChatSession& session, const PacketHeader* header)
 	{
@@ -43,13 +46,13 @@ namespace
 		if( server == nullptr )
 			return;
 
-		const std::string oldNickname = session.GetUserId();
+		const std::array<BYTE, kPublicIdBytes> publicId = session.GetPublicId();
 
 		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
-		server->RequestChangeNickname(sessionRef, oldNickname, newNickname,
-			[sessionWeak](ELoginResult result, const std::string& oldNick, const std::string& newNick)
+		server->RequestChangeNickname(sessionRef, publicId, newNickname,
+			[sessionWeak](ELoginResult result, const std::array<BYTE, kPublicIdBytes>& /*publicId*/, const std::string& newNick)
 			{
 				auto session = sessionWeak.lock();
 				if( session == nullptr )
@@ -62,16 +65,7 @@ namespace
 				res.reason = static_cast<uint8>(result);
 
 				if( result == ELoginResult::Ok )
-				{
-					// [순서 중요] 세션 아이덴티티를 먼저 갱신한 뒤 Redis를
-					// 갱신한다 — 반대로 하면 그 찰나에 GetUserId()를 참조하는
-					// 다른 코드(예: 동시에 들어온 다른 패킷 핸들러)가 옛
-					// 닉네임과 새 Redis 키 사이의 불일치를 볼 수 있다.
 					session->UpdateNickname(newNick);
-
-					if( CChatServerMain* srv = session->GetServer() )
-						srv->OnUserNicknameChanged(oldNick, newNick);
-				}
 
 				session->Send(&res, sizeof(res));
 			});
