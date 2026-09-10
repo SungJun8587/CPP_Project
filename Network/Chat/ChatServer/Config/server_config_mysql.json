@@ -1,5 +1,7 @@
 {
     "Name": "ChatServer",
+    "GroupId": 1,
+    "ChannelId": 1,
     "IP": "127.0.0.1",
     "Port": 30201,
     "UseTestMode": "OFF",
@@ -10,7 +12,6 @@
     "DbWorkerThreadCnt": 4,
     "HeartbeatTtlSec": 15,
     "HeartbeatIntervalSec": 5,
-    "GameType": "ALL",
     "DBNode": [
         {
             "ID": 2,

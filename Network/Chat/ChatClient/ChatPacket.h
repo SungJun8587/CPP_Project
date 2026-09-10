@@ -166,6 +166,77 @@ struct ChangeNicknameResPacket : PacketHeader
 	uint8	reason;		// ELoginResult 재사용 — Ok/NicknameTaken/InvalidNickname/DbError만 쓰임
 };
 
+//***************************************************************************
+// @brief 로비/룸 식별자 상수.
+// @details 룸은 동적 생성이 아니라 1~kMaxRoomId 사이의 고정된 ID만 존재한다
+//          (클라이언트 UI의 방 선택 콤보박스도 이 고정 목록을 그대로 씀).
+//          로비(kLobbyRoomId=0)는 로그인하면 자동으로 들어가는 기본 위치 —
+//          "방에 아직 안 들어간 상태"가 아니라 "그 자체로 채팅 가능한 공용
+//          공간"이다.
+//***************************************************************************
+constexpr int32 kLobbyRoomId = 0;
+constexpr int32 kMaxRoomId = 10;
+
+//***************************************************************************
+// @brief 방 입장/퇴장 결과 코드.
+//***************************************************************************
+enum class ERoomResult : uint8
+{
+	Ok = 0,
+	InvalidRoomId = 1,	// roomId가 1~kMaxRoomId 범위 밖
+};
+
+//***************************************************************************
+// @brief 방 입장 요청 (Client -> Server). 로그인된 세션만 유효.
+//***************************************************************************
+struct RoomEnterReqPacket : PacketHeader
+{
+	int32	roomId;	// 1~kMaxRoomId만 유효. 로비로 돌아가려면 RoomLeaveReq를 쓸 것(이 요청으로 로비 재입장 불가)
+};
+
+//***************************************************************************
+// @brief 방 입장 응답 (Server -> Client)
+//***************************************************************************
+struct RoomEnterResPacket : PacketHeader
+{
+	uint8	success;		// 1: 성공, 0: 실패
+	uint8	reason;			// ERoomResult
+	int32	roomId;			// 요청했던 roomId 그대로 echo
+	int32	roomUserCount;	// success==1일 때만 유효 — 입장 직후 그 방의 인원수(자신 포함)
+};
+
+//***************************************************************************
+// @brief 방 퇴장 요청 (Client -> Server). 바디 없음 — "지금 있는 방에서 나가
+//        로비로 돌아간다"는 의미. 이미 로비에 있는 상태에서 보내도 안전하게
+//        무시된다(서버가 현재 위치를 보고 판단).
+//***************************************************************************
+struct RoomLeaveReqPacket : PacketHeader
+{
+};
+
+//***************************************************************************
+// @brief 방 퇴장 응답 (Server -> Client)
+//***************************************************************************
+struct RoomLeaveResPacket : PacketHeader
+{
+	uint8	success;		// 1: 성공(로비로 이동됨), 0: 실패(이미 로비에 있었음 등)
+	int32	roomId;			// 방금까지 있었던 방 번호(로비였다면 kLobbyRoomId)
+	int32	roomUserCount;	// success==1일 때만 유효 — 퇴장 후 그 방에 남은 인원수
+};
+
+//***************************************************************************
+// @brief 방 인원수 변경 알림 (Server -> Client, 서버가 자발적으로 브로드캐스트).
+// @details 누군가 이 방에 들어오거나 나갈 때마다, 그 시점에 그 방에 있던
+//          "다른" 인원들에게도 갱신된 인원수를 실시간으로 알려주기 위한
+//          패킷 — 입장/퇴장 응답은 그 행동을 한 당사자에게만 가지, 이미
+//          방에 있던 사람들 화면은 이 알림이 없으면 갱신되지 않는다.
+//***************************************************************************
+struct RoomUserCountNotifyPacket : PacketHeader
+{
+	int32	roomId;
+	int32	userCount;
+};
+
 #pragma pack(pop)
 
 //***************************************************************************
@@ -180,6 +251,11 @@ enum class EChatPacketType : uint16
 	NicknameGenerateRes = 5,
 	ChangeNicknameReq = 6,
 	ChangeNicknameRes = 7,
+	RoomEnterReq = 8,
+	RoomEnterRes = 9,
+	RoomLeaveReq = 10,
+	RoomLeaveRes = 11,
+	RoomUserCountNotify = 12,	// Server -> Client, 발신자 없이 서버가 자발적으로 보내는 알림
 	// 명시적 LogoutReq는 기본 뼈대엔 없음 — 로그아웃은 연결 종료(OnDisconnected)로만 트리거
 };
 

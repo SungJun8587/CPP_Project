@@ -173,3 +173,28 @@ void CChatClientSession::SendChangeNicknameReq(const std::string& newNickname)
 
 	Send(&req, sizeof(req));
 }
+
+//***************************************************************************
+// @brief 서버에 방 입장을 요청합니다.
+//***************************************************************************
+void CChatClientSession::SendRoomEnterReq(int32 roomId)
+{
+	RoomEnterReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::RoomEnterReq);
+	req.size = sizeof(req);
+	req.roomId = roomId;
+
+	Send(&req, sizeof(req));
+}
+
+//***************************************************************************
+// @brief 서버에 방 퇴장(로비 복귀)을 요청합니다.
+//***************************************************************************
+void CChatClientSession::SendRoomLeaveReq()
+{
+	RoomLeaveReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::RoomLeaveReq);
+	req.size = sizeof(req);
+
+	Send(&req, sizeof(req));
+}

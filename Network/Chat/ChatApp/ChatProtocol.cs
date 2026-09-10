@@ -25,6 +25,18 @@ namespace ChatApp
         NicknameGenerateRes = 5,
         ChangeNicknameReq = 6,
         ChangeNicknameRes = 7,
+        RoomEnterReq = 8,
+        RoomEnterRes = 9,
+        RoomLeaveReq = 10,
+        RoomLeaveRes = 11,
+        RoomUserCountNotify = 12,
+    }
+
+    // RoomEnterResPacket::reason
+    public enum RoomResult : byte
+    {
+        Ok = 0,
+        InvalidRoomId = 1,
     }
 
     // LoginResPacket::reason / ChangeNicknameResPacket::reason 공용.
@@ -49,6 +61,9 @@ namespace ChatApp
         public const int NicknameBytes = 50;        // kNicknameBytes (LoginReqPacket::userId, ChangeNicknameReqPacket::newNickname)
         public const int ChatMessageBytes = 256;    // ChatPacket::message
         public const int GeneratedNicknameBytes = 32;   // NicknameGenerateResPacket::nickname — kNicknameBytes와 별개 상수라 혼동 주의
+
+        public const int LobbyRoomId = 0;
+        public const int MaxRoomId = 10;
     }
 
     //***************************************************************************
@@ -166,6 +181,36 @@ namespace ChatApp
                 return ms.ToArray();
             }
         }
+
+        //***************************************************************************
+        // @brief 방 입장 요청. roomId는 1~ProtocolConstants.MaxRoomId만 유효(서버가 재검증).
+        //***************************************************************************
+        public static byte[] BuildRoomEnterReq(int roomId)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(int));
+                bw.Write(size);
+                bw.Write((ushort)PacketType.RoomEnterReq);
+                bw.Write(roomId);
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief 방 퇴장(로비 복귀) 요청. 바디 없음.
+        //***************************************************************************
+        public static byte[] BuildRoomLeaveReq()
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((ushort)ProtocolConstants.HeaderBytes);
+                bw.Write((ushort)PacketType.RoomLeaveReq);
+                return ms.ToArray();
+            }
+        }
     }
 
     public class LoginResPacketData
@@ -187,6 +232,27 @@ namespace ChatApp
     {
         public string SenderNickname;   // Server -> Client 방향에서만 의미 있음(브로드캐스트 시점의 발신자 닉네임)
         public string Message;
+    }
+
+    public class RoomEnterResPacketData
+    {
+        public bool Success;
+        public RoomResult Reason;
+        public int RoomId;
+        public int RoomUserCount;   // Success==true일 때만 유효
+    }
+
+    public class RoomLeaveResPacketData
+    {
+        public bool Success;
+        public int RoomId;          // 방금까지 있었던 방(로비였으면 LobbyRoomId)
+        public int RoomUserCount;   // Success==true일 때만 유효 — 퇴장 후 그 방에 남은 인원
+    }
+
+    public class RoomUserCountNotifyData
+    {
+        public int RoomId;
+        public int UserCount;
     }
 
     //***************************************************************************
@@ -256,6 +322,52 @@ namespace ChatApp
                 {
                     Success = br.ReadByte() != 0,
                     Reason = (LoginResult)br.ReadByte(),
+                };
+            }
+        }
+
+        public static RoomEnterResPacketData ParseRoomEnterRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new RoomEnterResPacketData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (RoomResult)br.ReadByte(),
+                    RoomId = br.ReadInt32(),
+                    RoomUserCount = br.ReadInt32(),
+                };
+            }
+        }
+
+        public static RoomLeaveResPacketData ParseRoomLeaveRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                bool success = br.ReadByte() != 0;
+                return new RoomLeaveResPacketData
+                {
+                    Success = success,
+                    RoomId = br.ReadInt32(),
+                    RoomUserCount = br.ReadInt32(),
+                };
+            }
+        }
+
+        public static RoomUserCountNotifyData ParseRoomUserCountNotify(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new RoomUserCountNotifyData
+                {
+                    RoomId = br.ReadInt32(),
+                    UserCount = br.ReadInt32(),
                 };
             }
         }

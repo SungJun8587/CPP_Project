@@ -12,6 +12,7 @@
 #include "DBSignupRequest.h"
 #include "DBChangeNicknameRequest.h"
 
+#include <algorithm>
 #include <cstring>
 
 namespace
@@ -40,12 +41,13 @@ bool CChatServerMain::Start(
 	const _tstring& bindIp, uint16 bindPort,
 	CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
 	CVector<CDBNode> dbNodeVec, int32 dbMaxThreadCnt,
-	std::string serverType, std::string serverId,
+	std::string serverName, std::string serverGroupId, std::string serverChannelId,
 	int32 maxSessionCount, uint32 workerThreadCount,
 	int32 heartbeatTtlSec, int32 heartbeatIntervalSec)
 {
-	_serverType = std::move(serverType);
-	_serverId = std::move(serverId);
+	_serverName = std::move(serverName);
+	_serverGroupId = std::move(serverGroupId);
+	_serverChannelId = std::move(serverChannelId);
 
 	// 1. IOCP 코어 + JobQueue(Redis/DB 콜백 디스패치용) 준비
 	_iocpCore = MakeShared<CIocpCore>();
@@ -91,7 +93,18 @@ bool CChatServerMain::Start(
 
 	// 4. 서버 생존 하트비트 시작 — IOCP가 실제로 뜬 뒤에 시작(뜨기 전에 하트비트가
 	//    "살아있다"고 알리는 것은 의미가 없음)
-	_heartbeat = std::make_unique<CRedisServerHeartbeat>(_redisService.get(), _serverType, _serverId, bindPort);
+	_heartbeat = std::make_unique<CRedisServerHeartbeat>(_redisService.get(), _serverName, _serverGroupId, _serverChannelId, bindPort);
+
+	// 세션 수(동접자수) 콜백 — Start() 전에 등록해야 최초 HSET 등록
+	// (RegisterInitial())부터 값이 반영된다. _service는 바로 위(3번)에서
+	// 이미 시작됐으므로 이 시점엔 항상 유효 — Stop()에서도 _heartbeat를
+	// _service보다 먼저 정지/정리하므로, 이 콜백이 살아있는 동안 _service가
+	// 사라져 있는 경우는 없다.
+	_heartbeat->SetSessionCountProvider([this]() -> int32
+		{
+			return _service ? static_cast<int32>(_service->GetSessionManager().GetSessionCount()) : 0;
+		});
+
 	if( !_heartbeat->Start(heartbeatTtlSec, heartbeatIntervalSec) )
 	{
 		Stop();
@@ -156,8 +169,8 @@ void CChatServerMain::OnUserLogin(const std::array<BYTE, kPublicIdBytes>& public
 	CVector<std::string> args;
 	args.push_back("HSET");
 	args.push_back(BuildUserKey(publicId));
-	args.push_back("serverType");	args.push_back(_serverType);
-	args.push_back("serverId");	args.push_back(_serverId);
+	args.push_back("serverGroupId");	args.push_back(_serverGroupId);
+	args.push_back("serverChannelId");	args.push_back(_serverChannelId);
 	args.push_back("status");		args.push_back("online");
 
 	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
@@ -318,4 +331,178 @@ void CChatServerMain::RequestChangeNickname(
 		if( onComplete )
 			onComplete(ELoginResult::DbError, publicId, newNickname);
 	}
+}
+
+//***************************************************************************
+// @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
+//***************************************************************************
+void CChatServerMain::MoveToRoom(std::shared_ptr<CChatSession> session, int32 newRoomId, int32& outNewRoomUserCount)
+{
+	outNewRoomUserCount = 0;
+	if( session == nullptr )
+		return;
+
+	int32 oldRoomId = -1;
+	int32 oldRoomRemainingCount = 0;
+	bool hadOldRoom = false;
+	int32 newRoomCountAfter = 0;
+
+	{
+		std::lock_guard<std::mutex> lock(_roomMutex);
+
+		oldRoomId = session->GetRoomId();
+
+		// 기존 방/로비에서 제거 (oldRoomId == -1이면 "아직 어디에도 배정된
+		// 적 없음"이라 제거할 대상 자체가 없다 — 로그인 직후 최초 배정 시나리오)
+		if( oldRoomId >= 0 )
+		{
+			auto oldIt = _roomMembers.find(oldRoomId);
+			if( oldIt != _roomMembers.end() )
+			{
+				auto& members = oldIt->second;
+				members.erase(std::remove_if(members.begin(), members.end(),
+					[&session](const std::weak_ptr<CChatSession>& w)
+					{
+						auto s = w.lock();
+						return !s || s == session;
+					}), members.end());
+
+				oldRoomRemainingCount = static_cast<int32>(members.size());
+				hadOldRoom = true;
+			}
+		}
+
+		// 새 위치에 추가
+		session->SetRoomId(newRoomId);
+		auto& newMembers = _roomMembers[newRoomId];
+		newMembers.push_back(session);
+
+		// 죽은 weak_ptr 청소 겸 실제 인원수 계산
+		int32 count = 0;
+		for( auto it = newMembers.begin(); it != newMembers.end(); )
+		{
+			if( it->lock() )
+			{
+				++count;
+				++it;
+			}
+			else
+			{
+				it = newMembers.erase(it);
+			}
+		}
+		newRoomCountAfter = count;
+	}
+
+	outNewRoomUserCount = newRoomCountAfter;
+
+	// 인원수가 바뀐 두 위치(원래 있던 곳/새로 들어간 곳)에 갱신된 인원수를
+	// 알린다 — 이미 그 방에 있던 다른 사람들의 화면도 실시간으로 갱신되게.
+	if( hadOldRoom && oldRoomId != newRoomId )
+		NotifyRoomUserCount(oldRoomId, oldRoomRemainingCount);
+	NotifyRoomUserCount(newRoomId, newRoomCountAfter);
+}
+
+//***************************************************************************
+// @brief 세션이 지금 있는 방(로비 포함)에서만 빠집니다. 연결 종료 전용.
+//***************************************************************************
+void CChatServerMain::LeaveCurrentRoom(CChatSession* session)
+{
+	if( session == nullptr )
+		return;
+
+	int32 roomId = -1;
+	int32 remainingCount = 0;
+	bool hadRoom = false;
+
+	{
+		std::lock_guard<std::mutex> lock(_roomMutex);
+
+		roomId = session->GetRoomId();
+		if( roomId < 0 )
+			return; // 로그인 직후 방 배정 전에 끊긴 극히 드문 경우 — 정리할 게 없음
+
+		auto it = _roomMembers.find(roomId);
+		if( it == _roomMembers.end() )
+			return;
+
+		auto& members = it->second;
+		members.erase(std::remove_if(members.begin(), members.end(),
+			[session](const std::weak_ptr<CChatSession>& w)
+			{
+				auto s = w.lock();
+				return !s || s.get() == session;
+			}), members.end());
+
+		remainingCount = static_cast<int32>(members.size());
+		hadRoom = true;
+	}
+
+	if( hadRoom )
+		NotifyRoomUserCount(roomId, remainingCount);
+}
+
+//***************************************************************************
+// @brief 방(로비 포함)의 현재 인원수를 조회합니다.
+//***************************************************************************
+int32 CChatServerMain::GetRoomUserCount(int32 roomId) const
+{
+	std::lock_guard<std::mutex> lock(_roomMutex);
+
+	auto it = _roomMembers.find(roomId);
+	if( it == _roomMembers.end() )
+		return 0;
+
+	int32 count = 0;
+	for( auto& w : it->second )
+	{
+		if( !w.expired() )
+			++count;
+	}
+	return count;
+}
+
+//***************************************************************************
+// @brief 지정한 방(로비 포함)에 있는 세션들에게만 브로드캐스트합니다.
+//***************************************************************************
+void CChatServerMain::BroadcastToRoom(int32 roomId, const void* data, uint16 size)
+{
+	if( data == nullptr || size == 0 )
+		return;
+
+	std::vector<std::shared_ptr<CChatSession>> targets;
+	{
+		std::lock_guard<std::mutex> lock(_roomMutex);
+
+		auto it = _roomMembers.find(roomId);
+		if( it == _roomMembers.end() )
+			return;
+
+		targets.reserve(it->second.size());
+		for( auto& w : it->second )
+		{
+			if( auto s = w.lock() )
+				targets.push_back(s);
+		}
+	}
+
+	for( auto& s : targets )
+	{
+		if( s->IsConnected() )
+			s->Send(data, size);
+	}
+}
+
+//***************************************************************************
+// @brief roomId의 갱신된 인원수를 그 방의 멤버 전원에게 알립니다.
+//***************************************************************************
+void CChatServerMain::NotifyRoomUserCount(int32 roomId, int32 userCount)
+{
+	RoomUserCountNotifyPacket notify{};
+	notify.size = sizeof(notify);
+	notify.type = static_cast<uint16>(EChatPacketType::RoomUserCountNotify);
+	notify.roomId = roomId;
+	notify.userCount = userCount;
+
+	BroadcastToRoom(roomId, &notify, notify.size);
 }

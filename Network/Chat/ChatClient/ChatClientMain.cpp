@@ -213,6 +213,30 @@ void CChatClientMain::RequestChangeNickname(const std::string& newNickname)
 }
 
 //***************************************************************************
+// @brief 서버에 방 입장을 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestRoomEnter(int32 roomId)
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendRoomEnterReq(roomId);
+}
+
+//***************************************************************************
+// @brief 서버에 방 퇴장(로비 복귀)을 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestRoomLeave()
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendRoomLeaveReq();
+}
+
+//***************************************************************************
 // @brief 로그인 응답 수신 시 CChatClientSession이 호출합니다.
 // @details 성공 시 서버가 반환한 public_id와 회전 발급한 새 토큰을 로컬
 //          파일(프로필 이름 기준)에 저장한 뒤, 앱 쪽 콜백에는
@@ -266,4 +290,31 @@ void CChatClientMain::OnNicknameChangeResult(bool success, ELoginResult reason, 
 {
 	if( _onNicknameChangeResult )
 		_onNicknameChangeResult(success, reason, newNickname);
+}
+
+//***************************************************************************
+// @brief 방 입장 응답 수신 시 핸들러가 호출합니다.
+//***************************************************************************
+void CChatClientMain::OnRoomEnterResult(bool success, ERoomResult reason, int32 roomId, int32 roomUserCount)
+{
+	if( _onRoomEnterResult )
+		_onRoomEnterResult(success, reason, roomId, roomUserCount);
+}
+
+//***************************************************************************
+// @brief 방 퇴장 응답 수신 시 핸들러가 호출합니다.
+//***************************************************************************
+void CChatClientMain::OnRoomLeaveResult(bool success, int32 roomId, int32 roomUserCount)
+{
+	if( _onRoomLeaveResult )
+		_onRoomLeaveResult(success, roomId, roomUserCount);
+}
+
+//***************************************************************************
+// @brief 방 인원수 변경 알림 수신 시 핸들러가 호출합니다.
+//***************************************************************************
+void CChatClientMain::OnRoomUserCountChanged(int32 roomId, int32 userCount)
+{
+	if( _onRoomUserCountChanged )
+		_onRoomUserCountChanged(roomId, userCount);
 }

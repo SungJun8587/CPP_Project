@@ -26,6 +26,9 @@ namespace ChatApp
         public event Action<ChatPacketData> ChatMessageReceived;
         public event Action<string> NicknameGenerated;
         public event Action<ChangeNicknameResPacketData> NicknameChangeResultReceived;
+        public event Action<RoomEnterResPacketData> RoomEnterResultReceived;
+        public event Action<RoomLeaveResPacketData> RoomLeaveResultReceived;
+        public event Action<RoomUserCountNotifyData> RoomUserCountChanged;
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -75,6 +78,8 @@ namespace ChatApp
         public void SendChat(string message) => SendRaw(PacketBuilder.BuildChat(message));
         public void RequestNicknameGeneration() => SendRaw(PacketBuilder.BuildNicknameGenerateReq());
         public void RequestChangeNickname(string newNickname) => SendRaw(PacketBuilder.BuildChangeNicknameReq(newNickname));
+        public void RequestRoomEnter(int roomId) => SendRaw(PacketBuilder.BuildRoomEnterReq(roomId));
+        public void RequestRoomLeave() => SendRaw(PacketBuilder.BuildRoomLeaveReq());
 
         private void SendRaw(byte[] packet)
         {
@@ -169,6 +174,18 @@ namespace ChatApp
 
                 case PacketType.ChangeNicknameRes:
                     NicknameChangeResultReceived?.Invoke(PacketParser.ParseChangeNicknameRes(full));
+                    break;
+
+                case PacketType.RoomEnterRes:
+                    RoomEnterResultReceived?.Invoke(PacketParser.ParseRoomEnterRes(full));
+                    break;
+
+                case PacketType.RoomLeaveRes:
+                    RoomLeaveResultReceived?.Invoke(PacketParser.ParseRoomLeaveRes(full));
+                    break;
+
+                case PacketType.RoomUserCountNotify:
+                    RoomUserCountChanged?.Invoke(PacketParser.ParseRoomUserCountNotify(full));
                     break;
 
                 default:

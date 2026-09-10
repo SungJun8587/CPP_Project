@@ -34,6 +34,13 @@ void CChatSession::OnDisconnected()
 {
 	if( _loggedIn )
 	{
+		// [추가] 로그아웃(Redis 정리)보다 먼저 방 멤버십부터 정리한다 —
+		// 순서 자체는 서로 독립적이라 바뀌어도 문제는 없지만, "이 세션이
+		// 갖고 있던 모든 부가 상태를 정리"라는 의미상 방 정리를 먼저
+		// 두는 게 읽기 자연스럽다.
+		if( _server != nullptr )
+			_server->LeaveCurrentRoom(this);
+
 		_server->OnUserLogout(_publicId);
 		_loggedIn = false;
 	}

@@ -8,8 +8,8 @@
 #define UC_CHATCLIENTSESSION_H
 
 #include <Network/IOCP/IocpSession.h>
-#include <Crypto/CryptoUtil.h>
 #include "ChatPacket.h"
+#include <Crypto/CryptoUtil.h>
 
 #include <string>
 #include <array>
@@ -71,6 +71,17 @@ public:
 	//          않는(한 번에 요청 하나만 진행 중이라고 가정하는) 단순화다.
 	//***************************************************************************
 	const std::string& GetPendingNewNickname() const { return _pendingNewNickname; }
+
+	//***************************************************************************
+	// @brief 서버에 방 입장을 요청합니다. roomId는 1~kMaxRoomId여야 유효하며,
+	//        범위를 벗어나면 서버가 RoomEnterResPacket으로 InvalidRoomId를 돌려준다.
+	//***************************************************************************
+	void	SendRoomEnterReq(int32 roomId);
+
+	//***************************************************************************
+	// @brief 서버에 방 퇴장(로비로 복귀)을 요청합니다. 바디 없는 요청.
+	//***************************************************************************
+	void	SendRoomLeaveReq();
 
 	//***************************************************************************
 	// @brief 이 세션을 소유한 클라이언트 파사드를 반환합니다.

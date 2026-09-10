@@ -1,5 +1,4 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // ChatServerMain.h : interface for the CChatServerMain class.
 //
 //***************************************************************************
@@ -19,6 +18,9 @@
 #include <memory>
 #include <functional>
 #include <array>
+#include <unordered_map>
+#include <vector>
+#include <mutex>
 
 class CChatSession;
 
@@ -66,7 +68,7 @@ public:
 	// @param redisPoolSize 노드별 Redis 커넥션 풀 크기
 	// @param dbNodeVec 회원 DB 접속 정보(ODBC) — MEMBER_DB_ASYNC.StartService()에 그대로 전달
 	// @param dbMaxThreadCnt DB 비동기 워커 스레드 수 (0=자동 — [가정] StartService 내부 정책)
-	// @param serverType/serverId 하트비트 등록에 쓰일 식별자 (예: "ChatServer", "1")
+	// @param serverGroupId/serverChannelId 하트비트 등록에 쓰일 식별자 (예: "ChatServer", "1")
 	// @param maxSessionCount 최대 동시 접속 수
 	// @param workerThreadCount IOCP 워커 스레드 개수 (0=자동)
 	// @param heartbeatTtlSec/heartbeatIntervalSec 하트비트 TTL/갱신 주기
@@ -76,7 +78,7 @@ public:
 		const _tstring& bindIp, uint16 bindPort,
 		CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
 		CVector<CDBNode> dbNodeVec, int32 dbMaxThreadCnt,
-		std::string serverType, std::string serverId,
+		std::string serverName, std::string serverGroupId, std::string serverChannelId,
 		int32 maxSessionCount = 1000, uint32 workerThreadCount = 0,
 		int32 heartbeatTtlSec = 15, int32 heartbeatIntervalSec = 5);
 
@@ -139,18 +141,77 @@ public:
 			const std::array<BYTE, kPublicIdBytes>& publicId,
 			const std::string& newNickname)> onComplete);
 
+	//***************************************************************************
+	// @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
+	// @details 로그인 성공 직후 자동으로 로비(kLobbyRoomId)에 배정하는 데도
+	//          쓰이고, 클라이언트의 명시적 방 입장 요청(RoomEnterHandler.cpp)
+	//          처리에도 쓰인다 — "로비도 결국 하나의 방"이라는 관점이라 두
+	//          경우를 같은 함수로 통일했다.
+	//          기존에 있던 방/로비에서는 자동으로 빠지고, 새 위치의 멤버
+	//          목록에 추가된다. 이동 전/후 두 위치(같은 곳이 아니라면 둘 다)의
+	//          갱신된 인원수를 그 방에 남아있는 다른 사람들에게 알림
+	//          (NotifyRoomUserCount() 참고) — 그래야 이미 그 방에 있던
+	//          사람들의 "방 인원수" 표시도 실시간으로 갱신된다.
+	// @param session 이동할 세션
+	// @param newRoomId 이동할 위치 — kLobbyRoomId 또는 1~kMaxRoomId
+	// @param outNewRoomUserCount [out] 이동 직후 newRoomId의 인원수(자신 포함)
+	//***************************************************************************
+	void MoveToRoom(std::shared_ptr<CChatSession> session, int32 newRoomId, int32& outNewRoomUserCount);
+
+	//***************************************************************************
+	// @brief 세션이 지금 있는 방(로비 포함)에서만 빠집니다 — 어디로도 새로
+	//        옮기지 않습니다. 연결 종료(OnDisconnected()) 전용 — 세션이
+	//        곧 사라지므로 "새 위치로 옮긴다"는 개념 자체가 필요 없다.
+	// @details shared_ptr이 아니라 raw pointer를 받는다 — 소멸 과정
+	//          중(OnDisconnected() 내부)에 shared_from_this()를 새로 만드는
+	//          부담/위험을 피하기 위함(이미 다른 곳에서도 이 시점엔 순수
+	//          데이터만 넘기는 관례 — OnUserLogout()도 동일).
+	//***************************************************************************
+	void LeaveCurrentRoom(CChatSession* session);
+
+	//***************************************************************************
+	// @brief 방(로비 포함)의 현재 인원수를 조회합니다. 존재하지 않거나
+	//        빈 방이면 0을 반환합니다.
+	//***************************************************************************
+	int32 GetRoomUserCount(int32 roomId) const;
+
+	//***************************************************************************
+	// @brief 지정한 방(로비 포함)에 있는 세션들에게만 브로드캐스트합니다.
+	// @details ChatMessageHandler.cpp가 채팅 메시지를 "발신자가 지금 있는
+	//          방"으로만 좁혀 보낼 때 사용한다 — Broadcast()(전체 브로드캐스트)와
+	//          달리 이건 방 멤버십 기준으로 대상을 제한한다.
+	//***************************************************************************
+	void BroadcastToRoom(int32 roomId, const void* data, uint16 size);
+
 private:
 	std::string BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const;
 
+	//***************************************************************************
+	// @brief roomId의 갱신된 인원수를 그 방의 멤버 전원에게 알립니다.
+	// @details MoveToRoom()/LeaveCurrentRoom()이 인원수 변경 시 내부적으로
+	//          호출한다 — 직접 호출할 일 없음.
+	//***************************************************************************
+	void NotifyRoomUserCount(int32 roomId, int32 userCount);
+
 private:
-	CIocpCoreRef				_iocpCore;
-	CJobQueueRef				_jobQueue;
+	CIocpCoreRef							_iocpCore;
+	CJobQueueRef							_jobQueue;
 	std::unique_ptr<CRedisService>			_redisService;
-	CIocpServerServiceRef		_service;
+	CIocpServerServiceRef					_service;
 	std::unique_ptr<CRedisServerHeartbeat>	_heartbeat;
 
-	std::string	_serverType;
-	std::string	_serverId;
+	std::string	_serverName;
+	std::string	_serverGroupId;
+	std::string	_serverChannelId;
+
+	// 방(로비 포함) 멤버십 레지스트리. CIocpSessionManager(프레임워크)를
+	// 건드리지 않고 채팅 애플리케이션 계층에서 자체 관리한다 — "방" 개념은
+	// IOCP 세션 관리 자체와 무관한, 순전히 채팅 서버만의 개념이기 때문이다.
+	// weak_ptr로 보관해 세션이 끊겨도 이 맵이 소유권을 붙들지 않게 한다
+	// (끊긴 세션은 순회 시점에 lock() 실패로 자연스럽게 걸러지고, MoveToRoom()/
+	// LeaveCurrentRoom() 호출 시 청소된다).
+	mutable std::mutex	_roomMutex;
+	std::unordered_map<int32, std::vector<std::weak_ptr<CChatSession>>>	_roomMembers;
 };
 
 #endif // ndef UC_CHATSERVERMAIN_H

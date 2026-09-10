@@ -144,6 +144,12 @@
     <ClCompile Include="Handler\ChatNicknameHandler.cpp">
       <Filter>Handler</Filter>
     </ClCompile>
+    <ClCompile Include="Handler\RoomEnterHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
+    <ClCompile Include="Handler\RoomLeaveHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

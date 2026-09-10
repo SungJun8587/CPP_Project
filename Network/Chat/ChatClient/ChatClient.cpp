@@ -166,10 +166,10 @@ namespace
 //***************************************************************************
 void MainClose()
 {
-	// 1. BaseGlobal 전역 프레임워크 리소스 해제
+	// 3. BaseGlobal 전역 프레임워크 리소스 해제
 	BaseGlobal::Destroy();
 
-	// 2. Winsock 라이브러리 자원(WSACleanup)을 해제
+	// 4. Winsock 라이브러리 정리
 	CSocketUtils::Clear();
 }
 
@@ -182,14 +182,13 @@ int main()
 
 	// 2. 콘솔 유니코드/UTF-8 환경 초기화
 	InitUtf8Console();
-
-	// 3. Winsock 라이브러리(WSAStartup) 및 IOCP 확장 함수 포인터를 초기화
-	CSocketUtils::Init();
-	std::cout << "[System] CSocketUtils::Init()...\n\n";
 	CaptureDefaultConsoleAttr();
 
 	// 4. BaseGlobal 프레임워크 초기화
 	BaseGlobal::Init();
+
+	CSocketUtils::Init();
+	std::cout << "[System] CSocketUtils::Init()...\n\n";
 
 	std::cout << "User ID: ";
 	std::string userId;
@@ -292,6 +291,44 @@ int main()
 			PrintAsyncLine(msg, FOREGROUND_RED | FOREGROUND_INTENSITY);
 		});
 
+	client.SetOnRoomEnterResult([](bool success, ERoomResult reason, int32 roomId, int32 roomUserCount)
+		{
+			if( success )
+			{
+				PrintAsyncLine(L"[방 입장 성공] " + std::to_wstring(roomId) + L"번 방 (인원 " + std::to_wstring(roomUserCount) + L"명)",
+					FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+				return;
+			}
+
+			std::wstring msg = (reason == ERoomResult::InvalidRoomId)
+				? (L"[방 입장 실패] 유효하지 않은 방 번호입니다(1~" + std::to_wstring(kMaxRoomId) + L").")
+				: L"[방 입장 실패]";
+			PrintAsyncLine(msg, FOREGROUND_RED | FOREGROUND_INTENSITY);
+		});
+
+	client.SetOnRoomLeaveResult([](bool success, int32 roomId, int32 roomUserCount)
+		{
+			if( success )
+			{
+				PrintAsyncLine(L"[로비로 이동] " + std::to_wstring(roomId) + L"번 방에서 나감 (남은 인원 " + std::to_wstring(roomUserCount) + L"명)",
+					FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+			}
+			else
+			{
+				PrintAsyncLine(L"[방 퇴장 실패]", FOREGROUND_RED | FOREGROUND_INTENSITY);
+			}
+		});
+
+	client.SetOnRoomUserCountChanged([](int32 roomId, int32 userCount)
+		{
+			// [참고] 이건 내가 방을 옮길 때도 오고, 같은 방에 있는 "다른"
+			// 누군가 들고나서도 온다 — 굳이 매번 시스템 메시지로 시끄럽게
+			// 찍기보다, 상태표시줄 성격으로 조용히 알리는 것도 방법이지만
+			// 데모 단순화를 위해 그냥 로그로 남긴다.
+			PrintAsyncLine(L"[알림] " + std::to_wstring(roomId) + L"번 방 인원수: " + std::to_wstring(userCount) + L"명",
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+		});
+
 	// TODO: 실서비스에서는 설정 파일/커맨드라인 인자로 대체
 	if( !client.Connect(_T("127.0.0.1"), 30201, userId) )
 	{
@@ -301,7 +338,9 @@ int main()
 		return 1;
 	}
 
-	PrintAsyncLine(L"메시지를 입력하세요 (/quit 종료, /nick <새닉네임> 닉네임 변경):", FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+	PrintAsyncLine(L"메시지를 입력하세요 (/quit 종료, /nick <새닉네임> 닉네임 변경, /room <1~"
+		+ std::to_wstring(kMaxRoomId) + L"> 방 입장, /leave 로비로 복귀):",
+		FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
 
 	for( ;; )
 	{
@@ -313,18 +352,41 @@ int main()
 		if( wline.empty() )
 			continue;
 
-		// ASCII 명령("/nick ")은 UTF-8/UTF-16 어느 쪽으로 비교해도 결과가
-		// 같으므로, 여기서 UTF-8로 한 번만 변환해 이후 로직은 기존과 동일하게 유지.
+		// ASCII 명령("/nick ", "/room ", "/leave")은 UTF-8/UTF-16 어느 쪽으로
+		// 비교해도 결과가 같으므로, 여기서 UTF-8로 한 번만 변환해 이후 로직은
+		// 기존과 동일하게 유지.
 		std::string line = UnicodeToUtf8(wline);
 
-		// [단순화] "/nick " 접두사만 정확히 일치할 때 명령으로 처리한다 —
-		// 앞뒤 공백 트리밍, 대소문자 무시 같은 건 데모 범위 밖.
+		// [단순화] 접두사가 정확히 일치할 때만 명령으로 처리한다 — 앞뒤 공백
+		// 트리밍, 대소문자 무시 같은 건 데모 범위 밖.
 		constexpr const char* kNickCommandPrefix = "/nick ";
 		if( line.rfind(kNickCommandPrefix, 0) == 0 )
 		{
 			std::string newNickname = line.substr(std::strlen(kNickCommandPrefix));
 			if( !newNickname.empty() )
 				client.RequestChangeNickname(newNickname);
+			continue;
+		}
+
+		constexpr const char* kRoomCommandPrefix = "/room ";
+		if( line.rfind(kRoomCommandPrefix, 0) == 0 )
+		{
+			std::string roomIdStr = line.substr(std::strlen(kRoomCommandPrefix));
+			try
+			{
+				const int32 roomId = std::stoi(roomIdStr);
+				client.RequestRoomEnter(roomId);
+			}
+			catch( ... )
+			{
+				PrintAsyncLine(L"[시스템] 방 번호가 올바르지 않습니다.", FOREGROUND_RED | FOREGROUND_INTENSITY);
+			}
+			continue;
+		}
+
+		if( line == "/leave" )
+		{
+			client.RequestRoomLeave();
 			continue;
 		}
 

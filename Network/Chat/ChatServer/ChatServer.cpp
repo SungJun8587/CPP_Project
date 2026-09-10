@@ -135,7 +135,8 @@ int main()
 		SERVER_CONFIG->GetServerIP(), SERVER_CONFIG->GetServerPort(),
 		SERVER_CONFIG->GetRedisNodeVec(), SERVER_CONFIG->GetRedisPoolSize(),
 		SERVER_CONFIG->GetDBNodeVec(), SERVER_CONFIG->GetDbWorkerThreadCnt(),
-		TCharToString(SERVER_CONFIG->GetServiceName()), TCharToString(SERVER_CONFIG->GetServerName()),
+		TCharToString(SERVER_CONFIG->GetServerName()),
+		std::to_string(SERVER_CONFIG->GetServerGroupId()), std::to_string(SERVER_CONFIG->GetServerChannelId()),
 		SERVER_CONFIG->GetMaxSessionCount(), SERVER_CONFIG->GetWorkerThreadCnt(),
 		SERVER_CONFIG->GetHeartbeatTtlSec(), SERVER_CONFIG->GetHeartbeatIntervalSec()
 	);
@@ -164,6 +165,6 @@ int main()
 	// 서비스/설정/전역 프레임워크만 정리하면 된다.
 	MainClose();
 	CloseConsole();
-	
+
 	return 0;
 }

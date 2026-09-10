@@ -8,7 +8,7 @@
 #define UC_CHATCLIENTMAIN_H
 
 #include <Network/NetworkCommon.h>
-#include "ChatPacket.h"
+#include "ChatPacket.h"	
 #include <Crypto/CryptoUtil.h>
 
 #include <string>
@@ -96,18 +96,34 @@ public:
 	//***************************************************************************
 	void RequestChangeNickname(const std::string& newNickname);
 
+	//***************************************************************************
+	// @brief 서버에 방 입장을 요청합니다. 아직 연결/로그인 전이면 조용히 무시됩니다.
+	//***************************************************************************
+	void RequestRoomEnter(int32 roomId);
+
+	//***************************************************************************
+	// @brief 서버에 방 퇴장(로비 복귀)을 요청합니다. 아직 연결/로그인 전이면 조용히 무시됩니다.
+	//***************************************************************************
+	void RequestRoomLeave();
+
 public:
 	using LoginResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& nickname)>;
 	using ChatMessageHandler = std::function<void(const std::string& senderNickname, const std::string& message)>;
 	using DisconnectedHandler = std::function<void()>;
 	using NicknameGeneratedHandler = std::function<void(const std::string& nickname)>;
 	using NicknameChangeResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& newNickname)>;
+	using RoomEnterResultHandler = std::function<void(bool success, ERoomResult reason, int32 roomId, int32 roomUserCount)>;
+	using RoomLeaveResultHandler = std::function<void(bool success, int32 roomId, int32 roomUserCount)>;
+	using RoomUserCountChangedHandler = std::function<void(int32 roomId, int32 userCount)>;
 
 	void SetOnLoginResult(LoginResultHandler handler) { _onLoginResult = std::move(handler); }
 	void SetOnChatMessage(ChatMessageHandler handler) { _onChatMessage = std::move(handler); }
 	void SetOnDisconnected(DisconnectedHandler handler) { _onDisconnected = std::move(handler); }
 	void SetOnNicknameGenerated(NicknameGeneratedHandler handler) { _onNicknameGenerated = std::move(handler); }
 	void SetOnNicknameChangeResult(NicknameChangeResultHandler handler) { _onNicknameChangeResult = std::move(handler); }
+	void SetOnRoomEnterResult(RoomEnterResultHandler handler) { _onRoomEnterResult = std::move(handler); }
+	void SetOnRoomLeaveResult(RoomLeaveResultHandler handler) { _onRoomLeaveResult = std::move(handler); }
+	void SetOnRoomUserCountChanged(RoomUserCountChangedHandler handler) { _onRoomUserCountChanged = std::move(handler); }
 
 public:
 	// CChatClientSession에서 호출하는 콜백들 (IOCP 워커 스레드에서 호출됨 — 클래스 상단 주석 참고)
@@ -132,6 +148,13 @@ public:
 	//          필요가 없다 — 성공/실패 결과만 앱 쪽 콜백으로 전달한다.
 	//***************************************************************************
 	void OnNicknameChangeResult(bool success, ELoginResult reason, const std::string& newNickname);
+
+	//***************************************************************************
+	// @brief 방 입장/퇴장 응답, 방 인원수 변경 알림 수신 시 호출됩니다.
+	//***************************************************************************
+	void OnRoomEnterResult(bool success, ERoomResult reason, int32 roomId, int32 roomUserCount);
+	void OnRoomLeaveResult(bool success, int32 roomId, int32 roomUserCount);
+	void OnRoomUserCountChanged(int32 roomId, int32 userCount);
 
 private:
 	static _tstring TokenFilePath(const std::string& profileName);
@@ -162,6 +185,10 @@ private:
 	DisconnectedHandler		_onDisconnected;
 	NicknameGeneratedHandler	_onNicknameGenerated;
 	NicknameChangeResultHandler	_onNicknameChangeResult;
+	RoomEnterResultHandler		_onRoomEnterResult;
+	RoomLeaveResultHandler		_onRoomLeaveResult;
+	RoomUserCountChangedHandler	_onRoomUserCountChanged;
 };
+
 
 #endif // ndef UC_CHATCLIENTMAIN_H

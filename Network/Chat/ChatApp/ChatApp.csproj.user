@@ -4,5 +4,8 @@
     <Compile Update="ChatClientForm.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Update="NicknameChangeDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
   </ItemGroup>
 </Project>

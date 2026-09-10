@@ -104,7 +104,17 @@ namespace
 				if( result == ELoginResult::Ok )
 				{
 					if( CChatServerMain* srv = session->GetServer() )
+					{
 						srv->OnUserLogin(completedPublicId);
+
+						// [추가] 로그인에 성공하면 곧바로 로비에 배정한다 —
+						// "로그인은 됐는데 아직 어디에도 속하지 않은" 어중간한
+						// 상태를 만들지 않기 위함. 로비도 CChatServerMain
+						// 관점에서는 그냥 하나의 방(roomId=kLobbyRoomId)이라
+						// MoveToRoom()을 그대로 재사용한다.
+						int32 lobbyUserCount = 0;
+						srv->MoveToRoom(session, kLobbyRoomId, lobbyUserCount);
+					}
 				}
 			});
 	}

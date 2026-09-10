@@ -91,6 +91,23 @@ public:
 	//***************************************************************************
 	void UpdateNickname(std::string newNickname) { _nickname = std::move(newNickname); }
 
+	//***************************************************************************
+	// @brief 현재 있는 위치(로비=kLobbyRoomId 또는 특정 룸 ID)를 반환합니다.
+	// @details 로그인 전이거나 아직 로비 배정도 안 된 극히 짧은 순간에는 -1
+	//          (어디에도 속하지 않음)일 수 있다 — CChatServerMain::LeaveCurrentRoom()이
+	//          이 값을 보고 "정리할 방이 없음"을 판단한다.
+	//***************************************************************************
+	int32 GetRoomId() const { return _roomId; }
+
+	//***************************************************************************
+	// @brief 현재 위치를 갱신합니다.
+	// @details [설계 노트] MarkLoggedIn()과 동일한 좁은 용도 API — CChatServerMain::MoveToRoom()만
+	//          호출하는 것을 의도한다. 세션 스스로 방을 옮기는 게 아니라,
+	//          방 멤버십을 총괄하는 CChatServerMain의 결정을 세션에 반영만
+	//          하는 역할이다(실제 멤버십 목록 갱신은 CChatServerMain 쪽 책임).
+	//***************************************************************************
+	void SetRoomId(int32 roomId) { _roomId = roomId; }
+
 private:
 	void	HandlePacket(const PacketHeader* header);
 
@@ -99,6 +116,7 @@ private:
 	std::array<BYTE, kPublicIdBytes>	_publicId{};	// 로그인된 계정의 안정 식별자(로그인 전엔 전부 0)
 	std::string		_nickname;						// 표시용 닉네임(변경 가능)
 	bool			_loggedIn = false;
+	int32			_roomId = -1;					// 현재 위치. -1=아직 미배정, 0=로비, 1~kMaxRoomId=특정 룸
 };
 
 #endif // ndef UC_CHATSESSION_H
