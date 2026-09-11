@@ -93,6 +93,9 @@
     <ClCompile Include="Handler\ChatClientRoomHandler.cpp">
       <Filter>Handler</Filter>
     </ClCompile>
+    <ClCompile Include="Handler\ChatClientServerUserCountHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

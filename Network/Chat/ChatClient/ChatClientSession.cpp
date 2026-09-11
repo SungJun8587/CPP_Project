@@ -198,3 +198,15 @@ void CChatClientSession::SendRoomLeaveReq()
 
 	Send(&req, sizeof(req));
 }
+
+//***************************************************************************
+// @brief 서버에 전체 접속자 수(동접자수) 조회를 요청합니다(폴링용).
+//***************************************************************************
+void CChatClientSession::SendServerUserCountReq()
+{
+	ServerUserCountReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::ServerUserCountReq);
+	req.size = sizeof(req);
+
+	Send(&req, sizeof(req));
+}

@@ -95,7 +95,7 @@ bool CChatServerMain::Start(
 	//    "살아있다"고 알리는 것은 의미가 없음)
 	_heartbeat = std::make_unique<CRedisServerHeartbeat>(_redisService.get(), _serverName, _serverGroupId, _serverChannelId, bindPort);
 
-	// 세션 수(동접자수) 콜백 — Start() 전에 등록해야 최초 HSET 등록
+	// [추가] 세션 수(동접자수) 콜백 — Start() 전에 등록해야 최초 HSET 등록
 	// (RegisterInitial())부터 값이 반영된다. _service는 바로 위(3번)에서
 	// 이미 시작됐으므로 이 시점엔 항상 유효 — Stop()에서도 _heartbeat를
 	// _service보다 먼저 정지/정리하므로, 이 콜백이 살아있는 동안 _service가
@@ -198,6 +198,18 @@ void CChatServerMain::Broadcast(const void* data, uint16 size)
 {
 	if( _service )
 		_service->GetSessionManager().Broadcast(data, size);
+}
+
+//***************************************************************************
+// @brief 이 서버 프로세스의 현재 전체 접속자 수(TCP 연결 기준)를 반환합니다.
+// @details [설계 변경] 로그인/로그아웃마다 브로드캐스트하던 방식(NotifyServerUserCount())을
+//          없애고, ServerUserCountHandler.cpp가 클라이언트의 폴링 요청에
+//          응답할 때 이 함수를 호출해 그 시점의 값을 그대로 돌려주는
+//          방식으로 바꿨다.
+//***************************************************************************
+int32 CChatServerMain::GetServerUserCount() const
+{
+	return _service ? static_cast<int32>(_service->GetSessionManager().GetSessionCount()) : 0;
 }
 
 //***************************************************************************

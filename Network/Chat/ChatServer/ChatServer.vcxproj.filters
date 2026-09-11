@@ -150,6 +150,9 @@
     <ClCompile Include="Handler\RoomLeaveHandler.cpp">
       <Filter>Handler</Filter>
     </ClCompile>
+    <ClCompile Include="Handler\ServerUserCountHandler.cpp">
+      <Filter>Handler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

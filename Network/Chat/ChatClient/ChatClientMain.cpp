@@ -8,6 +8,7 @@
 #include "ChatClientMain.h"
 #include "ChatClientSession.h"
 #include <Crypto/CryptoUtil.h>
+// [가정] AccountDBHandler.cpp와 동일한 경로 컨벤션으로 추정.
 #include <Util/EncodingConvert.h>
 
 #include <fstream>
@@ -237,6 +238,18 @@ void CChatClientMain::RequestRoomLeave()
 }
 
 //***************************************************************************
+// @brief 서버 전체 접속자 수(동접자수)를 조회 요청합니다(폴링).
+//***************************************************************************
+void CChatClientMain::RequestServerUserCount()
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendServerUserCountReq();
+}
+
+//***************************************************************************
 // @brief 로그인 응답 수신 시 CChatClientSession이 호출합니다.
 // @details 성공 시 서버가 반환한 public_id와 회전 발급한 새 토큰을 로컬
 //          파일(프로필 이름 기준)에 저장한 뒤, 앱 쪽 콜백에는
@@ -317,4 +330,13 @@ void CChatClientMain::OnRoomUserCountChanged(int32 roomId, int32 userCount)
 {
 	if( _onRoomUserCountChanged )
 		_onRoomUserCountChanged(roomId, userCount);
+}
+
+//***************************************************************************
+// @brief 서버 전체 접속자 수 조회 응답 수신 시 핸들러가 호출합니다.
+//***************************************************************************
+void CChatClientMain::OnServerUserCountResult(int32 userCount, int32 lobbyUserCount)
+{
+	if( _onServerUserCountResult )
+		_onServerUserCountResult(userCount, lobbyUserCount);
 }

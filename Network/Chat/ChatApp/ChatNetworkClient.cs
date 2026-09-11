@@ -29,6 +29,7 @@ namespace ChatApp
         public event Action<RoomEnterResPacketData> RoomEnterResultReceived;
         public event Action<RoomLeaveResPacketData> RoomLeaveResultReceived;
         public event Action<RoomUserCountNotifyData> RoomUserCountChanged;
+        public event Action<ServerUserCountResData> ServerUserCountReceived;
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -80,6 +81,7 @@ namespace ChatApp
         public void RequestChangeNickname(string newNickname) => SendRaw(PacketBuilder.BuildChangeNicknameReq(newNickname));
         public void RequestRoomEnter(int roomId) => SendRaw(PacketBuilder.BuildRoomEnterReq(roomId));
         public void RequestRoomLeave() => SendRaw(PacketBuilder.BuildRoomLeaveReq());
+        public void RequestServerUserCount() => SendRaw(PacketBuilder.BuildServerUserCountReq());
 
         private void SendRaw(byte[] packet)
         {
@@ -186,6 +188,10 @@ namespace ChatApp
 
                 case PacketType.RoomUserCountNotify:
                     RoomUserCountChanged?.Invoke(PacketParser.ParseRoomUserCountNotify(full));
+                    break;
+
+                case PacketType.ServerUserCountRes:
+                    ServerUserCountReceived?.Invoke(PacketParser.ParseServerUserCountRes(full));
                     break;
 
                 default:

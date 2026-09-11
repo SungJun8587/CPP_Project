@@ -8,34 +8,35 @@
 #define UC_CHATPACKET_H
 
 //***************************************************************************
-// @brief 재접속 토큰(및 그 SHA-256 해시)의 바이트 크기 — 256비트.
-// @details 프로토콜 상수라 CryptoUtil이 아닌 여기(패킷 정의) 소속. 실제
-//          해시/난수 생성 자체는 Crypto::CCryptoUtil을 사용한다.
+// @brief 재접속 토큰 및 SHA-256 해시 바이트 크기 (256비트)
 //***************************************************************************
 constexpr size_t kTokenBytes = 32;
 
 //***************************************************************************
-// @brief 계정의 외부 노출용 안정 식별자(public_id) 바이트 크기 — 128비트.
-// @details [설계 변경] users.nickname이 더 이상 PRIMARY KEY가 아니다 —
-//          내부 전용 순번 PK(uid, DB에만 존재, 절대 패킷에 실리지 않음)와
-//          분리된, 가입 시 생성하는 진짜 무작위 식별자다. 순번이 아니므로
-//          "가입자가 몇 명인지" 추정하거나 순차 열거로 다른 계정을 스캔하는
-//          공격이 원천적으로 불가능하다. 닉네임이 바뀌어도 이 값은 고정
-//          — Redis 키/클라이언트 로컬 토큰 파일이 전부 이 값을 기준으로
-//          한다(create_chat_db.sql::users.public_id 참고).
-//          "비밀"은 아니다(AWS의 Access Key ID와 같은 위치) — 인증 비밀은
-//          여전히 token/token_hash가 전담한다. 이 값 하나만으로는 아무것도
-//          증명되지 않는다.
+// @brief 계정 공개 고유 식별자(public_id) 바이트 크기 (128비트)
 //***************************************************************************
 constexpr size_t kPublicIdBytes = 16;
 
 //***************************************************************************
-// 프레이밍 규칙: 모든 패킷은 PacketHeader로 시작하며, header.size는
-// "헤더를 포함한" 패킷 전체 크기입니다. CChatSession::OnRecv()가 이 규칙으로
-// 수신 버퍼를 순회하며 완전한 패킷 단위로 잘라 처리합니다.
+// @brief 닉네임 필드 바이트 크기 (UTF-8 기준 최대 16글자 + 여유)
 //***************************************************************************
+constexpr size_t kNicknameBytes = 50;
+
+//***************************************************************************
+// @brief 로비 방 식별자 (기본 공용 공간)
+//***************************************************************************
+constexpr int32 kLobbyRoomId = 0;
+
+//***************************************************************************
+// @brief 생성 가능한 최대 방 번호
+//***************************************************************************
+constexpr int32 kMaxRoomId = 10;
+
 #pragma pack(push, 1)
 
+//***************************************************************************
+// @brief 모든 패킷의 기본 헤더 구조체
+//***************************************************************************
 struct PacketHeader
 {
 	uint16	size;	// 헤더 포함 패킷 전체 크기
@@ -43,204 +44,159 @@ struct PacketHeader
 };
 
 //***************************************************************************
-// @brief 로그인 요청 (Client -> Server)
-// @details
-// hasToken==0: 신규 가입 시도. userId(원하는 닉네임)만 사용되고 publicId/token은
-//              무시된다.
-// hasToken==1: 재접속. publicId로 "어느 계정인지"를 식별하고, token으로 본인
-//              확인을 시도한다(로컬에 저장해 둔 값). userId는 무시된다 —
-//              재접속 시점의 실제 닉네임은 서버 DB가 갖고 있는 값이 기준이며,
-//              클라이언트가 기억하는 값과 다를 수 있다(예: 다른 세션에서
-//              닉네임을 바꾼 경우). 성공하든 실패하든 서버는 token을 평문
-//              그대로 저장/비교하지 않는다(SHA-256 해시로만 비교).
+// @brief 로그인 요청 패킷 (Client -> Server)
 //***************************************************************************
-//***************************************************************************
-// @brief 닉네임 필드의 바이트 크기.
-// @details UTF-8 기준 — 한글 완성형 한 글자가 3바이트라, "최대 16글자"를
-//          전부 한글로 채워도 담을 수 있게 16*3=48바이트 + NUL 여유를 뒀다.
-//          실제 "글자 수" 상한(16)은 AccountDBHandler.cpp::IsValidNickname()이
-//          코드포인트 단위로 별도 검증한다 — 이 바이트 크기 자체는 상한
-//          검증이 아니라 "그 상한을 담을 수 있는 그릇" 역할만 한다.
-//***************************************************************************
-constexpr size_t kNicknameBytes = 50;
-
 struct LoginReqPacket : PacketHeader
 {
-	char	userId[kNicknameBytes];	// hasToken==0일 때만 의미: 신규 가입 시 원하는 닉네임(UTF-8). NUL로 안 끝날 수 있음(경계값) — 파싱 쪽에서 방어 필요
-	BYTE	publicId[kPublicIdBytes];	// hasToken==1일 때만 의미: 재접속 대상 계정의 안정 식별자
-	uint8	hasToken;		// 1: publicId/token 필드 유효(재접속), 0: 신규 가입 시도
-	BYTE	token[kTokenBytes];		// 재접속 토큰 원문(256비트). hasToken==0이면 의미 없음(전송은 하되 무시됨)
+	char	userId[kNicknameBytes];	// hasToken==0일 때 신규 가입 닉네임
+	BYTE	publicId[kPublicIdBytes];	// hasToken==1일 때 재접속 계정 식별자
+	uint8	hasToken;		// 0: 신규 가입, 1: 토큰 재접속
+	BYTE	token[kTokenBytes];		// 재접속 토큰 원문
 };
 
 //***************************************************************************
-// @brief 로그인 응답 (Server -> Client)
+// @brief 로그인 응답 패킷 (Server -> Client)
 //***************************************************************************
 struct LoginResPacket : PacketHeader
 {
 	uint8	success;	// 1: 성공, 0: 실패
-	uint8	reason;		// ELoginResult — success==0일 때만 의미 있음
-	char	nickname[kNicknameBytes];	// 이 계정의 닉네임(UTF-8). 서버가 채워서 보낸다 —
-	// 성공 시에는 항상 유효(신규 가입이면 방금 확정된 닉네임,
-	// 재접속이면 DB 기준 현재 닉네임 — 다른 세션에서 /nick으로
-	// 바꿨을 수 있으므로 클라이언트가 기억하는 값과 다를 수 있음).
-	// 실패 시에는 원인에 따라 다르다: 신규 가입 실패(중복/형식
-	// 오류)면 시도했던 닉네임이 그대로 담기고, 재접속 실패 중
-	// AccountNotFound처럼 애초에 계정을 못 찾은 경우엔 빈 문자열.
-	BYTE	publicId[kPublicIdBytes];	// success==1일 때만 유효 — 이 계정의 안정 식별자.
-	// 신규 가입/재접속 둘 다 반환한다. 클라이언트는 이 값을
-	// token과 함께 로컬에 저장해야 다음 재접속에 쓸 수 있다.
-	BYTE	token[kTokenBytes];	// success==1일 때만 유효 — 로그인마다 회전되는 새 토큰.
-	// 클라이언트는 이 값을 즉시 로컬에 저장(이전 값 덮어쓰기)해야
-	// 다음 재접속에 쓸 수 있다. 저장 전 클라이언트가 죽으면
-	// 이번 토큰은 유실되고 다음 접속은 재접속이 아닌 신규
-	// 가입 시도로 처리된다 — 이 계정은 서버 쪽 수동 처리
-	// 없이는 복구 불가(회전 정책의 트레이드오프).
+	uint8	reason;		// ELoginResult (실패 사유)
+	char	nickname[kNicknameBytes];	// 확정된 현재 닉네임
+	BYTE	publicId[kPublicIdBytes];	// 계정 공개 식별자 (재접속용)
+	BYTE	token[kTokenBytes];	// 새 회전 토큰 (재접속용)
 };
 
 //***************************************************************************
 // @enum ELoginResult
-// @brief LoginResPacket::reason 값.
+// @brief 로그인 처리 결과 코드
 //***************************************************************************
 enum class ELoginResult : uint8
 {
-	Ok = 0,
-	NicknameTaken = 1,	// 신규 가입 시도인데 이미 가입된 닉네임
-	DbError = 2,	// DB 처리 중 오류(일시적 — 클라이언트가 재시도 가능)
-	InvalidNickname = 3,	// 형식 위반(허용 문자셋/길이 위반)
-	AccountNotFound = 4,	// 재접속 시도인데 해당 public_id 계정이 DB에 없음
-	TokenMismatch = 5,	// 재접속 토큰이 저장된 값과 불일치
+	Ok = 0,               // 성공
+	NicknameTaken = 1,    // 닉네임 중복
+	DbError = 2,          // DB 오류
+	InvalidNickname = 3,  // 닉네임 형식 위반
+	AccountNotFound = 4,  // 계정 없음
+	TokenMismatch = 5,    // 토큰 불일치
 };
 
 //***************************************************************************
-// @brief 채팅 메시지 (양방향 — Client->Server 발신, Server->Client 브로드캐스트 동일 포맷)
-//***************************************************************************
-//***************************************************************************
-// @brief 채팅 메시지 (양방향 — Client -> Server: 발신, Server -> Client: 브로드캐스트)
-// @details nickname 필드의 의미는 방향에 따라 다르다:
-//   - Client -> Server: 이 필드는 서버가 무시한다(어차피 서버가 세션의
-//     실제 닉네임으로 덮어써서 다시 브로드캐스트하므로). 클라이언트는
-//     그냥 0으로 채워 보내면 된다.
-//   - Server -> Client: 발신자의 닉네임(브로드캐스트 시점 기준 — 발신
-//     이후 닉네임이 바뀌어도 이 메시지엔 영향 없음, 그 시점의 스냅샷).
+// @brief 채팅 메시지 패킷 (양방향)
 //***************************************************************************
 struct ChatPacket : PacketHeader
 {
-	char	nickname[kNicknameBytes];	// 위 설명 참고
-	char	message[256];
+	char	nickname[kNicknameBytes];	// 발신자 닉네임 (클라이언트 전송 시 무시)
+	char	message[256];             // 메시지 내용
 };
 
 //***************************************************************************
-// @brief 랜덤 닉네임 생성 요청 (Client -> Server)
-// @details 바디 없음 — 헤더만으로 완결되는 단순 요청. 로그인 여부와 무관하게
-//          아무 때나 보낼 수 있다(예: 로그인 화면에서 "닉네임 자동 생성"
-//          버튼).
+// @brief 랜덤 닉네임 생성 요청 패킷 (Client -> Server)
 //***************************************************************************
 struct NicknameGenerateReqPacket : PacketHeader
 {
 };
 
 //***************************************************************************
-// @brief 랜덤 닉네임 생성 응답 (Server -> Client)
+// @brief 랜덤 닉네임 생성 응답 패킷 (Server -> Client)
 //***************************************************************************
 struct NicknameGenerateResPacket : PacketHeader
 {
-	char	nickname[32];
+	char	nickname[32];	// 생성된 추천 닉네임
 };
 
 //***************************************************************************
-// @brief 닉네임 변경 요청 (Client -> Server)
-// @details 로그인된 세션만 유효 — 로그인 전에 오면 서버가 조용히 무시한다
-//          (HandleChangeNicknameReq()에서 IsLoggedIn() 확인).
+// @brief 닉네임 변경 요청 패킷 (Client -> Server)
 //***************************************************************************
 struct ChangeNicknameReqPacket : PacketHeader
 {
-	char	newNickname[kNicknameBytes];	// 새 닉네임(UTF-8). NUL로 안 끝날 수 있음(경계값)
+	char	newNickname[kNicknameBytes];	// 변경할 새 닉네임
 };
 
 //***************************************************************************
-// @brief 닉네임 변경 응답 (Server -> Client)
+// @brief 닉네임 변경 응답 패킷 (Server -> Client)
 //***************************************************************************
 struct ChangeNicknameResPacket : PacketHeader
 {
 	uint8	success;	// 1: 성공, 0: 실패
-	uint8	reason;		// ELoginResult 재사용 — Ok/NicknameTaken/InvalidNickname/DbError만 쓰임
+	uint8	reason;		// ELoginResult 사유 재사용
 };
 
 //***************************************************************************
-// @brief 로비/룸 식별자 상수.
-// @details 룸은 동적 생성이 아니라 1~kMaxRoomId 사이의 고정된 ID만 존재한다
-//          (클라이언트 UI의 방 선택 콤보박스도 이 고정 목록을 그대로 씀).
-//          로비(kLobbyRoomId=0)는 로그인하면 자동으로 들어가는 기본 위치 —
-//          "방에 아직 안 들어간 상태"가 아니라 "그 자체로 채팅 가능한 공용
-//          공간"이다.
-//***************************************************************************
-constexpr int32 kLobbyRoomId = 0;
-constexpr int32 kMaxRoomId = 10;
-
-//***************************************************************************
-// @brief 방 입장/퇴장 결과 코드.
+// @enum ERoomResult
+// @brief 방 입출 처리 결과 코드
 //***************************************************************************
 enum class ERoomResult : uint8
 {
-	Ok = 0,
-	InvalidRoomId = 1,	// roomId가 1~kMaxRoomId 범위 밖
+	Ok = 0,             // 성공
+	InvalidRoomId = 1,  // 유효하지 않은 방 번호
 };
 
 //***************************************************************************
-// @brief 방 입장 요청 (Client -> Server). 로그인된 세션만 유효.
+// @brief 방 입장 요청 패킷 (Client -> Server)
 //***************************************************************************
 struct RoomEnterReqPacket : PacketHeader
 {
-	int32	roomId;	// 1~kMaxRoomId만 유효. 로비로 돌아가려면 RoomLeaveReq를 쓸 것(이 요청으로 로비 재입장 불가)
+	int32	roomId;	// 입장할 방 번호 (1 ~ kMaxRoomId)
 };
 
 //***************************************************************************
-// @brief 방 입장 응답 (Server -> Client)
+// @brief 방 입장 응답 패킷 (Server -> Client)
 //***************************************************************************
 struct RoomEnterResPacket : PacketHeader
 {
 	uint8	success;		// 1: 성공, 0: 실패
 	uint8	reason;			// ERoomResult
-	int32	roomId;			// 요청했던 roomId 그대로 echo
-	int32	roomUserCount;	// success==1일 때만 유효 — 입장 직후 그 방의 인원수(자신 포함)
+	int32	roomId;			// 요청했던 방 번호
+	int32	roomUserCount;	// 입장 후 해당 방 인원수
 };
 
 //***************************************************************************
-// @brief 방 퇴장 요청 (Client -> Server). 바디 없음 — "지금 있는 방에서 나가
-//        로비로 돌아간다"는 의미. 이미 로비에 있는 상태에서 보내도 안전하게
-//        무시된다(서버가 현재 위치를 보고 판단).
+// @brief 방 퇴장 요청 패킷 (Client -> Server, 로비 복귀)
 //***************************************************************************
 struct RoomLeaveReqPacket : PacketHeader
 {
 };
 
 //***************************************************************************
-// @brief 방 퇴장 응답 (Server -> Client)
+// @brief 방 퇴장 응답 패킷 (Server -> Client)
 //***************************************************************************
 struct RoomLeaveResPacket : PacketHeader
 {
-	uint8	success;		// 1: 성공(로비로 이동됨), 0: 실패(이미 로비에 있었음 등)
-	int32	roomId;			// 방금까지 있었던 방 번호(로비였다면 kLobbyRoomId)
-	int32	roomUserCount;	// success==1일 때만 유효 — 퇴장 후 그 방에 남은 인원수
+	uint8	success;		// 1: 성공, 0: 실패
+	int32	roomId;			// 퇴장한 방 번호
+	int32	roomUserCount;	// 퇴장 후 해당 방 남은 인원수
 };
 
 //***************************************************************************
-// @brief 방 인원수 변경 알림 (Server -> Client, 서버가 자발적으로 브로드캐스트).
-// @details 누군가 이 방에 들어오거나 나갈 때마다, 그 시점에 그 방에 있던
-//          "다른" 인원들에게도 갱신된 인원수를 실시간으로 알려주기 위한
-//          패킷 — 입장/퇴장 응답은 그 행동을 한 당사자에게만 가지, 이미
-//          방에 있던 사람들 화면은 이 알림이 없으면 갱신되지 않는다.
+// @brief 방 인원수 변경 실시간 알림 패킷 (Server -> Client)
 //***************************************************************************
 struct RoomUserCountNotifyPacket : PacketHeader
 {
-	int32	roomId;
-	int32	userCount;
+	int32	roomId;     // 대상 방 번호
+	int32	userCount;  // 갱신된 인원수
+};
+
+//***************************************************************************
+// @brief 서버 전체 접속자 수 조회 요청 패킷 (Client -> Server, 폴링용)
+//***************************************************************************
+struct ServerUserCountReqPacket : PacketHeader
+{
+};
+
+//***************************************************************************
+// @brief 서버 전체 접속자 수 조회 응답 패킷 (Server -> Client)
+//***************************************************************************
+struct ServerUserCountResPacket : PacketHeader
+{
+	int32	userCount;	      // 전체 TCP 접속자 수
+	int32	lobbyUserCount;	  // 로비 상주 인원수
 };
 
 #pragma pack(pop)
 
 //***************************************************************************
 // @enum EChatPacketType
+// @brief 채팅 패킷 식별 타입 정의
 //***************************************************************************
 enum class EChatPacketType : uint16
 {
@@ -255,23 +211,20 @@ enum class EChatPacketType : uint16
 	RoomEnterRes = 9,
 	RoomLeaveReq = 10,
 	RoomLeaveRes = 11,
-	RoomUserCountNotify = 12,	// Server -> Client, 발신자 없이 서버가 자발적으로 보내는 알림
-	// 명시적 LogoutReq는 기본 뼈대엔 없음 — 로그아웃은 연결 종료(OnDisconnected)로만 트리거
+	RoomUserCountNotify = 12,
+	ServerUserCountReq = 13,
+	ServerUserCountRes = 14,
 };
 
 //***************************************************************************
 // @enum EChatDispatchResult
-// @brief 서버(CChatPacketDispatcher)/클라이언트(CChatClientPacketDispatcher)
-//        디스패처가 공유하는 처리 결과 타입. 둘 다 "처리됨/알 수 없는 타입/
-//        크기 위반"의 동일한 3-상태를 쓰므로, 프로토콜 공통 헤더인 여기에
-//        둬서 클라이언트 쪽이 서버 전용 파일(ChatPacketDispatcher.h)을
-//        끌어오지 않고도 이 타입을 쓸 수 있게 한다.
+// @brief 패킷 디스패처 처리 결과 코드
 //***************************************************************************
 enum class EChatDispatchResult
 {
 	Handled,		// 정상 처리됨
-	UnknownType,	// 등록되지 않은 패킷 타입
-	SizeViolation,	// header->size가 등록된 minSize보다 작음(프로토콜 위반)
+	UnknownType,	// 미등록 패킷 타입
+	SizeViolation,	// 패킷 크기 검증 실패 (프로토콜 위반)
 };
 
 #endif // ndef UC_CHATPACKET_H

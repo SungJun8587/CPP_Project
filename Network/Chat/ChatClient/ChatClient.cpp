@@ -12,6 +12,9 @@
 #include <string>
 #include <cstring>
 #include <mutex>
+#include <thread>
+#include <atomic>
+#include <chrono>
 #include <conio.h>		// _getwch() — 입력 중인 내용을 한 글자씩 추적하기 위해 필요
 
 namespace
@@ -158,6 +161,34 @@ namespace
 		}
 
 		return g_currentInputLine;
+	}
+
+	//***************************************************************************
+	// [설계] 동접자수(서버 전체 접속자 수) 폴링
+	// ──────────────────────────────────────────────────────────────────────
+	// 예전엔 서버가 로그인/로그아웃마다 전체 접속자에게 자발적으로
+	// 브로드캐스트했는데(ServerUserCountNotify), 접속자가 많아지고 로그인/
+	// 로그아웃이 잦아질수록 트래픽이 "로그인 횟수 × 접속자 수"로 커지는
+	// 구조라, 클라이언트가 일정 주기로 직접 물어보는 폴링 방식으로 바꿨다.
+	// 콘솔 클라이언트엔 타이머가 없으므로 전용 스레드 하나로 흉내낸다 —
+	// 1초 단위로 정지 신호를 확인하며 자므로, /quit 시 최대 1초 안에는
+	// 스레드가 정리된다(39초 전체를 기다리지 않음).
+	//***************************************************************************
+	constexpr int kServerUserCountPollIntervalSec = 39;
+
+	std::thread			g_pollThread;
+	std::atomic<bool>	g_pollStop{ false };
+
+	void ServerUserCountPollLoop(CChatClientMain* client)
+	{
+		while( !g_pollStop.load() )
+		{
+			for( int i = 0; i < kServerUserCountPollIntervalSec && !g_pollStop.load(); ++i )
+				std::this_thread::sleep_for(std::chrono::seconds(1));
+
+			if( !g_pollStop.load() )
+				client->RequestServerUserCount();
+		}
 	}
 }
 
@@ -329,6 +360,13 @@ int main()
 				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
 		});
 
+	client.SetOnServerUserCountResult([](int32 userCount, int32 lobbyUserCount)
+		{
+			PrintAsyncLine(L"[알림] 서버 전체 동접자수: " + std::to_wstring(userCount)
+				+ L"명 (로비: " + std::to_wstring(lobbyUserCount) + L"명)",
+				FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+		});
+
 	// TODO: 실서비스에서는 설정 파일/커맨드라인 인자로 대체
 	if( !client.Connect(_T("127.0.0.1"), 30201, userId) )
 	{
@@ -337,6 +375,10 @@ int main()
 		MainClose();
 		return 1;
 	}
+
+	// 동접자수 폴링 스레드 시작 — kServerUserCountPollIntervalSec(39초)마다
+	// RequestServerUserCount()를 보낸다.
+	g_pollThread = std::thread(ServerUserCountPollLoop, &client);
 
 	PrintAsyncLine(L"메시지를 입력하세요 (/quit 종료, /nick <새닉네임> 닉네임 변경, /room <1~"
 		+ std::to_wstring(kMaxRoomId) + L"> 방 입장, /leave 로비로 복귀):",
@@ -392,6 +434,13 @@ int main()
 
 		client.SendChat(line);
 	}
+
+	// 폴링 스레드부터 확실히 멈춘 뒤 연결을 끊는다 — 스레드가 살아있는
+	// 채로 client가 먼저 정리되면, 스레드가 죽은 객체에 대고
+	// RequestServerUserCount()를 호출할 수 있다.
+	g_pollStop.store(true);
+	if( g_pollThread.joinable() )
+		g_pollThread.join();
 
 	client.Disconnect();
 

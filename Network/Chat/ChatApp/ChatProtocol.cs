@@ -30,6 +30,8 @@ namespace ChatApp
         RoomLeaveReq = 10,
         RoomLeaveRes = 11,
         RoomUserCountNotify = 12,
+        ServerUserCountReq = 13,
+        ServerUserCountRes = 14,
     }
 
     // RoomEnterResPacket::reason
@@ -211,6 +213,21 @@ namespace ChatApp
                 return ms.ToArray();
             }
         }
+
+        //***************************************************************************
+        // @brief 서버 전체 접속자 수(동접자수) 조회 요청. 바디 없음. 폴링용 —
+        //        호출부가 주기적으로(예: 39초마다) 이 패킷을 보낸다.
+        //***************************************************************************
+        public static byte[] BuildServerUserCountReq()
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((ushort)ProtocolConstants.HeaderBytes);
+                bw.Write((ushort)PacketType.ServerUserCountReq);
+                return ms.ToArray();
+            }
+        }
     }
 
     public class LoginResPacketData
@@ -253,6 +270,12 @@ namespace ChatApp
     {
         public int RoomId;
         public int UserCount;
+    }
+
+    public class ServerUserCountResData
+    {
+        public int UserCount;
+        public int LobbyUserCount;
     }
 
     //***************************************************************************
@@ -368,6 +391,20 @@ namespace ChatApp
                 {
                     RoomId = br.ReadInt32(),
                     UserCount = br.ReadInt32(),
+                };
+            }
+        }
+
+        public static ServerUserCountResData ParseServerUserCountRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new ServerUserCountResData
+                {
+                    UserCount = br.ReadInt32(),
+                    LobbyUserCount = br.ReadInt32(),
                 };
             }
         }

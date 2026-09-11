@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // ChatServerMain.h : interface for the CChatServerMain class.
 //
 //***************************************************************************
@@ -12,7 +13,7 @@
 #include <Redis/RedisService.h>
 #include <Redis/RedisServerHeartbeat.h>
 #include <DB/OdbcAsyncSrv.h>
-#include "ChatPacket.h"		// kPublicIdBytes
+#include "ChatPacket.h"
 
 #include <string>
 #include <memory>
@@ -182,6 +183,17 @@ public:
 	//          달리 이건 방 멤버십 기준으로 대상을 제한한다.
 	//***************************************************************************
 	void BroadcastToRoom(int32 roomId, const void* data, uint16 size);
+
+	//***************************************************************************
+	// @brief 이 서버 프로세스의 현재 전체 접속자 수(TCP 연결 기준, 로그인
+	//        여부 무관)를 반환합니다.
+	// @details [설계 변경] 예전엔 이 값이 바뀔 때마다 전체 세션에게 자발적으로
+	//          브로드캐스트했지만(NotifyServerUserCount()), 지금은 클라이언트가
+	//          ServerUserCountReq로 주기적으로 물어보면 그 시점의 값을 그대로
+	//          돌려주는 폴링 방식으로 바꿨다 — ServerUserCountHandler.cpp가
+	//          이 함수를 호출해 응답을 만든다.
+	//***************************************************************************
+	int32 GetServerUserCount() const;
 
 private:
 	std::string BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const;

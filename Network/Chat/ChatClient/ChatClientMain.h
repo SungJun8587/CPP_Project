@@ -8,7 +8,7 @@
 #define UC_CHATCLIENTMAIN_H
 
 #include <Network/NetworkCommon.h>
-#include "ChatPacket.h"	
+#include "ChatPacket.h"
 #include <Crypto/CryptoUtil.h>
 
 #include <string>
@@ -106,6 +106,13 @@ public:
 	//***************************************************************************
 	void RequestRoomLeave();
 
+	//***************************************************************************
+	// @brief 서버 전체 접속자 수(동접자수)를 조회 요청합니다(폴링). 아직
+	//        연결 전이면 조용히 무시됩니다. 결과는 SetOnServerUserCountResult()로
+	//        등록한 콜백으로 비동기 전달됩니다.
+	//***************************************************************************
+	void RequestServerUserCount();
+
 public:
 	using LoginResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& nickname)>;
 	using ChatMessageHandler = std::function<void(const std::string& senderNickname, const std::string& message)>;
@@ -115,6 +122,7 @@ public:
 	using RoomEnterResultHandler = std::function<void(bool success, ERoomResult reason, int32 roomId, int32 roomUserCount)>;
 	using RoomLeaveResultHandler = std::function<void(bool success, int32 roomId, int32 roomUserCount)>;
 	using RoomUserCountChangedHandler = std::function<void(int32 roomId, int32 userCount)>;
+	using ServerUserCountResultHandler = std::function<void(int32 userCount, int32 lobbyUserCount)>;
 
 	void SetOnLoginResult(LoginResultHandler handler) { _onLoginResult = std::move(handler); }
 	void SetOnChatMessage(ChatMessageHandler handler) { _onChatMessage = std::move(handler); }
@@ -124,6 +132,7 @@ public:
 	void SetOnRoomEnterResult(RoomEnterResultHandler handler) { _onRoomEnterResult = std::move(handler); }
 	void SetOnRoomLeaveResult(RoomLeaveResultHandler handler) { _onRoomLeaveResult = std::move(handler); }
 	void SetOnRoomUserCountChanged(RoomUserCountChangedHandler handler) { _onRoomUserCountChanged = std::move(handler); }
+	void SetOnServerUserCountResult(ServerUserCountResultHandler handler) { _onServerUserCountResult = std::move(handler); }
 
 public:
 	// CChatClientSession에서 호출하는 콜백들 (IOCP 워커 스레드에서 호출됨 — 클래스 상단 주석 참고)
@@ -155,6 +164,7 @@ public:
 	void OnRoomEnterResult(bool success, ERoomResult reason, int32 roomId, int32 roomUserCount);
 	void OnRoomLeaveResult(bool success, int32 roomId, int32 roomUserCount);
 	void OnRoomUserCountChanged(int32 roomId, int32 userCount);
+	void OnServerUserCountResult(int32 userCount, int32 lobbyUserCount);
 
 private:
 	static _tstring TokenFilePath(const std::string& profileName);
@@ -188,6 +198,7 @@ private:
 	RoomEnterResultHandler		_onRoomEnterResult;
 	RoomLeaveResultHandler		_onRoomLeaveResult;
 	RoomUserCountChangedHandler	_onRoomUserCountChanged;
+	ServerUserCountResultHandler	_onServerUserCountResult;
 };
 
 
