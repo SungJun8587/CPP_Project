@@ -1,0 +1,368 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="FileServer.cpp" />
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Memory.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Allocator.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpListener.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpService.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSession.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetAddress.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetService.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetworkFactory.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\RingBuffer.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisClient.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisService.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\Job.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobQueue.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobTimer.cpp">
+      <Filter>UtilCore\Job</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp">
+      <Filter>UtilCore\Crypto</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
+      <Filter>UtilCore\JSON</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\ServerConfig.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{9d2908fe-777b-464a-af5d-853ee9237391}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Memory">
+      <UniqueIdentifier>{b6ebc666-d1b1-48d3-a34c-085dcb5f17ff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Network">
+      <UniqueIdentifier>{23970f69-6734-4441-9c7c-5192faa2085c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Network\IOCP">
+      <UniqueIdentifier>{e685351a-e1d7-42e4-bdc4-9ff19c0af3d8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{0687ea60-f613-4be7-b1ab-19ea78fac4f4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Thread">
+      <UniqueIdentifier>{9b6d7d6e-d97b-465f-b070-fe2d37461436}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers">
+      <UniqueIdentifier>{5a547495-74e6-41bd-af73-4d5326863ebb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Map">
+      <UniqueIdentifier>{53f6d9fc-50d6-4679-8632-96a36cb58daa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Stack">
+      <UniqueIdentifier>{8a76f4f8-bceb-49b0-8e3c-8fc2e7e70e53}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Redis">
+      <UniqueIdentifier>{42101fe8-215e-4e84-82b4-13ec1f24764c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Job">
+      <UniqueIdentifier>{32b65a33-45d1-4f67-8bf8-ad5c2ca2b416}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Crypto">
+      <UniqueIdentifier>{05997d0b-b093-4f27-b598-b91e30aa0298}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\JSON">
+      <UniqueIdentifier>{401716b6-1a79-4bc0-8d89-c54fd8187f72}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="PacketHandler">
+      <UniqueIdentifier>{778d97be-aecd-4f7d-b583-d1f7755aa9cb}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Memory.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpListener.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpService.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSession.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetAddress.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetService.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetworkCommon.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetworkFactory.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetworkRedefineDataType.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\ObjectPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h">
+      <Filter>UtilCore\Containers\Map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h">
+      <Filter>UtilCore\Containers\Stack</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Session.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\RingBuffer.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseGlobal.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisClient.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommandBuilder.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisProtocol.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisRedefineDataType.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisService.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommon.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\Job.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobCommon.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobQueue.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobRedefineDataType.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobTimer.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h">
+      <Filter>UtilCore\Crypto</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
+      <Filter>UtilCore\JSON</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Singleton.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConfig.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConnectInfo.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Packet.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
+      <Filter>UtilCore\Thread</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl">
+      <Filter>UtilCore\Job</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
+      <Filter>UtilCore\JSON</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\Memory\Singleton.inl">
+      <Filter>UtilCore\Memory</Filter>
+    </None>
+  </ItemGroup>
+</Project>
