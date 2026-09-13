@@ -88,7 +88,7 @@ int32 CChatClientSession::OnRecv(BYTE* buffer, int32 len)
 		if( len - processedLen < header->size )
 			break; // 패킷 전체 미도착 — 다음 Recv에서 이어 처리
 
-		HandlePacket(header);
+		HandlePacket(header, static_cast<size_t>(len - processedLen));
 		processedLen += header->size;
 	}
 
@@ -103,10 +103,12 @@ int32 CChatClientSession::OnRecv(BYTE* buffer, int32 len)
 //          흩어져 각자 정적 초기화 시점에 스스로 등록한다
 //          (REGISTER_CHAT_CLIENT_PACKET_HANDLER). 이 함수와 이 파일은 새
 //          패킷이 추가돼도 전혀 수정할 필요가 없다.
+// @param bufferSize 이 header 시점부터 수신 버퍼에 남아있는 바이트 수 —
+//        공용 디스패처(CPacketDispatcher)의 방어적 크기 검증에 쓰인다.
 //***************************************************************************
-void CChatClientSession::HandlePacket(const PacketHeader* header)
+void CChatClientSession::HandlePacket(const PacketHeader* header, size_t bufferSize)
 {
-	switch( CChatClientPacketDispatcher::Dispatch(*this, header) )
+	switch( CChatClientPacketDispatcher::Dispatch(*this, header, bufferSize) )
 	{
 	case EChatDispatchResult::UnknownType:
 		// 알 수 없는 타입 — 무시. TODO: 로깅.
@@ -207,6 +209,26 @@ void CChatClientSession::SendServerUserCountReq()
 	ServerUserCountReqPacket req{};
 	req.type = static_cast<uint16>(EChatPacketType::ServerUserCountReq);
 	req.size = sizeof(req);
+
+	Send(&req, sizeof(req));
+}
+
+//***************************************************************************
+// @brief 서버에 내 프로필 이미지 URL 설정을 요청합니다.
+//***************************************************************************
+void CChatClientSession::SendSetProfileImageUrlReq(const std::string& url)
+{
+	// 응답 패킷(SetProfileImageUrlResPacket)엔 success/reason만 실려 있고
+	// 새 URL 문자열 자체는 없다 — 요청 시점의 값을 여기 잠깐 저장해뒀다가
+	// 응답 처리(GetPendingProfileImageUrl())에서 꺼내 쓴다.
+	_pendingProfileImageUrl = url;
+
+	SetProfileImageUrlReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::SetProfileImageUrlReq);
+	req.size = sizeof(req);
+
+	const size_t copyLen = (std::min)(url.size(), sizeof(req.url) - 1);
+	::memcpy(req.url, url.data(), copyLen);
 
 	Send(&req, sizeof(req));
 }

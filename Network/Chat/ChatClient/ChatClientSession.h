@@ -89,6 +89,19 @@ public:
 	void	SendServerUserCountReq();
 
 	//***************************************************************************
+	// @brief 서버에 내 프로필 이미지 URL 설정을 요청합니다. 빈 문자열이면
+	//        "프로필 이미지 해제"로 처리된다.
+	//***************************************************************************
+	void	SendSetProfileImageUrlReq(const std::string& url);
+
+	//***************************************************************************
+	// @brief 가장 최근에 SendSetProfileImageUrlReq()로 요청한 URL을 반환합니다.
+	//        GetPendingNewNickname()과 동일한 용도 — 응답(success/reason만
+	//        있음) 처리 시 "무엇을 요청했었는지" 참고하기 위함.
+	//***************************************************************************
+	const std::string& GetPendingProfileImageUrl() const { return _pendingProfileImageUrl; }
+
+	//***************************************************************************
 	// @brief 이 세션을 소유한 클라이언트 파사드를 반환합니다.
 	// @details [설계 노트] 자체 등록형 패킷 핸들러(ChatClientLoginHandler.cpp 등)가
 	//          별도 파일의 자유 함수로 분리되면서 더 이상 이 세션의 private 멤버에
@@ -103,7 +116,7 @@ protected:
 	virtual int32	OnRecv(BYTE* buffer, int32 len) override;
 
 private:
-	void	HandlePacket(const PacketHeader* header);
+	void	HandlePacket(const PacketHeader* header, size_t bufferSize);
 
 private:
 	std::string								_userId;
@@ -112,6 +125,7 @@ private:
 	std::array<BYTE, kTokenBytes>	_token{};
 	CChatClientMain* _client = nullptr;	// 뒤로 참조 — Client가 세션보다 오래 살아있음을 CChatClientMain::Disconnect()가 보장
 	std::string								_pendingNewNickname;	// SendChangeNicknameReq()가 요청한 닉네임 — 응답(success/reason만 있음) 처리 시 참고용
+	std::string								_pendingProfileImageUrl;	// SendSetProfileImageUrlReq()가 요청한 URL — 위와 동일한 이유
 };
 
 #endif // ndef UC_CHATCLIENTSESSION_H

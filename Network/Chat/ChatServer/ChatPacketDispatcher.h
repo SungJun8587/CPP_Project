@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// ChatPacketDispatcher.h : interface for the CChatPacketDispatcher class.
+// ChatPacketDispatcher.h : 공용 CPacketDispatcher 위에 얹힌 채팅 서버 전용 얇은 어댑터.
 //
 //***************************************************************************
 
@@ -8,94 +8,71 @@
 #define UC_CHATPACKETDISPATCHER_H
 
 #include "ChatPacket.h"
-
-#include <unordered_map>
+#include <Network/PacketDispatcher.h>
 
 class CChatSession;
 
 //***************************************************************************
-// @brief 패킷 핸들러 함수 시그니처. std::function이 아닌 순수 함수 포인터로
-//        고정 — 등록/조회 양쪽 모두 캡처가 필요 없는 상태 없는(stateless)
-//        핸들러만 다루면 충분하고, 그편이 std::function보다 가볍다.
+// @brief 패킷 핸들러 함수 시그니처(채팅 서버 전용 — CChatSession&로 받음).
+// @details 실제 등록/조회는 전부 공용 CPacketDispatcher(void* context 기반)가
+//          담당한다 — 이 시그니처는 각 핸들러 .cpp가 void* 캐스팅을 직접
+//          쓰지 않고 타입 안전하게 CChatSession&을 받을 수 있게 해주는
+//          겉면일 뿐이다. 순수 함수 포인터로 고정 — 캡처가 필요한 상태
+//          있는 핸들러는 다루지 않는다.
 //***************************************************************************
 using ChatPacketHandler = void(*)(CChatSession& session, const PacketHeader* header);
 
 //***************************************************************************
+// @brief ChatPacketHandler(CChatSession& 기반)를 공용 PacketHandler(void*
+//        기반) 시그니처로 변환하는 컴파일 타임 트램폴린.
+// @details Handler를 비타입 템플릿 매개변수로 받는다 — 그래서 이 함수는
+//          런타임에 "어떤 핸들러를 호출할지"를 캡처해서 들고 있는 게
+//          아니라, 컴파일 타임에 그 정보가 이미 확정된 "고정된 함수"가
+//          된다. 이 덕분에 캡처 있는 람다 없이도(PacketHandler가 순수
+//          함수 포인터라 캡처된 상태를 담을 수 없다) 각 등록마다 서로
+//          다른 트램폴린 인스턴스(ChatPacketTrampoline<&HandleLoginReq>,
+//          ChatPacketTrampoline<&HandleChat> 등)가 자동으로 만들어진다.
+//***************************************************************************
+template<ChatPacketHandler Handler>
+void ChatPacketTrampoline(void* context, const PacketHeader* header)
+{
+	Handler(*static_cast<CChatSession*>(context), header);
+}
+
+//***************************************************************************
 // @class CChatPacketDispatcher
-// @brief 패킷 타입 → 핸들러 매핑을 전역적으로 관리하는 레지스트리.
-// @details
-// 각 패킷 핸들러 모듈(.cpp 파일 단위)이 정적 초기화 시점(main() 진입 전)에
-// REGISTER_CHAT_PACKET_HANDLER 매크로를 통해 스스로 Register()를 호출해
-// 자신을 등록한다 — 이 클래스(중앙 파일)는 새 패킷이 추가돼도 전혀 수정할
-// 필요가 없다.
-//
-// 스레드 안전성: 정적 초기화는 프로그램 시작 시 단일 스레드에서 완료되고,
-// 그 이후(서버가 실제로 패킷을 받기 시작한 시점)엔 테이블이 읽기 전용이
-// 된다고 가정한다 — 그래서 Register()/Dispatch() 어디에도 락이 없다.
-// 런타임 중 동적 등록/해제(플러그인 핫로드 등)는 이 설계 범위 밖이다.
-//
-// [정적 라이브러리 링킹 주의] 이 핸들러 .cpp 파일들이 실행 파일에 직접
-// 컴파일되지 않고 정적 라이브러리(.lib/.a)로 묶여 링크되는 구조라면, 그
-// 파일의 심볼을 아무도 참조하지 않으므로(등록 부작용만 있을 뿐 호출되는
-// 함수가 없음) 링커가 해당 오브젝트 전체를 통째로 버릴 수 있다(자체 등록
-// 패턴의 흔한 함정). 그 경우 /WHOLEARCHIVE(MSVC) 또는 --whole-archive(GCC/
-// Clang) 링크 옵션으로 강제 포함시켜야 한다. 지금처럼 .exe 프로젝트에 직접
-// 컴파일해 넣는 구성이면 문제되지 않는다.
+// @brief CPacketDispatcher(공용)를 그대로 감싼 채팅 서버 전용 파사드.
+// @details 실제 테이블/등록/조회 로직은 전부 CPacketDispatcher가 갖고
+//          있다 — 이 클래스는 (1) CChatSession& <-> void* 변환(트램폴린을
+//          통해), (2) EChatPacketType -> uint16 변환, (3)
+//          EPacketDispatchResult -> EChatDispatchResult 변환만 담당한다.
+//          기존 호출부(ChatSession.cpp, 각 핸들러 .cpp의
+//          REGISTER_CHAT_PACKET_HANDLER)는 이번 리팩토링으로 한 줄도
+//          바뀌지 않는다 — 공개 인터페이스(매크로 사용법 포함)가
+//          그대로이기 때문이다.
 //***************************************************************************
 class CChatPacketDispatcher
 {
 public:
 	//***************************************************************************
-	// @brief 패킷 핸들러를 등록합니다. 직접 호출하지 말고
-	//        REGISTER_CHAT_PACKET_HANDLER 매크로를 통해 정적 초기화 시점에
-	//        자동 호출되게 하십시오.
-	// @param type 패킷 타입
-	// @param minSize 이 타입 패킷의 최소 크기(보통 sizeof(해당 패킷 구조체))
-	// @param handler 처리 함수
-	//***************************************************************************
-	static void Register(EChatPacketType type, uint16 minSize, ChatPacketHandler handler);
-
-	//***************************************************************************
 	// @brief 패킷을 등록된 핸들러로 디스패치합니다.
-	// @return 처리 결과 (Handled/UnknownType/SizeViolation) — 실패 시 어떤
-	//         조치를 취할지는 호출부(CChatSession::HandlePacket())가 결정한다.
+	// @param bufferSize header가 가리키는 실제 수신 버퍼에 지금 남아있는
+	//        바이트 수 — CPacketDispatcher::Dispatch()로 그대로 전달돼
+	//        방어적으로 한 번 더 검증된다(CChatSession::OnRecv()가 이미
+	//        프레이밍을 검증하지만, 공용 컴포넌트가 된 이상 호출부를
+	//        전적으로 믿지 않는 편이 안전하다).
 	//***************************************************************************
-	static EChatDispatchResult Dispatch(CChatSession& session, const PacketHeader* header);
-
-private:
-	struct Entry
+	static EChatDispatchResult Dispatch(CChatSession& session, const PacketHeader* header, size_t bufferSize)
 	{
-		uint16				minSize;
-		ChatPacketHandler	handler;
-	};
-
-	//***************************************************************************
-	// @brief 함수-로컬 static(Meyer's singleton)으로 테이블을 보관합니다.
-	// @details 여러 TU에 흩어진 전역 등록 객체(ChatPacketRegistrar)들이 어떤
-	//          순서로 생성되든, 이 함수가 처음 호출되는 시점에 맵이 안전하게
-	//          생성된다 — "정적 초기화 순서 문제(SIOF)"를 구조적으로 회피.
-	//***************************************************************************
-	static std::unordered_map<uint16, Entry>& GetTable();
-};
-
-//***************************************************************************
-// @brief 패킷 핸들러 모듈이 자신을 등록하기 위한 RAII 헬퍼.
-//        네임스페이스(파일) 스코프에 static 인스턴스를 두면 프로그램 시작 시
-//        생성자가 실행되며 자동 등록된다. 직접 쓰기보다는 아래
-//        REGISTER_CHAT_PACKET_HANDLER 매크로를 통해 쓸 것.
-//***************************************************************************
-struct ChatPacketRegistrar
-{
-	ChatPacketRegistrar(EChatPacketType type, uint16 minSize, ChatPacketHandler handler)
-	{
-		CChatPacketDispatcher::Register(type, minSize, handler);
+		const EPacketDispatchResult result = CPacketDispatcher::Dispatch(&session, header, bufferSize);
+		return static_cast<EChatDispatchResult>(result);
 	}
 };
 
 //***************************************************************************
-// @brief 핸들러 등록 매크로.
-// @details __LINE__을 변수명에 섞어, 한 파일에 등록이 여러 개 있어도 이름
-//          충돌이 나지 않게 한다.
+// @brief 핸들러 등록 매크로. 기존과 100% 동일한 사용법 — 이번 리팩토링으로
+//        바뀌는 건 매크로 내부 구현뿐이다(트램폴린을 거쳐 공용
+//        PacketRegistrar/CPacketDispatcher로 등록됨).
 //
 // 사용 예 (파일 스코프에 배치):
 //   REGISTER_CHAT_PACKET_HANDLER(LoginReq, LoginReqPacket, HandleLoginReq);
@@ -104,7 +81,8 @@ struct ChatPacketRegistrar
 #define UC_CHAT_PACKET_REGISTRAR_NAME(line) UC_CHAT_PACKET_REGISTRAR_NAME_INNER(line)
 
 #define REGISTER_CHAT_PACKET_HANDLER(EnumName, PacketType, HandlerFunc) \
-	static ChatPacketRegistrar UC_CHAT_PACKET_REGISTRAR_NAME(__LINE__)( \
-		EChatPacketType::EnumName, sizeof(PacketType), &HandlerFunc)
+	static PacketRegistrar UC_CHAT_PACKET_REGISTRAR_NAME(__LINE__)( \
+		static_cast<uint16>(EChatPacketType::EnumName), sizeof(PacketType), \
+		&ChatPacketTrampoline<&HandlerFunc>)
 
 #endif // ndef UC_CHATPACKETDISPATCHER_H

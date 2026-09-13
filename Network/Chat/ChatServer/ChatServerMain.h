@@ -13,7 +13,8 @@
 #include <Redis/RedisService.h>
 #include <Redis/RedisServerHeartbeat.h>
 #include <DB/OdbcAsyncSrv.h>
-#include "ChatPacket.h"
+#include "ChatPacket.h"		// kPublicIdBytes
+#include "DBListProfileImagesRequest.h"	// SProfileImageEntry
 
 #include <string>
 #include <memory>
@@ -22,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 #include <mutex>
+#include <atomic>
 
 class CChatSession;
 
@@ -36,7 +38,7 @@ class CChatSession;
 //     3. 회원 DB(ODBC) 초기화 — CDbServiceManager::Instance().MemberDB()
 //        (MEMBER_DB_ASYNC)가 도메인별 COdbcAsyncSrv 인스턴스를 소유한다.
 //        회원가입/재접속 토큰 검증 핸들러는 AccountDBHandler.cpp의
-//        DECLARE_DBASYNC_HANDLER_VIA가 정적 초기화 시점에 자동 등록 —
+//        DECLARE_DBASYNC_HANDLER_EX가 정적 초기화 시점에 자동 등록 —
 //        이 클래스가 별도로 소유/등록하지 않음. 다만 실제 DB 접속/워커
 //        스레드 기동(StartService())은 이 클래스의 Start()가 담당한다.
 //     4. CChatSession으로부터 로그인/로그아웃/브로드캐스트 요청을 위임받아 처리
@@ -122,7 +124,8 @@ public:
 		const std::array<BYTE, kTokenBytes>& token,
 		std::function<void(ELoginResult result, const std::string& nickname,
 			const std::array<BYTE, kPublicIdBytes>& publicId,
-			const std::array<BYTE, kTokenBytes>& newToken)> onComplete);
+			const std::array<BYTE, kTokenBytes>& newToken,
+			const std::string& profileImageUrl)> onComplete);
 
 	//***************************************************************************
 	// @brief 로그인된 계정(publicId로 식별)의 닉네임 변경을 DB 비동기 워커에 요청합니다.
@@ -141,6 +144,86 @@ public:
 		std::function<void(ELoginResult result,
 			const std::array<BYTE, kPublicIdBytes>& publicId,
 			const std::string& newNickname)> onComplete);
+
+	//***************************************************************************
+	// @brief 로그인된 계정(publicId로 식별)의 프로필 이미지 URL 설정을 DB
+	//        비동기 워커에 요청합니다. RequestChangeNickname()과 동일한 구조.
+	// @details [설계] 이미지 파일 자체는 채팅 서버를 거치지 않는다 — url은
+	//          항상 실제 접근 가능한 URL이다(파일 서버가 업로드 완료 후
+	//          돌려준 주소, 또는 사용자가 직접 지정한 외부 URL/CDN 주소).
+	//          user_profile_images에 새 행으로 등록하고 대표로 지정한다.
+	// @param newUrl 빈 문자열이면 "프로필 이미지 해제"로 처리된다.
+	//***************************************************************************
+	void RequestSetProfileImageUrl(
+		std::shared_ptr<CChatSession> session,
+		const std::array<BYTE, kPublicIdBytes>& publicId,
+		const std::string& newUrl,
+		std::function<void(ELoginResult result,
+			const std::array<BYTE, kPublicIdBytes>& publicId,
+			const std::string& newUrl,
+			int64 newImageId)> onComplete);
+
+	//***************************************************************************
+	// @brief 파일 서버 업로드용 임시 토큰을 발급합니다.
+	// @details [설계] 이미지 바이트는 채팅 서버를 거치지 않는다 — 이 서버는
+	//          "지금 이 계정이 파일 서버에 업로드해도 되는 상태"라는 것만
+	//          짧게 보증하는 토큰을 Redis에 등록해서 발급한다
+	//          ("UploadToken:{tokenHex}" 키, 값은 이 계정의 public_id 16진,
+	//          TTL 60초). 파일 서버는 채팅 서버에 직접 물어보지 않고, 이
+	//          Redis 키를 조회해서 토큰을 검증한다 — 두 서버는 서로 직접
+	//          통신하지 않고 Redis라는 공유 인프라를 통해서만 간접 조율한다.
+	//          업로드가 끝나면 클라이언트는 파일 서버가 돌려준 URL을
+	//          RequestSetProfileImageUrl()로 다시 채팅 서버에 등록한다.
+	// @param onComplete 성공 시 발급된 토큰(16진 문자열)과 클라이언트가
+	//        접속할 파일 서버 주소를 돌려준다. 파일 서버 주소는 설정 파일
+	//        (CServerConfig)에서 읽은 값을 그대로 전달한다.
+	//***************************************************************************
+	void RequestUploadToken(
+		std::shared_ptr<CChatSession> session,
+		const std::array<BYTE, kPublicIdBytes>& publicId,
+		std::function<void(bool success, const std::string& uploadToken, const std::string& fileServerUrl)> onComplete);
+
+	//***************************************************************************
+	// @brief 이 서버가 클라이언트에게 알려줄 파일 서버 주소를 설정합니다.
+	//        Start() 이후(또는 이전) 아무 때나 호출 가능 — RequestUploadToken()
+	//        응답에 그대로 실려 나간다. 설정 안 하면 빈 문자열이 나가고,
+	//        클라이언트는 그 경우 업로드 기능을 못 씀을 알 수 있다.
+	//***************************************************************************
+	void SetFileServerUrl(std::string fileServerUrl) { _fileServerUrl = std::move(fileServerUrl); }
+
+	//***************************************************************************
+	// @brief 로그인된 계정이 갖고 있는 프로필 이미지 전체 목록을 조회합니다.
+	//***************************************************************************
+	void RequestListProfileImages(
+		std::shared_ptr<CChatSession> session,
+		const std::array<BYTE, kPublicIdBytes>& publicId,
+		std::function<void(ELoginResult result, const std::vector<SProfileImageEntry>& images)> onComplete);
+
+	//***************************************************************************
+	// @brief 갤러리에 이미 있는 이미지 하나를 대표로 지정합니다. 성공하면
+	//        onComplete로 그 이미지의 image_ref도 같이 돌려준다 — 호출부가
+	//        세션의 표시용 값을 곧바로 갱신할 수 있게(다시 조회할 필요 없이).
+	//***************************************************************************
+	void RequestSelectProfileImage(
+		std::shared_ptr<CChatSession> session,
+		const std::array<BYTE, kPublicIdBytes>& publicId,
+		int64 imageId,
+		std::function<void(ELoginResult result, int64 imageId, const std::string& selectedImageRef)> onComplete);
+
+	//***************************************************************************
+	// @brief 갤러리에서 이미지 하나를 삭제합니다.
+	// @details [설계] DB 행만 지운다 — 실제 파일 삭제는 이 서버의 책임이
+	//          아니다(파일 서버 소관). local: 참조 방식을 쓰던 시절에는
+	//          여기서 실제 파일도 같이 지웠지만, 이미지 저장을 파일 서버로
+	//          분리하면서 이 서버는 DB 레코드 관리만 담당한다.
+	// @param wasActive [콜백 파라미터] 지운 이미지가 대표였으면 true — 호출부가
+	//        이걸 보고 세션의 표시용 프로필 이미지 값을 비워야 하는지 판단한다.
+	//***************************************************************************
+	void RequestDeleteProfileImage(
+		std::shared_ptr<CChatSession> session,
+		const std::array<BYTE, kPublicIdBytes>& publicId,
+		int64 imageId,
+		std::function<void(ELoginResult result, int64 imageId, bool wasActive)> onComplete);
 
 	//***************************************************************************
 	// @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
@@ -224,6 +307,12 @@ private:
 	// LeaveCurrentRoom() 호출 시 청소된다).
 	mutable std::mutex	_roomMutex;
 	std::unordered_map<int32, std::vector<std::weak_ptr<CChatSession>>>	_roomMembers;
+
+	// [설계 변경] 프로필 이미지 저장을 별도 파일 서버로 분리하면서, 이
+	// 서버는 더 이상 이미지 파일 자체를 갖고 있지 않는다 — IImageStorage/
+	// 업로드 세션 상태(SUploadSession 등)를 전부 제거했다. 대신 클라이언트가
+	// 파일 서버에 접속할 때 쓸 주소만 들고 있는다(SetFileServerUrl() 참고).
+	std::string	_fileServerUrl;
 };
 
 #endif // ndef UC_CHATSERVERMAIN_H

@@ -118,7 +118,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="ChatClient.cpp" />
     <ClCompile Include="ChatClientMain.cpp" />
-    <ClCompile Include="ChatClientPacketDispatcher.cpp" />
     <ClCompile Include="ChatClientSession.cpp" />
     <ClCompile Include="Handler\ChatClientChangeNicknameHandler.cpp" />
     <ClCompile Include="Handler\ChatClientLoginHandler.cpp" />

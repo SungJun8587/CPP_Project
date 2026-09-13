@@ -71,7 +71,7 @@ int32 CChatSession::OnRecv(BYTE* buffer, int32 len)
 		if( len - processedLen < header->size )
 			break;
 
-		HandlePacket(header);
+		HandlePacket(header, static_cast<size_t>(len - processedLen));
 
 		processedLen += header->size;
 	}
@@ -86,10 +86,13 @@ int32 CChatSession::OnRecv(BYTE* buffer, int32 len)
 //          파일(ChatLoginHandler.cpp, ChatMessageHandler.cpp 등)에 흩어져
 //          각자 정적 초기화 시점에 스스로 등록한다(REGISTER_CHAT_PACKET_HANDLER).
 //          이 함수와 이 파일은 새 패킷이 추가돼도 전혀 수정할 필요가 없다.
+// @param bufferSize 이 header 시점부터 수신 버퍼에 남아있는 바이트 수(호출부인
+//        OnRecv()가 이미 header->size <= bufferSize임을 검증했지만, 공용
+//        디스패처(CPacketDispatcher)가 한 번 더 방어적으로 확인한다).
 //***************************************************************************
-void CChatSession::HandlePacket(const PacketHeader* header)
+void CChatSession::HandlePacket(const PacketHeader* header, size_t bufferSize)
 {
-	switch( CChatPacketDispatcher::Dispatch(*this, header) )
+	switch( CChatPacketDispatcher::Dispatch(*this, header, bufferSize) )
 	{
 	case EChatDispatchResult::UnknownType:
 		// 알 수 없는 타입 — 기본 뼈대에서는 조용히 무시.

@@ -98,7 +98,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobTimer.cpp">
       <Filter>UtilCore\Job</Filter>
     </ClCompile>
-    <ClCompile Include="ChatPacketDispatcher.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp">
       <Filter>UtilCore\Crypto</Filter>
     </ClCompile>
@@ -126,32 +125,62 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\AccountDBHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp">
+      <Filter>UtilCore\Network</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChangeNicknameDBHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="DBHandler\AccountDBHandler.cpp">
+      <Filter>DBHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatChangeNicknameHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="DBHandler\ChangeNicknameDBHandler.cpp">
+      <Filter>DBHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatLoginHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="DBHandler\DeleteProfileImageDBHandler.cpp">
+      <Filter>DBHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatMessageHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="DBHandler\ListProfileImagesDBHandler.cpp">
+      <Filter>DBHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatNicknameHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="DBHandler\SelectProfileImageDBHandler.cpp">
+      <Filter>DBHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\RoomEnterHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="DBHandler\SetProfileImageUrlDBHandler.cpp">
+      <Filter>DBHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\RoomLeaveHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatChangeNicknameHandler.cpp">
+      <Filter>PacketHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ServerUserCountHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatLoginHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatMessageHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatNicknameHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\RequestUploadTokenHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\RoomEnterHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\RoomLeaveHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ServerUserCountHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\SetProfileImageUrlHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\DeleteProfileImageHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ListProfileImagesHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\SelectProfileImageHandler.cpp">
+      <Filter>PacketHandler</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -197,8 +226,11 @@
     <Filter Include="UtilCore\JSON">
       <UniqueIdentifier>{401716b6-1a79-4bc0-8d89-c54fd8187f72}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Handler">
+    <Filter Include="PacketHandler">
       <UniqueIdentifier>{778d97be-aecd-4f7d-b583-d1f7755aa9cb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DBHandler">
+      <UniqueIdentifier>{4d711ee4-30cd-4207-98b7-e690887a91cf}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -409,6 +441,17 @@
     <ClInclude Include="DbServiceManager.h" />
     <ClInclude Include="NicknameValidation.h" />
     <ClInclude Include="DBChangeNicknameRequest.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Packet.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatPacketTypes.h" />
+    <ClInclude Include="DBDeleteProfileImageRequest.h" />
+    <ClInclude Include="DBSetProfileImageUrlRequest.h" />
+    <ClInclude Include="DBListProfileImagesRequest.h" />
+    <ClInclude Include="DBSelectProfileImageRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

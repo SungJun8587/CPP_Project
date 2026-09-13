@@ -86,10 +86,16 @@ using namespace std;
 
 #include <Redis/RedisCommon.h>
 
+#include "ChatPacketTypes.h"
 #include "ChatPacket.h"
 #include "ChatPacketDispatcher.h"
 #include "DbServiceManager.h"
 #include "DBSignupRequest.h"
+#include "DBChangeNicknameRequest.h"
+#include "DBSelectProfileImageRequest.h"
+#include "DBListProfileImagesRequest.h"
+#include "DBSetProfileImageUrlRequest.h"
+#include "DBDeleteProfileImageRequest.h"
 #include "ChatSession.h"
 #include "ChatServerMain.h"
 

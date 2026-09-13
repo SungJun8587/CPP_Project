@@ -11,6 +11,9 @@
 #include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 #include "DBChangeNicknameRequest.h"
+#include "DBSetProfileImageUrlRequest.h"
+#include "DBSelectProfileImageRequest.h"
+#include "DBDeleteProfileImageRequest.h"
 
 #include <algorithm>
 #include <cstring>
@@ -59,7 +62,7 @@ bool CChatServerMain::Start(
 		return false;
 
 	// 2-1. 회원 DB(ODBC) 초기화. 회원가입/재접속 검증 핸들러(kDbCallIdent_Signup)는
-	// AccountDBHandler.cpp의 DECLARE_DBASYNC_HANDLER_VIA 매크로가 정적
+	// AccountDBHandler.cpp의 DECLARE_DBASYNC_HANDLER_EX 매크로가 정적
 	// 초기화 시점(main() 진입 전)에 MEMBER_DB_ASYNC(CDbServiceManager::Instance().MemberDB())에
 	// 이미 등록해뒀으므로 여기서 핸들러를 별도로 만들거나 등록할 필요는
 	// 없다. 다만 COdbcAsyncSrv 자신은 이제 싱글턴이 아니라 CDbServiceManager가
@@ -238,7 +241,8 @@ void CChatServerMain::RequestSignup(
 	const std::array<BYTE, kTokenBytes>& token,
 	std::function<void(ELoginResult result, const std::string& nickname,
 		const std::array<BYTE, kPublicIdBytes>& publicId,
-		const std::array<BYTE, kTokenBytes>& newToken)> onComplete)
+		const std::array<BYTE, kTokenBytes>& newToken,
+		const std::string& profileImageUrl)> onComplete)
 {
 	if( session == nullptr )
 		return;
@@ -249,15 +253,16 @@ void CChatServerMain::RequestSignup(
 	// API만 쓰면 어느 스레드가 실제로 이 잡을 실행하든 안전하다.
 	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, const std::string& completedNickname,
 		const std::array<BYTE, kPublicIdBytes>& completedPublicId,
-		const std::array<BYTE, kTokenBytes>& newToken)
+		const std::array<BYTE, kTokenBytes>& newToken,
+		const std::string& profileImageUrl)
 		{
 			if( jobQueue == nullptr )
 				return;
 
-			jobQueue->DoAsync([onComplete, result, completedNickname, completedPublicId, newToken]()
+			jobQueue->DoAsync([onComplete, result, completedNickname, completedPublicId, newToken, profileImageUrl]()
 				{
 					if( onComplete )
-						onComplete(result, completedNickname, completedPublicId, newToken);
+						onComplete(result, completedNickname, completedPublicId, newToken, profileImageUrl);
 				});
 		};
 
@@ -288,7 +293,7 @@ void CChatServerMain::RequestSignup(
 		// 들어가지 않았으므로 콜백을 직접(이 스레드에서) 호출해 세션이
 		// 응답을 무한정 기다리지 않게 한다.
 		if( onComplete )
-			onComplete(ELoginResult::DbError, nickname, std::array<BYTE, kPublicIdBytes>{}, std::array<BYTE, kTokenBytes>{});
+			onComplete(ELoginResult::DbError, nickname, std::array<BYTE, kPublicIdBytes>{}, std::array<BYTE, kTokenBytes>{}, std::string());
 	}
 }
 
@@ -342,6 +347,60 @@ void CChatServerMain::RequestChangeNickname(
 	{
 		if( onComplete )
 			onComplete(ELoginResult::DbError, publicId, newNickname);
+	}
+}
+
+//***************************************************************************
+// @brief 프로필 이미지 URL 설정을 DB 비동기 워커에 요청합니다.
+// @details RequestChangeNickname()과 완전히 동일한 구조 — 차이는 요청/콜백 타입뿐이다.
+//***************************************************************************
+void CChatServerMain::RequestSetProfileImageUrl(
+	std::shared_ptr<CChatSession> session,
+	const std::array<BYTE, kPublicIdBytes>& publicId,
+	const std::string& newUrl,
+	std::function<void(ELoginResult result,
+		const std::array<BYTE, kPublicIdBytes>& publicId,
+		const std::string& newUrl,
+		int64 newImageId)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result,
+		const std::array<BYTE, kPublicIdBytes>& completedPublicId,
+		const std::string& completedNewUrl,
+		int64 newImageId)
+		{
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, result, completedPublicId, completedNewUrl, newImageId]()
+				{
+					if( onComplete )
+						onComplete(result, completedPublicId, completedNewUrl, newImageId);
+				});
+		};
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SET_PROFILE_IMAGE_URL_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_SetProfileImageUrl,
+		[&publicId, &newUrl, dispatchToJobQueue](ST_SET_PROFILE_IMAGE_URL_REQ* req)
+		{
+			::memcpy(req->publicId, publicId.data(), publicId.size());
+
+			const size_t urlCopyLen = (std::min)(newUrl.size(), sizeof(req->url) - 1);
+			::memcpy(req->url, newUrl.data(), urlCopyLen);
+
+			req->onComplete = dispatchToJobQueue;
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ELoginResult::DbError, publicId, newUrl, 0);
 	}
 }
 
@@ -517,4 +576,208 @@ void CChatServerMain::NotifyRoomUserCount(int32 roomId, int32 userCount)
 	notify.userCount = userCount;
 
 	BroadcastToRoom(roomId, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 파일 서버 업로드용 임시 토큰을 발급합니다.
+// @details Redis에 "UploadToken:{tokenHex}" 키로 이 계정의 public_id(16진)를
+// 값으로, TTL 60초로 저장한다. 파일 서버는 이 키를 조회해서 토큰을
+// 검증한다 — 채팅 서버와 파일 서버는 서로 직접 통신하지 않는다.
+//***************************************************************************
+void CChatServerMain::RequestUploadToken(
+	std::shared_ptr<CChatSession> session,
+	const std::array<BYTE, kPublicIdBytes>& publicId,
+	std::function<void(bool success, const std::string& uploadToken, const std::string& fileServerUrl)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	if( _redisService == nullptr || _fileServerUrl.empty() )
+	{
+		// Redis가 없거나 파일 서버 주소가 설정 안 돼 있으면 업로드 기능
+		// 자체를 못 쓰는 상태 — 실패로 응답한다.
+		if( onComplete )
+			onComplete(false, std::string(), std::string());
+		return;
+	}
+
+	// 토큰 = 무작위 32바이트를 16진 인코딩(64자) — 추측 불가능한 값이어야
+	// 다른 사람이 남의 토큰을 짐작해서 도용할 수 없다.
+	BYTE randomBytes[32] = {};
+	if( !Crypto::CCryptoUtil::GenerateRandomBytes(randomBytes, sizeof(randomBytes)) )
+	{
+		if( onComplete )
+			onComplete(false, std::string(), std::string());
+		return;
+	}
+
+	const std::string tokenHex = Crypto::CCryptoUtil::ToHex(randomBytes, sizeof(randomBytes));
+	const std::string publicIdHex = Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	const std::string redisKey = "UploadToken:" + tokenHex;
+	const std::string fileServerUrl = _fileServerUrl;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	// SET key value EX seconds — 한 커맨드로 등록+TTL을 동시에 건다
+	// (RedisServerHeartbeat.cpp의 HSET+EXPIRE 두 단계보다 간단 — 여긴 필드가
+	// 값 하나뿐이라 SET의 EX 옵션만으로 충분하다).
+	CVector<std::string> args;
+	args.push_back("SET");
+	args.push_back(redisKey);
+	args.push_back(publicIdHex);
+	args.push_back("EX");
+	args.push_back("60");
+
+	_redisService->SendCommand(args, [jobQueue, onComplete, tokenHex, fileServerUrl](const RedisValue& /*res*/)
+		{
+			// [참고] RedisValue의 성공/에러 판별 API를 이 헤더만으론 확인 못해,
+			// OnUserLogin()과 마찬가지로 콜백이 왔다는 것 자체를 "등록 완료"로
+			// 본다(TODO: 에러 체크 메서드가 있다면 감싸는 것을 권장).
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, tokenHex, fileServerUrl]()
+				{
+					if( onComplete )
+						onComplete(true, tokenHex, fileServerUrl);
+				});
+		});
+}
+
+
+//***************************************************************************
+// @brief 로그인된 계정이 갖고 있는 프로필 이미지 전체 목록을 조회합니다.
+//***************************************************************************
+void CChatServerMain::RequestListProfileImages(
+	std::shared_ptr<CChatSession> session,
+	const std::array<BYTE, kPublicIdBytes>& publicId,
+	std::function<void(ELoginResult result, const std::vector<SProfileImageEntry>& images)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, const std::vector<SProfileImageEntry>& images)
+		{
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, result, images]()
+				{
+					if( onComplete )
+						onComplete(result, images);
+				});
+		};
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_PROFILE_IMAGES_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_ListProfileImages,
+		[&publicId, dispatchToJobQueue](ST_LIST_PROFILE_IMAGES_REQ* req)
+		{
+			::memcpy(req->publicId, publicId.data(), publicId.size());
+			req->onComplete = dispatchToJobQueue;
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ELoginResult::DbError, std::vector<SProfileImageEntry>());
+	}
+}
+
+//***************************************************************************
+// @brief 갤러리에 이미 있는 이미지 하나를 대표로 지정합니다.
+//***************************************************************************
+void CChatServerMain::RequestSelectProfileImage(
+	std::shared_ptr<CChatSession> session,
+	const std::array<BYTE, kPublicIdBytes>& publicId,
+	int64 imageId,
+	std::function<void(ELoginResult result, int64 imageId, const std::string& selectedImageRef)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, int64 completedImageId, const std::string& selectedImageRef)
+		{
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, result, completedImageId, selectedImageRef]()
+				{
+					if( onComplete )
+						onComplete(result, completedImageId, selectedImageRef);
+				});
+		};
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SELECT_PROFILE_IMAGE_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_SelectProfileImage,
+		[&publicId, imageId, dispatchToJobQueue](ST_SELECT_PROFILE_IMAGE_REQ* req)
+		{
+			::memcpy(req->publicId, publicId.data(), publicId.size());
+			req->imageId = imageId;
+			req->onComplete = dispatchToJobQueue;
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ELoginResult::DbError, imageId, std::string());
+	}
+}
+
+//***************************************************************************
+// @brief 갤러리에서 이미지 하나를 삭제합니다. DB 레코드만 지우고, 실제
+//        파일 삭제는 파일 서버 소관이라 이 서버는 관여하지 않습니다.
+//***************************************************************************
+void CChatServerMain::RequestDeleteProfileImage(
+	std::shared_ptr<CChatSession> session,
+	const std::array<BYTE, kPublicIdBytes>& publicId,
+	int64 imageId,
+	std::function<void(ELoginResult result, int64 imageId, bool wasActive)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, int64 completedImageId,
+		bool wasActive, const std::string& /*deletedImageRef*/)
+		{
+			// [설계 변경] 실제 파일 삭제는 이제 이 서버의 책임이 아니다 —
+			// 이미지 저장을 별도 파일 서버로 분리하면서, 이 서버는
+			// DB(user_profile_images) 레코드만 관리한다. deletedImageRef가
+			// 실제 접근 가능한 URL이라는 것만 알 뿐, 그 파일을 지우는 건
+			// 파일 서버 쪽 API(또는 만료 정책)의 몫이다.
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, result, completedImageId, wasActive]()
+				{
+					if( onComplete )
+						onComplete(result, completedImageId, wasActive);
+				});
+		};
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_PROFILE_IMAGE_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_DeleteProfileImage,
+		[&publicId, imageId, dispatchToJobQueue](ST_DELETE_PROFILE_IMAGE_REQ* req)
+		{
+			::memcpy(req->publicId, publicId.data(), publicId.size());
+			req->imageId = imageId;
+			req->onComplete = dispatchToJobQueue;
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ELoginResult::DbError, imageId, false);
+	}
 }

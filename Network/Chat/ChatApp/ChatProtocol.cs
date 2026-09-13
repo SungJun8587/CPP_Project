@@ -10,6 +10,7 @@
 // 리틀 엔디안이라 서버(Windows/MSVC, x86/x64)와 그대로 호환된다.
 //***************************************************************************
 
+using ChatApp;
 using System;
 using System.IO;
 using System.Text;
@@ -32,6 +33,27 @@ namespace ChatApp
         RoomUserCountNotify = 12,
         ServerUserCountReq = 13,
         ServerUserCountRes = 14,
+        SetProfileImageUrlReq = 15,
+        SetProfileImageUrlRes = 16,
+
+        UploadProfileImageBeginReq = 17,
+        UploadProfileImageBeginRes = 18,
+        UploadProfileImageChunkReq = 19,
+        UploadProfileImageEndReq = 20,
+        UploadProfileImageEndRes = 21,
+
+        DownloadProfileImageReq = 22,
+        DownloadProfileImageBeginRes = 23,
+        DownloadProfileImageChunkRes = 24,
+        DownloadProfileImageEndRes = 25,
+
+        ListProfileImagesReq = 26,
+        ListProfileImagesItemRes = 27,
+        ListProfileImagesEndRes = 28,
+        SelectProfileImageReq = 29,
+        SelectProfileImageRes = 30,
+        DeleteProfileImageReq = 31,
+        DeleteProfileImageRes = 32,
     }
 
     // RoomEnterResPacket::reason
@@ -63,6 +85,12 @@ namespace ChatApp
         public const int NicknameBytes = 50;        // kNicknameBytes (LoginReqPacket::userId, ChangeNicknameReqPacket::newNickname)
         public const int ChatMessageBytes = 256;    // ChatPacket::message
         public const int GeneratedNicknameBytes = 32;   // NicknameGenerateResPacket::nickname — kNicknameBytes와 별개 상수라 혼동 주의
+
+        public const int ProfileImageUrlBytes = 256;    // kProfileImageUrlBytes
+
+        public const int ImageChunkBytes = 4096;            // kImageChunkBytes
+        public const int MaxProfileImageBytes = 2 * 1024 * 1024;    // kMaxProfileImageBytes
+        public const int FileExtensionBytes = 8;            // kFileExtensionBytes
 
         public const int LobbyRoomId = 0;
         public const int MaxRoomId = 10;
@@ -185,6 +213,127 @@ namespace ChatApp
         }
 
         //***************************************************************************
+        // @brief 내 프로필 이미지 URL 설정/변경 요청. 빈 문자열이면 "해제".
+        //***************************************************************************
+        public static byte[] BuildSetProfileImageUrlReq(string url)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + ProtocolConstants.ProfileImageUrlBytes);
+                bw.Write(size);
+                bw.Write((ushort)PacketType.SetProfileImageUrlReq);
+                bw.Write(FixedUtf8(url, ProtocolConstants.ProfileImageUrlBytes));
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief 업로드 시작 요청. fileExtension은 ".png" 등(점 포함).
+        //***************************************************************************
+        public static byte[] BuildUploadProfileImageBeginReq(int totalBytes, string fileExtension)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(int) + ProtocolConstants.FileExtensionBytes);
+                bw.Write(size);
+                bw.Write((ushort)PacketType.UploadProfileImageBeginReq);
+                bw.Write(totalBytes);
+                bw.Write(FixedUtf8(fileExtension, ProtocolConstants.FileExtensionBytes));
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief 이미지 데이터 한 조각 전송. chunkData는 실제 chunkSize만큼만
+        //        의미 있고, 나머지는 kImageChunkBytes까지 0으로 채워 보낸다
+        //        (서버 구조체가 고정 크기 배열이라 항상 같은 총 패킷 크기여야 함).
+        //***************************************************************************
+        public static byte[] BuildUploadProfileImageChunkReq(uint uploadId, uint chunkIndex, byte[] chunkData, int chunkSize)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(uint) + sizeof(uint) + sizeof(ushort) + ProtocolConstants.ImageChunkBytes);
+                bw.Write(size);
+                bw.Write((ushort)PacketType.UploadProfileImageChunkReq);
+                bw.Write(uploadId);
+                bw.Write(chunkIndex);
+                bw.Write((ushort)chunkSize);
+
+                var padded = new byte[ProtocolConstants.ImageChunkBytes];
+                Array.Copy(chunkData, 0, padded, 0, chunkSize);
+                bw.Write(padded);
+
+                return ms.ToArray();
+            }
+        }
+
+        public static byte[] BuildUploadProfileImageEndReq(uint uploadId)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(uint));
+                bw.Write(size);
+                bw.Write((ushort)PacketType.UploadProfileImageEndReq);
+                bw.Write(uploadId);
+                return ms.ToArray();
+            }
+        }
+
+        public static byte[] BuildDownloadProfileImageReq(string imageRef)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + ProtocolConstants.ProfileImageUrlBytes);
+                bw.Write(size);
+                bw.Write((ushort)PacketType.DownloadProfileImageReq);
+                bw.Write(FixedUtf8(imageRef, ProtocolConstants.ProfileImageUrlBytes));
+                return ms.ToArray();
+            }
+        }
+
+        public static byte[] BuildListProfileImagesReq()
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((ushort)ProtocolConstants.HeaderBytes);
+                bw.Write((ushort)PacketType.ListProfileImagesReq);
+                return ms.ToArray();
+            }
+        }
+
+        public static byte[] BuildSelectProfileImageReq(long imageId)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(long));
+                bw.Write(size);
+                bw.Write((ushort)PacketType.SelectProfileImageReq);
+                bw.Write(imageId);
+                return ms.ToArray();
+            }
+        }
+
+        public static byte[] BuildDeleteProfileImageReq(long imageId)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(long));
+                bw.Write(size);
+                bw.Write((ushort)PacketType.DeleteProfileImageReq);
+                bw.Write(imageId);
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
         // @brief 방 입장 요청. roomId는 1~ProtocolConstants.MaxRoomId만 유효(서버가 재검증).
         //***************************************************************************
         public static byte[] BuildRoomEnterReq(int roomId)
@@ -237,6 +386,7 @@ namespace ChatApp
         public string Nickname; // 서버가 채워 보낸 값 그대로 — 실패 상황에 따라 빈 문자열일 수 있음
         public byte[] PublicId; // Success==true일 때만 유효
         public byte[] Token;        // Success==true일 때만 유효
+        public string ProfileImageUrl;  // Success==true일 때만 유효 — 미설정이면 빈 문자열
     }
 
     public class ChangeNicknameResPacketData
@@ -245,9 +395,76 @@ namespace ChatApp
         public LoginResult Reason;
     }
 
+    public class SetProfileImageUrlResPacketData
+    {
+        public bool Success;
+        public LoginResult Reason;
+        public long ImageId;
+    }
+
+    public class UploadProfileImageBeginResData
+    {
+        public bool Success;
+        public LoginResult Reason;
+        public uint UploadId;
+    }
+
+    public class UploadProfileImageEndResData
+    {
+        public bool Success;
+        public LoginResult Reason;
+        public long ImageId;
+        public string ImageRef;
+    }
+
+    public class DownloadProfileImageBeginResData
+    {
+        public bool Success;
+        public LoginResult Reason;
+        public uint DownloadId;
+        public int TotalBytes;
+    }
+
+    public class DownloadProfileImageChunkResData
+    {
+        public uint DownloadId;
+        public uint ChunkIndex;
+        public byte[] ChunkData;    // 이미 실제 chunkSize만큼만 잘라서 담김(패딩 제외)
+    }
+
+    public class DownloadProfileImageEndResData
+    {
+        public uint DownloadId;
+    }
+
+    public class ProfileImageListItemData
+    {
+        public long ImageId;
+        public string ImageRef;
+        public bool IsActive;
+    }
+
+    public class ListProfileImagesEndResData
+    {
+        public int TotalCount;
+    }
+
+    public class SelectProfileImageResData
+    {
+        public bool Success;
+        public LoginResult Reason;
+    }
+
+    public class DeleteProfileImageResData
+    {
+        public bool Success;
+        public LoginResult Reason;
+    }
+
     public class ChatPacketData
     {
         public string SenderNickname;   // Server -> Client 방향에서만 의미 있음(브로드캐스트 시점의 발신자 닉네임)
+        public string SenderProfileImageUrl;    // 위와 동일한 의미 — 미설정이면 빈 문자열
         public string Message;
     }
 
@@ -302,13 +519,17 @@ namespace ChatApp
                 bool success = br.ReadByte() != 0;
                 LoginResult reason = (LoginResult)br.ReadByte();
                 string nickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
+                byte[] publicId = br.ReadBytes(ProtocolConstants.PublicIdBytes);
+                byte[] token = br.ReadBytes(ProtocolConstants.TokenBytes);
+                string profileImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
                 return new LoginResPacketData
                 {
                     Success = success,
                     Reason = reason,
                     Nickname = nickname,
-                    PublicId = br.ReadBytes(ProtocolConstants.PublicIdBytes),
-                    Token = br.ReadBytes(ProtocolConstants.TokenBytes),
+                    PublicId = publicId,
+                    Token = token,
+                    ProfileImageUrl = profileImageUrl,
                 };
             }
         }
@@ -320,8 +541,9 @@ namespace ChatApp
                 br.ReadUInt16();
                 br.ReadUInt16();
                 string senderNickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
+                string senderProfileImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
                 string message = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ChatMessageBytes));
-                return new ChatPacketData { SenderNickname = senderNickname, Message = message };
+                return new ChatPacketData { SenderNickname = senderNickname, SenderProfileImageUrl = senderProfileImageUrl, Message = message };
             }
         }
 
@@ -349,64 +571,154 @@ namespace ChatApp
             }
         }
 
-        public static RoomEnterResPacketData ParseRoomEnterRes(byte[] buffer)
+        public static SetProfileImageUrlResPacketData ParseSetProfileImageUrlRes(byte[] buffer)
         {
             using (var br = new BinaryReader(new MemoryStream(buffer)))
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
-                return new RoomEnterResPacketData
+                return new SetProfileImageUrlResPacketData
                 {
                     Success = br.ReadByte() != 0,
-                    Reason = (RoomResult)br.ReadByte(),
-                    RoomId = br.ReadInt32(),
-                    RoomUserCount = br.ReadInt32(),
+                    Reason = (LoginResult)br.ReadByte(),
+                    ImageId = br.ReadInt64(),
                 };
             }
         }
 
-        public static RoomLeaveResPacketData ParseRoomLeaveRes(byte[] buffer)
+        public static UploadProfileImageBeginResData ParseUploadProfileImageBeginRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new UploadProfileImageBeginResData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (LoginResult)br.ReadByte(),
+                    UploadId = br.ReadUInt32(),
+                };
+            }
+        }
+
+        public static UploadProfileImageEndResData ParseUploadProfileImageEndRes(byte[] buffer)
         {
             using (var br = new BinaryReader(new MemoryStream(buffer)))
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
                 bool success = br.ReadByte() != 0;
-                return new RoomLeaveResPacketData
+                LoginResult reason = (LoginResult)br.ReadByte();
+                long imageId = br.ReadInt64();
+                string imageRef = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
+                return new UploadProfileImageEndResData
                 {
                     Success = success,
-                    RoomId = br.ReadInt32(),
-                    RoomUserCount = br.ReadInt32(),
+                    Reason = reason,
+                    ImageId = imageId,
+                    ImageRef = imageRef,
                 };
             }
         }
 
-        public static RoomUserCountNotifyData ParseRoomUserCountNotify(byte[] buffer)
+        public static DownloadProfileImageBeginResData ParseDownloadProfileImageBeginRes(byte[] buffer)
         {
             using (var br = new BinaryReader(new MemoryStream(buffer)))
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
-                return new RoomUserCountNotifyData
+                return new DownloadProfileImageBeginResData
                 {
-                    RoomId = br.ReadInt32(),
-                    UserCount = br.ReadInt32(),
+                    Success = br.ReadByte() != 0,
+                    Reason = (LoginResult)br.ReadByte(),
+                    DownloadId = br.ReadUInt32(),
+                    TotalBytes = br.ReadInt32(),
                 };
             }
         }
 
-        public static ServerUserCountResData ParseServerUserCountRes(byte[] buffer)
+        public static DownloadProfileImageChunkResData ParseDownloadProfileImageChunkRes(byte[] buffer)
         {
             using (var br = new BinaryReader(new MemoryStream(buffer)))
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
-                return new ServerUserCountResData
+                uint downloadId = br.ReadUInt32();
+                uint chunkIndex = br.ReadUInt32();
+                ushort chunkSize = br.ReadUInt16();
+                byte[] fullChunk = br.ReadBytes(ProtocolConstants.ImageChunkBytes);
+
+                var actualData = new byte[chunkSize];
+                Array.Copy(fullChunk, 0, actualData, 0, chunkSize);
+
+                return new DownloadProfileImageChunkResData
                 {
-                    UserCount = br.ReadInt32(),
-                    LobbyUserCount = br.ReadInt32(),
+                    DownloadId = downloadId,
+                    ChunkIndex = chunkIndex,
+                    ChunkData = actualData,
                 };
             }
         }
-    }
+
+        public static DownloadProfileImageEndResData ParseDownloadProfileImageEndRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new DownloadProfileImageEndResData { DownloadId = br.ReadUInt32() };
+            }
+        }
+
+        public static ProfileImageListItemData ParseListProfileImagesItemRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                long imageId = br.ReadInt64();
+                string imageRef = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
+                bool isActive = br.ReadByte() != 0;
+                return new ProfileImageListItemData { ImageId = imageId, ImageRef = imageRef, IsActive = isActive };
+            }
+        }
+
+        public static ListProfileImagesEndResData ParseListProfileImagesEndRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new ListProfileImagesEndResData { TotalCount = br.ReadInt32() };
+            }
+        }
+
+        public static SelectProfileImageResData ParseSelectProfileImageRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new SelectProfileImageResData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (LoginResult)br.ReadByte(),
+                };
+            }
+        }
+
+        public static DeleteProfileImageResData ParseDeleteProfileImageRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new DeleteProfileImageResData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (LoginResult)br.ReadByte(),
+                };
+            }
+        }
+	}
 }

@@ -30,6 +30,18 @@ namespace ChatApp
         public event Action<RoomLeaveResPacketData> RoomLeaveResultReceived;
         public event Action<RoomUserCountNotifyData> RoomUserCountChanged;
         public event Action<ServerUserCountResData> ServerUserCountReceived;
+        public event Action<SetProfileImageUrlResPacketData> SetProfileImageUrlResultReceived;
+
+        // [추가] 프로필 이미지 업로드/다운로드/갤러리 관련 이벤트.
+        public event Action<UploadProfileImageBeginResData> UploadProfileImageBeginResultReceived;
+        public event Action<UploadProfileImageEndResData> UploadProfileImageEndResultReceived;
+        public event Action<DownloadProfileImageBeginResData> DownloadProfileImageBeginReceived;
+        public event Action<DownloadProfileImageChunkResData> DownloadProfileImageChunkReceived;
+        public event Action<DownloadProfileImageEndResData> DownloadProfileImageEndReceived;
+        public event Action<ProfileImageListItemData> ProfileImageListItemReceived;
+        public event Action<ListProfileImagesEndResData> ProfileImageListEndReceived;
+        public event Action<SelectProfileImageResData> SelectProfileImageResultReceived;
+        public event Action<DeleteProfileImageResData> DeleteProfileImageResultReceived;
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -79,9 +91,23 @@ namespace ChatApp
         public void SendChat(string message) => SendRaw(PacketBuilder.BuildChat(message));
         public void RequestNicknameGeneration() => SendRaw(PacketBuilder.BuildNicknameGenerateReq());
         public void RequestChangeNickname(string newNickname) => SendRaw(PacketBuilder.BuildChangeNicknameReq(newNickname));
+        public void RequestSetProfileImageUrl(string url) => SendRaw(PacketBuilder.BuildSetProfileImageUrlReq(url));
         public void RequestRoomEnter(int roomId) => SendRaw(PacketBuilder.BuildRoomEnterReq(roomId));
         public void RequestRoomLeave() => SendRaw(PacketBuilder.BuildRoomLeaveReq());
         public void RequestServerUserCount() => SendRaw(PacketBuilder.BuildServerUserCountReq());
+
+        // [추가] 프로필 이미지 업로드/다운로드/갤러리 관련 전송 메서드.
+        public void RequestUploadProfileImageBegin(int totalBytes, string fileExtension) =>
+            SendRaw(PacketBuilder.BuildUploadProfileImageBeginReq(totalBytes, fileExtension));
+        public void SendUploadProfileImageChunk(uint uploadId, uint chunkIndex, byte[] chunkData, int chunkSize) =>
+            SendRaw(PacketBuilder.BuildUploadProfileImageChunkReq(uploadId, chunkIndex, chunkData, chunkSize));
+        public void RequestUploadProfileImageEnd(uint uploadId) =>
+            SendRaw(PacketBuilder.BuildUploadProfileImageEndReq(uploadId));
+        public void RequestDownloadProfileImage(string imageRef) =>
+            SendRaw(PacketBuilder.BuildDownloadProfileImageReq(imageRef));
+        public void RequestListProfileImages() => SendRaw(PacketBuilder.BuildListProfileImagesReq());
+        public void RequestSelectProfileImage(long imageId) => SendRaw(PacketBuilder.BuildSelectProfileImageReq(imageId));
+        public void RequestDeleteProfileImage(long imageId) => SendRaw(PacketBuilder.BuildDeleteProfileImageReq(imageId));
 
         private void SendRaw(byte[] packet)
         {
@@ -178,6 +204,11 @@ namespace ChatApp
                     NicknameChangeResultReceived?.Invoke(PacketParser.ParseChangeNicknameRes(full));
                     break;
 
+                case PacketType.SetProfileImageUrlRes:
+                    SetProfileImageUrlResultReceived?.Invoke(PacketParser.ParseSetProfileImageUrlRes(full));
+                    break;
+                
+                /*
                 case PacketType.RoomEnterRes:
                     RoomEnterResultReceived?.Invoke(PacketParser.ParseRoomEnterRes(full));
                     break;
@@ -192,6 +223,42 @@ namespace ChatApp
 
                 case PacketType.ServerUserCountRes:
                     ServerUserCountReceived?.Invoke(PacketParser.ParseServerUserCountRes(full));
+                    break;
+                */
+                case PacketType.UploadProfileImageBeginRes:
+                    UploadProfileImageBeginResultReceived?.Invoke(PacketParser.ParseUploadProfileImageBeginRes(full));
+                    break;
+
+                case PacketType.UploadProfileImageEndRes:
+                    UploadProfileImageEndResultReceived?.Invoke(PacketParser.ParseUploadProfileImageEndRes(full));
+                    break;
+
+                case PacketType.DownloadProfileImageBeginRes:
+                    DownloadProfileImageBeginReceived?.Invoke(PacketParser.ParseDownloadProfileImageBeginRes(full));
+                    break;
+
+                case PacketType.DownloadProfileImageChunkRes:
+                    DownloadProfileImageChunkReceived?.Invoke(PacketParser.ParseDownloadProfileImageChunkRes(full));
+                    break;
+
+                case PacketType.DownloadProfileImageEndRes:
+                    DownloadProfileImageEndReceived?.Invoke(PacketParser.ParseDownloadProfileImageEndRes(full));
+                    break;
+
+                case PacketType.ListProfileImagesItemRes:
+                    ProfileImageListItemReceived?.Invoke(PacketParser.ParseListProfileImagesItemRes(full));
+                    break;
+
+                case PacketType.ListProfileImagesEndRes:
+                    ProfileImageListEndReceived?.Invoke(PacketParser.ParseListProfileImagesEndRes(full));
+                    break;
+
+                case PacketType.SelectProfileImageRes:
+                    SelectProfileImageResultReceived?.Invoke(PacketParser.ParseSelectProfileImageRes(full));
+                    break;
+
+                case PacketType.DeleteProfileImageRes:
+                    DeleteProfileImageResultReceived?.Invoke(PacketParser.ParseDeleteProfileImageRes(full));
                     break;
 
                 default:

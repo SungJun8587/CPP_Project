@@ -149,6 +149,13 @@ int main()
 		return -1;
 	}
 
+	// 7-3. 클라이언트에게 알려줄 파일 서버 주소 설정 — 프로필 이미지 업로드
+	// 토큰 발급(RequestUploadTokenReq) 응답에 그대로 실려 나간다. 설정
+	// 파일에 없으면 빈 문자열이 그대로 전달되고, 그 경우 클라이언트는
+	// 업로드 기능을 못 쓴다는 걸 응답(success=0)으로 알게 된다
+	// (ChatServerMain::RequestUploadToken() 참고).
+	server.SetFileServerUrl(TCharToString(SERVER_CONFIG->GetFileServerUrl()));
+
 	std::cout << "ChatServer started. Press Ctrl+C to stop." << std::endl;
 
 	// 8. 메인 스레드 대기 루프 — 실제 I/O는 IOCP 워커 스레드들이 처리한다.

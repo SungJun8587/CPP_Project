@@ -63,6 +63,11 @@ public:
 	const std::string& GetNickname() const { return _nickname; }
 
 	//***************************************************************************
+	// @brief 로그인한 계정의 프로필 이미지 URL을 반환합니다(미설정이면 빈 문자열).
+	//***************************************************************************
+	const std::string& GetProfileImageUrl() const { return _profileImageUrl; }
+
+	//***************************************************************************
 	// @brief 이 세션이 속한 채팅 서버를 반환합니다.
 	//***************************************************************************
 	CChatServerMain* GetServer() const { return _server; }
@@ -76,10 +81,11 @@ public:
 	//          (ChatLoginHandler.cpp)만 호출하는 것을 의도한 좁은 용도의 API이며,
 	//          컴파일러가 강제하지는 못하므로 컨벤션으로 지킨다.
 	//***************************************************************************
-	void MarkLoggedIn(const std::array<BYTE, kPublicIdBytes>& publicId, std::string nickname)
+	void MarkLoggedIn(const std::array<BYTE, kPublicIdBytes>& publicId, std::string nickname, std::string profileImageUrl)
 	{
 		_publicId = publicId;
 		_nickname = std::move(nickname);
+		_profileImageUrl = std::move(profileImageUrl);
 		_loggedIn = true;
 	}
 
@@ -90,6 +96,13 @@ public:
 	//          않는다(닉네임 변경은 계정 식별자에 영향을 주지 않으므로).
 	//***************************************************************************
 	void UpdateNickname(std::string newNickname) { _nickname = std::move(newNickname); }
+
+	//***************************************************************************
+	// @brief 프로필 이미지 URL 변경 성공 후 세션의 값만 갱신합니다.
+	// @details UpdateNickname()과 동일한 좁은 용도 API —
+	//          SetProfileImageUrlHandler.cpp만 호출하는 것을 의도한다.
+	//***************************************************************************
+	void UpdateProfileImageUrl(std::string newUrl) { _profileImageUrl = std::move(newUrl); }
 
 	//***************************************************************************
 	// @brief 현재 있는 위치(로비=kLobbyRoomId 또는 특정 룸 ID)를 반환합니다.
@@ -109,12 +122,13 @@ public:
 	void SetRoomId(int32 roomId) { _roomId = roomId; }
 
 private:
-	void	HandlePacket(const PacketHeader* header);
+	void	HandlePacket(const PacketHeader* header, size_t bufferSize);
 
 private:
 	CChatServerMain* _server = nullptr;	// 뒤로 참조 — 서버 소유 세션이라 세션보다 오래 살아있음이 보장됨
 	std::array<BYTE, kPublicIdBytes>	_publicId{};	// 로그인된 계정의 안정 식별자(로그인 전엔 전부 0)
 	std::string		_nickname;						// 표시용 닉네임(변경 가능)
+	std::string		_profileImageUrl;					// 프로필 이미지 URL(변경 가능, 미설정이면 빈 문자열)
 	bool			_loggedIn = false;
 	int32			_roomId = -1;					// 현재 위치. -1=아직 미배정, 0=로비, 1~kMaxRoomId=특정 룸
 };

@@ -71,7 +71,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp">
       <Filter>UtilCore\Crypto</Filter>
     </ClCompile>
-    <ClCompile Include="ChatClientPacketDispatcher.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>

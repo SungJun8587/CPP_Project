@@ -1,7 +1,34 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // ChatClientForm.cs : 메인 창 — 접속/채팅/닉네임 변경/방 입퇴장 UI.
 //
+// [설계] Designer.cs 없이 코드로 컨트롤을 직접 배치했다(단일 파일 전달을
+// 위한 단순화 — 실제 프로젝트라면 Visual Studio 디자이너로 분리하는 걸
+// 권장). ChatNetworkClient의 이벤트는 백그라운드 스레드에서 오므로, 전부
+// Invoke()로 UI 스레드에 넘긴 뒤에야 컨트롤을 건드린다.
+//
+// [UI 구조 — 참고 프로젝트와의 차이] 이 레이아웃은 사용자가 준 SignalR
+// 기반 채팅 클라이언트 예시(그룹박스 2개 + OwnerDraw 리스트박스 2개 +
+// 방 콤보박스/입장/퇴장/방 인원수)의 골격을 그대로 따랐다 — 서버에
+// 로비/룸 개념이 추가되면서 이제 이 컨트롤들이 실제로 동작한다. 다만
+// 아래는 여전히 대응 기능이 없어서 뺐다:
+//   - 동접자수(전체 서버 접속자 수) 조회 — 프로토콜에 없음. 방 인원수는 있음.
+//   - URL/FpID 필드 — SignalR(HTTP) 전용 개념. 이 프로젝트는 순수 TCP라
+//     "서버 IP + 포트 + 프로필 이름"으로 대체했다.
+//   - "유저 가입"/"연결" 버튼 분리 — 이 프로젝트의 Connect()는 로컬 저장된
+//     계정 유무로 신규가입/재접속을 자동 판별하므로 버튼 하나로 통합.
+//
+// [설계 — 로비/룸] 로그인하면 서버가 자동으로 로비(RoomId=0)에 배정한다.
+// cbChatRoomId에서 방을 골라 "입장" 하면 그 방으로 이동, "나가기"를 누르면
+// 로비로 돌아간다. 방 인원수는 서버가 RoomEnterRes/RoomLeaveRes 응답
+// 뿐만 아니라 RoomUserCountNotify로도 실시간 갱신해준다 — 내가 직접
+// 입/퇴장하지 않아도 같은 방에 있는 "다른" 누군가가 들고나면 자동으로
+// 화면 숫자가 바뀐다.
+//
+// [설계 — 보낸/받은 메시지 구분] 서버(ChatMessageHandler.cpp)는 채팅
+// 메시지를 발신자 포함, 지금 있는 방/로비 전체에게 브로드캐스트한다.
+// "이게 내가 보낸 게 되돌아온 건지"는 프로토콜만으로 구분이 안 돼서,
+// 메시지를 보낼 때 그 문자열을 _pendingSentEchoes 큐에 넣어두고, 도착한
+// 메시지가 큐 맨 앞과 일치하면 그 서버 에코를 조용히 소비해 중복 표시를 막는다.
 //***************************************************************************
 
 using System;
@@ -42,13 +69,15 @@ namespace ChatApp
         private class ChatBubbleItem
         {
             public string SenderName;
+            public string SenderProfileImageUrl;
             public string Message;
             public bool IsMyMessage;
             public DateTime Timestamp;
 
-            public ChatBubbleItem(string senderName, string message, bool isMyMessage)
+            public ChatBubbleItem(string senderName, string senderProfileImageUrl, string message, bool isMyMessage)
             {
                 SenderName = senderName;
+                SenderProfileImageUrl = senderProfileImageUrl;
                 Message = message;
                 IsMyMessage = isMyMessage;
                 Timestamp = DateTime.Now;
@@ -65,7 +94,19 @@ namespace ChatApp
         private System.Windows.Forms.Timer _serverUserCountPollTimer;
 
         private string _currentNickname; // 화면에 별도로 표시하지 않고, 닉네임 변경 다이얼로그에 넘겨줄 용도로만 보관
+        private string _myProfileImageUrl = string.Empty; // 서버에 현재 설정돼 있는(=다른 사람에게 보이는) 내 프로필 이미지 URL
+        private string _pendingProfileImageUrlRequest; // SetMyProfileImageUrl()/ClearMyProfileImageUrl()이 요청한 값 — 응답(success/reason만 있음) 처리 시 참고용
+
+        // [추가] UploadMyProfileImage()가 await로 기다리는 업로드 시작/완료 응답.
+        // 업로드가 진행 중이 아닐 때(null)는 이벤트가 와도 조용히 무시된다.
+        private TaskCompletionSource<UploadProfileImageBeginResData> _uploadBeginTcs;
+        private TaskCompletionSource<UploadProfileImageEndResData> _uploadEndTcs;
         private Button _btnOpenNicknameDialog;
+
+        // [추가] 프로필 이미지 — 로컬 전용(네트워크로 다른 사람에게 전송되지
+        // 않음). 프로필 이름별로 이미지 파일 경로를 저장해뒀다가 다음 실행 때
+        // 다시 불러온다.
+        private PictureBox _picProfileImage;
 
         private ComboBox _cbChatRoomId;
         private Button _btnRoomEnter;
@@ -120,6 +161,13 @@ namespace ChatApp
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
         private readonly Dictionary<string, LinkPreviewData> _linkPreviewCache = new Dictionary<string, LinkPreviewData>();
 
+        // [추가] 프로필 이미지 — 채팅 메시지에 실려오는 발신자의 profileImageUrl로
+        // 실제 이미지를 내려받아 아바타 자리에 표시한다(링크 미리보기와 동일한
+        // fetch 인프라/HttpClient를 재사용). URL 하나당 한 번만 요청(캐시).
+        // 아직 못 받아왔거나 실패했으면 DrawAvatar()가 색깔 원형+이니셜로 대체한다.
+        private readonly Dictionary<string, Image> _avatarImageCache = new Dictionary<string, Image>();
+        private readonly HashSet<string> _avatarFetchInProgress = new HashSet<string>();
+
         private const int kLinkPreviewCardHeight = 66;
         private const int kLinkPreviewThumbnailSize = 56;
 
@@ -171,8 +219,41 @@ namespace ChatApp
             _btnOpenNicknameDialog = new Button { Text = "닉네임 변경", Left = 245, Top = 46, Width = 90, Height = 25, Visible = false };
             _btnOpenNicknameDialog.Click += BtnOpenNicknameDialog_Click;
 
+            // [추가] 프로필 이미지 — 클릭하면 파일 선택 창이 뜬다. 기본은
+            // 회색 빈 칸(이미지 없음 표시)이고, 로그인 전에도 조작 가능
+            // (네트워크와 무관한 순수 로컬 개인화 기능이므로).
+            _picProfileImage = new PictureBox
+            {
+                Left = 340,
+                Top = 44,
+                Width = 28,
+                Height = 28,
+                SizeMode = PictureBoxSizeMode.StretchImage,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.LightGray,
+                Cursor = Cursors.Hand,
+            };
+            // [수정] 로컬 파일 선택(나만 보임)과 URL 설정(모두에게 공유) 중
+            // 고르게 컨텍스트 메뉴로 바꿨다 — 클릭 한 번으로 로컬 선택만
+            // 하던 예전 동작에서 확장.
+            var profileImageMenu = new ContextMenuStrip();
+            profileImageMenu.Items.Add("URL로 설정 (모두에게 공유)", null, (s, e) => SetMyProfileImageUrl());
+            profileImageMenu.Items.Add("이미지 업로드 (서버에 저장, 공유)", null, (s, e) => UploadMyProfileImage());
+            profileImageMenu.Items.Add("로컬 파일로 설정 (나만 보임)", null, (s, e) => SetMyProfileImage());
+            profileImageMenu.Items.Add("프로필 이미지 해제 (공유 해제)", null, (s, e) => ClearMyProfileImageUrl());
+            profileImageMenu.Items.Add("갤러리 관리", null, (s, e) => OpenProfileImageGallery());
+            _picProfileImage.Click += (s, e) => profileImageMenu.Show(_picProfileImage, new Point(0, _picProfileImage.Height));
+
             _btnConnect = new Button { Text = "접속", Left = 390, Top = 19, Width = 52, Height = 25 };
             _btnConnect.Click += BtnConnect_Click;
+            // [추가] 활성화 상태를 색으로 눈에 띄게 표시 — FlatStyle을 바꿔야
+            // BackColor가 실제로 반영된다(기본 Standard 스타일은 시스템 테마가
+            // 우선해서 BackColor를 무시하는 경우가 많다). 비활성화되면
+            // .NET이 자동으로 흐리게 렌더링해줘서 별도 처리 없이도 구분된다.
+            _btnConnect.FlatStyle = FlatStyle.Flat;
+            _btnConnect.FlatAppearance.BorderSize = 0;
+            _btnConnect.BackColor = Color.FromArgb(46, 160, 67); // 초록 계열
+            _btnConnect.ForeColor = Color.White;
 
             _btnDisconnect = new Button { Text = "끊기", Left = 445, Top = 19, Width = 52, Height = 25, Enabled = false };
             _btnDisconnect.Click += BtnDisconnect_Click;
@@ -182,7 +263,7 @@ namespace ChatApp
             groupBox1.Controls.AddRange(new Control[]
             {
                 lblIp, _txtServerIp, lblPort, _txtServerPort, lblProfile, _txtProfileName, _btnOpenNicknameDialog,
-                _btnConnect, _btnDisconnect, _lblStatus,
+                _picProfileImage, _btnConnect, _btnDisconnect, _lblStatus,
             });
 
             // ── 그룹박스 2: 채팅방(로비/룸) ──────────────────────────────
@@ -237,6 +318,9 @@ namespace ChatApp
             _btnSend.FlatStyle = FlatStyle.Flat;
             _btnSend.FlatAppearance.BorderSize = 1;
             _btnSend.FlatAppearance.BorderColor = Color.Gray;
+            // [추가] 활성화 상태를 색으로 눈에 띄게 표시 — _btnConnect와 같은 이유.
+            _btnSend.BackColor = Color.FromArgb(0, 132, 255); // 파랑 계열
+            _btnSend.ForeColor = Color.White;
             _btnSend.Click += BtnSend_Click;
 
             _listBoxChat = new ListBox
@@ -299,6 +383,7 @@ namespace ChatApp
                 foreach (var preview in _linkPreviewCache.Values)
                     preview.Thumbnail?.Dispose();
                 _listBoxChat.BackgroundImage?.Dispose();
+                _picProfileImage.Image?.Dispose();
             };
         }
 
@@ -371,6 +456,72 @@ namespace ChatApp
                 }
 
                 e.ItemHeight = (int)textSize.Height + baseHeight + previewHeight;
+            }
+        }
+
+        //***************************************************************************
+        // @brief 실제 프로필 사진이 없는 발신자를 위한 대체 아바타를 그린다
+        //        — 닉네임 기반으로 결정적으로 고른 색의 원 안에 첫 글자를
+        //        넣는다(디스코드/슬랙 방식). 같은 닉네임은 항상 같은 색이
+        //        나오므로, 실제 사진은 아니어도 "누가 누군지" 시각적으로
+        //        구분하는 데는 도움이 된다.
+        //***************************************************************************
+        private static readonly Color[] AvatarPalette =
+        {
+            Color.FromArgb(230, 126, 34), Color.FromArgb(41, 128, 185), Color.FromArgb(39, 174, 96),
+            Color.FromArgb(155, 89, 182), Color.FromArgb(231, 76, 60), Color.FromArgb(26, 188, 156),
+            Color.FromArgb(243, 156, 18), Color.FromArgb(52, 73, 94),
+        };
+
+        //***************************************************************************
+        // @brief 발신자 아바타를 그린다. profileImageUrl로 받아온 실제 이미지가
+        //        캐시에 있으면 그것을 원형으로 잘라 그리고, 없으면(아직 못
+        //        받아왔거나 URL 자체가 없거나 실패했으면) 닉네임 기반으로
+        //        결정적으로 고른 색의 원 안에 첫 글자를 넣는 생성 아바타로
+        //        대체한다(디스코드/슬랙 방식). 같은 닉네임은 항상 같은 색이
+        //        나오므로, 실제 사진이 없어도 "누가 누군지" 시각적으로
+        //        구분하는 데는 도움이 된다.
+        //***************************************************************************
+        private void DrawAvatar(Graphics g, string senderName, string profileImageUrl, Rectangle rect, int itemIndex)
+        {
+            Image avatarImage = null;
+            if (!string.IsNullOrEmpty(profileImageUrl))
+            {
+                lock (_avatarImageCache)
+                {
+                    _avatarImageCache.TryGetValue(profileImageUrl, out avatarImage);
+                }
+
+                if (avatarImage == null)
+                    RequestAvatarImage(profileImageUrl, itemIndex);
+            }
+
+            if (avatarImage != null)
+            {
+                using (var clipPath = new GraphicsPath())
+                {
+                    clipPath.AddEllipse(rect);
+                    Region previousClip = g.Clip;
+                    g.SetClip(clipPath, CombineMode.Intersect);
+                    g.DrawImage(avatarImage, rect);
+                    g.Clip = previousClip;
+                }
+                return;
+            }
+
+            string name = string.IsNullOrEmpty(senderName) ? "?" : senderName;
+            Color color = AvatarPalette[(uint)name.GetHashCode() % (uint)AvatarPalette.Length];
+
+            using (var brush = new SolidBrush(color))
+            {
+                g.FillEllipse(brush, rect);
+            }
+
+            string initial = name.Substring(0, 1).ToUpperInvariant();
+            using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            using (var avatarFont = new Font(_listBoxChat.Font.FontFamily, 10f, FontStyle.Bold))
+            {
+                g.DrawString(initial, avatarFont, Brushes.White, rect, format);
             }
         }
 
@@ -464,11 +615,21 @@ namespace ChatApp
                 else
                 {
                     // ── 상대가 보낸 메시지 — 좌측 배치 ────────────────────
+                    // [추가] 왼쪽에 발신자 아바타(색깔 원형 + 이니셜)를 그리고,
+                    // 닉네임/말풍선은 그만큼 오른쪽으로 밀어서 배치한다. 실제
+                    // 프로필 사진은 네트워크로 전송되지 않으므로, 닉네임을
+                    // 기반으로 결정적으로 생성한 아바타를 대신 쓴다.
+                    const int kAvatarSize = 28;
+                    const int kAvatarGap = 6;
                     const int kNameHeight = 15;
-                    int bubbleX = bounds.Left + 10;
+
+                    DrawAvatar(g, item.SenderName, item.SenderProfileImageUrl, new Rectangle(bounds.Left + 10, bounds.Top + 2, kAvatarSize, kAvatarSize), e.Index);
+
+                    int contentLeft = bounds.Left + 10 + kAvatarSize + kAvatarGap;
+                    int bubbleX = contentLeft;
                     int bubbleY = bounds.Top + kNameHeight + 5;
 
-                    g.DrawString(item.SenderName, _nameFont, nameColor, bounds.Left + 10, bounds.Top + 2);
+                    g.DrawString(item.SenderName, _nameFont, nameColor, contentLeft, bounds.Top + 2);
 
                     Rectangle bubbleRect = new Rectangle(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
 
@@ -760,6 +921,460 @@ namespace ChatApp
         }
 
         //***************************************************************************
+        // @brief 프로필 이미지 파일을 골라 _picProfileImage에 표시하고, 프로필
+        //        이름별로 경로를 로컬에 저장해둔다(다음 실행 때 다시 불러옴).
+        // @details [알려진 한계] 이 이미지는 순수 로컬 개인화용이다 — 서버
+        //          프로토콜에 이미지 전송 기능이 없어서 다른 사용자에게는
+        //          전혀 보이지 않는다. 실제로 공유하려면 서버에 이미지
+        //          업로드/전달 경로를 새로 만들어야 한다.
+        //***************************************************************************
+        private void SetMyProfileImage()
+        {
+            using (var dlg = new OpenFileDialog { Filter = "이미지 파일|*.png;*.jpg;*.jpeg;*.bmp;*.gif" })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    using (var original = Image.FromFile(dlg.FileName))
+                    {
+                        _picProfileImage.Image?.Dispose();
+                        _picProfileImage.Image = new Bitmap(original); // 파일 핸들 의존성 제거
+                    }
+                    _picProfileImage.BackColor = Color.White;
+
+                    if (!string.IsNullOrEmpty(_profileName))
+                        SaveMyProfileImagePath(_profileName, dlg.FileName);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "이미지를 불러오지 못했습니다: " + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        private static string ProfileImagePathFile(string profileName) =>
+            Path.Combine(AppContext.BaseDirectory, "chat_profile_image_" + profileName + ".dat");
+
+        private static void SaveMyProfileImagePath(string profileName, string imagePath)
+        {
+            try
+            {
+                File.WriteAllText(ProfileImagePathFile(profileName), imagePath);
+            }
+            catch
+            {
+                // 저장 실패해도 이번 세션 표시에는 지장 없음 — 다음 실행 때만 다시 물어보면 됨.
+            }
+        }
+
+        //***************************************************************************
+        // @brief 이전에 저장해둔 프로필 이미지가 있으면 불러와 표시한다.
+        //        파일이 없거나 로드에 실패해도 조용히 무시(기본 회색 칸 유지).
+        //***************************************************************************
+        private void LoadMyProfileImage(string profileName)
+        {
+            try
+            {
+                string path = ProfileImagePathFile(profileName);
+                if (!File.Exists(path))
+                    return;
+
+                string imagePath = File.ReadAllText(path).Trim();
+                if (string.IsNullOrEmpty(imagePath) || !File.Exists(imagePath))
+                    return;
+
+                using (var original = Image.FromFile(imagePath))
+                {
+                    _picProfileImage.Image?.Dispose();
+                    _picProfileImage.Image = new Bitmap(original);
+                }
+                _picProfileImage.BackColor = Color.White;
+            }
+            catch
+            {
+                // 손상된 파일 등 — 조용히 무시하고 기본 회색 칸 유지.
+            }
+        }
+
+        //***************************************************************************
+        // @brief 프로필 이미지를 URL로 설정 요청한다 — 성공하면 서버가 이
+        //        URL을 계정에 저장하고, 이후 내가 보내는 모든 채팅 메시지에
+        //        실려 다른 사람에게도 보인다(로컬 파일 방식과 달리 실제로 공유됨).
+        //        서버 연결 전이면 조용히 무시한다.
+        //***************************************************************************
+        //***************************************************************************
+        // @brief 서버가 알려준(또는 방금 내가 설정한) 내 프로필 이미지 URL을
+        //        실제로 내려받아 _picProfileImage에 반영한다. 실패해도 조용히
+        //        무시(기본 회색 칸 또는 이전 이미지 유지).
+        //***************************************************************************
+        private async void LoadMyProfileImageFromUrl(string url)
+        {
+            try
+            {
+                byte[] imageBytes = await FetchImageBytesAsync(url);
+                if (imageBytes == null || imageBytes.Length == 0)
+                    return;
+
+                using (var ms = new MemoryStream(imageBytes))
+                using (var original = Image.FromStream(ms))
+                {
+                    _picProfileImage.Image?.Dispose();
+                    _picProfileImage.Image = new Bitmap(original);
+                }
+                _picProfileImage.BackColor = Color.White;
+            }
+            catch
+            {
+                // 네트워크 오류 등 — 조용히 무시.
+            }
+        }
+
+        private void SetMyProfileImageUrl()
+        {
+            if (_client == null)
+            {
+                MessageBox.Show(this, "서버에 접속한 뒤에 설정할 수 있습니다.", "알림");
+                return;
+            }
+
+            string url = PromptForText(this, "프로필 이미지 URL", "이미지 URL (https://...)", _myProfileImageUrl);
+            if (url == null) // 취소
+                return;
+
+            _pendingProfileImageUrlRequest = url;
+            _client.RequestSetProfileImageUrl(url);
+        }
+
+        //***************************************************************************
+        // @brief 프로필 이미지 URL 공유를 해제한다(빈 문자열로 설정 요청).
+        //***************************************************************************
+        private void ClearMyProfileImageUrl()
+        {
+            if (_client == null)
+            {
+                MessageBox.Show(this, "서버에 접속한 뒤에 해제할 수 있습니다.", "알림");
+                return;
+            }
+
+            _pendingProfileImageUrlRequest = string.Empty;
+            _client.RequestSetProfileImageUrl(string.Empty);
+        }
+
+        //***************************************************************************
+        // @brief 파일을 골라 서버에 청크로 업로드하고, 성공하면 대표 이미지로
+        //        지정한다(서버가 업로드 완료 처리 안에서 곧바로 대표로 등록).
+        // @details Begin -> Chunk*N(응답 없음, 그냥 순서대로 다 보냄) -> End
+        //          -> End 응답 대기 순으로 진행한다. 각 단계의 서버 응답은
+        //          이벤트로 오는데, TaskCompletionSource로 감싸서 이 메서드
+        //          안에서 await로 순서대로 기다리는 형태로 만들었다.
+        //***************************************************************************
+        private async void UploadMyProfileImage()
+        {
+            if (_client == null)
+            {
+                MessageBox.Show(this, "서버에 접속한 뒤에 업로드할 수 있습니다.", "알림");
+                return;
+            }
+
+            using (var dlg = new OpenFileDialog { Filter = "이미지 파일|*.png;*.jpg;*.jpeg;*.bmp;*.gif" })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                byte[] fileBytes;
+                try
+                {
+                    fileBytes = File.ReadAllBytes(dlg.FileName);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "파일을 읽지 못했습니다: " + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (fileBytes.Length > ProtocolConstants.MaxProfileImageBytes)
+                {
+                    MessageBox.Show(this, $"이미지가 너무 큽니다(최대 {ProtocolConstants.MaxProfileImageBytes / 1024 / 1024}MB).", "알림");
+                    return;
+                }
+
+                string extension = Path.GetExtension(dlg.FileName);
+                if (string.IsNullOrEmpty(extension))
+                    extension = ".png";
+
+                AppendSystemLog("[시스템] 프로필 이미지 업로드 중...", ColorSystemInfo);
+
+                try
+                {
+                    _uploadBeginTcs = new TaskCompletionSource<UploadProfileImageBeginResData>();
+                    _client.RequestUploadProfileImageBegin(fileBytes.Length, extension);
+
+                    var beginResult = await WaitWithTimeout(_uploadBeginTcs.Task, TimeSpan.FromSeconds(10));
+                    if (beginResult == null || !beginResult.Success)
+                    {
+                        AppendSystemLog("[시스템] 업로드 시작 실패", ColorSystemError);
+                        return;
+                    }
+
+                    uint uploadId = beginResult.UploadId;
+
+                    for (int offset = 0; offset < fileBytes.Length; offset += ProtocolConstants.ImageChunkBytes)
+                    {
+                        int chunkSize = Math.Min(ProtocolConstants.ImageChunkBytes, fileBytes.Length - offset);
+                        var chunk = new byte[chunkSize];
+                        Array.Copy(fileBytes, offset, chunk, 0, chunkSize);
+                        uint chunkIndex = (uint)(offset / ProtocolConstants.ImageChunkBytes);
+                        _client.SendUploadProfileImageChunk(uploadId, chunkIndex, chunk, chunkSize);
+                    }
+
+                    _uploadEndTcs = new TaskCompletionSource<UploadProfileImageEndResData>();
+                    _client.RequestUploadProfileImageEnd(uploadId);
+
+                    var endResult = await WaitWithTimeout(_uploadEndTcs.Task, TimeSpan.FromSeconds(15));
+                    if (endResult == null || !endResult.Success)
+                    {
+                        AppendSystemLog("[시스템] 업로드 완료 처리 실패", ColorSystemError);
+                        return;
+                    }
+
+                    _myProfileImageUrl = endResult.ImageRef;
+                    LoadMyProfileImageFromUrl(_myProfileImageUrl);
+                    AppendSystemLog("[시스템] 프로필 이미지 업로드 및 대표 지정 완료", ColorSystemOk);
+                }
+                finally
+                {
+                    _uploadBeginTcs = null;
+                    _uploadEndTcs = null;
+                }
+            }
+        }
+
+        //***************************************************************************
+        // @brief task가 timeout 안에 끝나면 그 결과를, 아니면 null을 반환한다.
+        //        서버가 응답을 영영 안 주는 경우(연결 끊김 등)에 이 메서드
+        //        호출부가 무한정 멈춰있지 않게 하기 위함.
+        //***************************************************************************
+        private static async Task<T> WaitWithTimeout<T>(Task<T> task, TimeSpan timeout) where T : class
+        {
+            var completed = await Task.WhenAny(task, Task.Delay(timeout));
+            return completed == task ? task.Result : null;
+        }
+
+        //***************************************************************************
+        // @brief 프로필 이미지 갤러리(목록/선택/삭제) 팝업을 연다. 갤러리 안에서
+        //        대표 이미지가 바뀌었으면(ProfileImageGalleryDialog.ActiveImageRef가
+        //        null이 아니면), 닫힌 뒤 내 프로필 이미지 표시도 그에 맞게 갱신한다.
+        //***************************************************************************
+        private void OpenProfileImageGallery()
+        {
+            if (_client == null)
+            {
+                MessageBox.Show(this, "서버에 접속한 뒤에 갤러리를 볼 수 있습니다.", "알림");
+                return;
+            }
+
+            using (var dialog = new ProfileImageGalleryDialog(_client, _httpClient))
+            {
+                dialog.ShowDialog(this);
+
+                if (dialog.ActiveImageRef != null)
+                {
+                    _myProfileImageUrl = dialog.ActiveImageRef;
+
+                    if (string.IsNullOrEmpty(_myProfileImageUrl))
+                    {
+                        _picProfileImage.Image?.Dispose();
+                        _picProfileImage.Image = null;
+                        _picProfileImage.BackColor = Color.LightGray;
+                    }
+                    else
+                    {
+                        LoadMyProfileImageFromUrl(_myProfileImageUrl);
+                    }
+                }
+            }
+        }
+
+        //***************************************************************************
+        // @brief 간단한 한 줄 텍스트 입력 대화상자. WinForms에 내장 InputBox가
+        //        없어서 최소 구성으로 직접 만들었다.
+        // @return 확인을 누르면 입력한 문자열(트림됨), 취소하면 null.
+        //***************************************************************************
+        private static string PromptForText(IWin32Window owner, string title, string label, string initialValue)
+        {
+            using (var dlg = new Form())
+            {
+                dlg.Text = title;
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.ClientSize = new Size(360, 110);
+                dlg.MaximizeBox = false;
+                dlg.MinimizeBox = false;
+                dlg.ShowInTaskbar = false;
+
+                var lbl = new Label { Text = label, Left = 10, Top = 15, Width = 340 };
+                var txt = new TextBox { Left = 10, Top = 35, Width = 340, Text = initialValue ?? string.Empty };
+                var btnOk = new Button { Text = "확인", Left = 190, Top = 70, Width = 75, DialogResult = DialogResult.OK };
+                var btnCancel = new Button { Text = "취소", Left = 275, Top = 70, Width = 75, DialogResult = DialogResult.Cancel };
+
+                dlg.Controls.AddRange(new Control[] { lbl, txt, btnOk, btnCancel });
+                dlg.AcceptButton = btnOk;
+                dlg.CancelButton = btnCancel;
+
+                return dlg.ShowDialog(owner) == DialogResult.OK ? txt.Text.Trim() : null;
+            }
+        }
+
+        //***************************************************************************
+        // @brief url의 프로필 이미지를 요청한다(아바타용). 이미 캐시에 있거나
+        //        요청이 진행 중이면 새로 요청하지 않는다 — RequestLinkPreview()와
+        //        동일한 "URL 하나당 한 번만" 원칙.
+        //***************************************************************************
+        private void RequestAvatarImage(string url, int itemIndex)
+        {
+            if (string.IsNullOrEmpty(url))
+                return;
+
+            lock (_avatarImageCache)
+            {
+                if (_avatarImageCache.ContainsKey(url) || _avatarFetchInProgress.Contains(url))
+                    return;
+                _avatarFetchInProgress.Add(url);
+            }
+
+            _ = FetchAvatarImageAsync(url, itemIndex);
+        }
+
+        //***************************************************************************
+        // @brief url의 이미지를 내려받아 아바타 캐시에 저장한다. 실패하면
+        //        캐시에 아무것도 안 넣는다 — DrawAvatar()가 계속 생성 아바타로
+        //        대체하며, 재시도는 하지 않는다(데모 범위에서 재시도 정책까지는
+        //        과함).
+        //***************************************************************************
+        //***************************************************************************
+        // @brief imageRef가 "local:"이면 TCP 청크 다운로드 프로토콜로, 아니면
+        //        (실제 URL) 기존처럼 HttpClient로 이미지 바이트를 가져온다.
+        //        링크 미리보기 썸네일, 아바타, 내 프로필 이미지 표시 등
+        //        이미지가 필요한 모든 곳이 이 헬퍼 하나로 통일해서 쓴다.
+        //***************************************************************************
+        private async Task<byte[]> FetchImageBytesAsync(string imageRef)
+        {
+            if (imageRef.StartsWith("local:", StringComparison.OrdinalIgnoreCase))
+                return await DownloadLocalProfileImageAsync(imageRef);
+
+            return await _httpClient.GetByteArrayAsync(imageRef);
+        }
+
+        //***************************************************************************
+        // @brief 서버가 로컬에 저장한 이미지를 청크 다운로드 프로토콜로 받아온다.
+        // @details 이벤트 기반 네트워크 콜백을 TaskCompletionSource로 감싸서
+        //          await 가능한 형태로 만든다. 여러 다운로드가 동시에 진행돼도
+        //          각 호출이 자기 downloadId만 걸러서 처리하므로 서로 안 섞인다
+        //          — 다만 이벤트 구독/해지를 매번 하므로, 아주 많은 이미지를
+        //          한꺼번에 내려받으면(예: 큰 갤러리) 구독이 잠깐 여러 개
+        //          겹칠 수 있다(정확성엔 문제없고, 약간의 오버헤드만 있음).
+        //***************************************************************************
+        private Task<byte[]> DownloadLocalProfileImageAsync(string imageRef)
+        {
+            var tcs = new TaskCompletionSource<byte[]>();
+
+            if (_client == null)
+            {
+                tcs.TrySetResult(null);
+                return tcs.Task;
+            }
+
+            var buffer = new List<byte>();
+            uint expectedDownloadId = 0;
+            bool started = false;
+
+            Action<DownloadProfileImageBeginResData> onBegin = null;
+            Action<DownloadProfileImageChunkResData> onChunk = null;
+            Action<DownloadProfileImageEndResData> onEnd = null;
+
+            void Cleanup()
+            {
+                _client.DownloadProfileImageBeginReceived -= onBegin;
+                _client.DownloadProfileImageChunkReceived -= onChunk;
+                _client.DownloadProfileImageEndReceived -= onEnd;
+            }
+
+            onBegin = data =>
+            {
+                if (started) // 이미 다른 다운로드의 Begin을 처리한 뒤라면 무시(방어적)
+                    return;
+
+                if (!data.Success)
+                {
+                    Cleanup();
+                    tcs.TrySetResult(null);
+                    return;
+                }
+
+                expectedDownloadId = data.DownloadId;
+                started = true;
+            };
+
+            onChunk = data =>
+            {
+                if (!started || data.DownloadId != expectedDownloadId)
+                    return; // 다른 다운로드의 청크 — 무시
+
+                buffer.AddRange(data.ChunkData);
+            };
+
+            onEnd = data =>
+            {
+                if (!started || data.DownloadId != expectedDownloadId)
+                    return;
+
+                Cleanup();
+                tcs.TrySetResult(buffer.ToArray());
+            };
+
+            _client.DownloadProfileImageBeginReceived += onBegin;
+            _client.DownloadProfileImageChunkReceived += onChunk;
+            _client.DownloadProfileImageEndReceived += onEnd;
+
+            _client.RequestDownloadProfileImage(imageRef);
+
+            return tcs.Task;
+        }
+
+        private async Task FetchAvatarImageAsync(string url, int itemIndex)
+        {
+            try
+            {
+                byte[] imageBytes = await FetchImageBytesAsync(url);
+                if (imageBytes == null || imageBytes.Length == 0)
+                    return;
+
+                using (var ms = new MemoryStream(imageBytes))
+                using (var original = Image.FromStream(ms))
+                {
+                    lock (_avatarImageCache)
+                    {
+                        _avatarImageCache[url] = new Bitmap(original);
+                    }
+                }
+            }
+            catch
+            {
+                // 네트워크 오류, 잘못된 URL, 이미지 디코딩 실패 등 — 조용히 무시.
+            }
+            finally
+            {
+                lock (_avatarImageCache)
+                {
+                    _avatarFetchInProgress.Remove(url);
+                }
+                RefreshChatItem(itemIndex);
+            }
+        }
+
+        //***************************************************************************
         // @brief url의 미리보기 데이터를 요청한다. 이미 캐시에 있으면(로딩
         //        중이든 완료든) 새로 요청하지 않는다 — 같은 링크를 여러
         //        메시지가 참조해도 네트워크 요청은 한 번뿐이다.
@@ -886,9 +1501,9 @@ namespace ChatApp
             return m.Success ? WebUtility.HtmlDecode(m.Groups[1].Value.Trim()) : null;
         }
 
-        private void AppendChat(string senderName, string message, bool isMyMessage)
+        private void AppendChat(string senderName, string senderProfileImageUrl, string message, bool isMyMessage)
         {
-            _listBoxChat.Items.Add(new ChatBubbleItem(senderName, message, isMyMessage));
+            _listBoxChat.Items.Add(new ChatBubbleItem(senderName, senderProfileImageUrl, message, isMyMessage));
             int newIndex = _listBoxChat.Items.Count - 1;
             _listBoxChat.TopIndex = newIndex;
 
@@ -963,6 +1578,7 @@ namespace ChatApp
             }
 
             _profileName = profileName;
+            LoadMyProfileImage(profileName);
             _currentRoomId = -1;
             UpdateRoomStatusUI();
 
@@ -978,6 +1594,12 @@ namespace ChatApp
             _client.RoomLeaveResultReceived += OnRoomLeaveResultReceived;
             _client.RoomUserCountChanged += OnRoomUserCountChanged;
             _client.ServerUserCountReceived += OnServerUserCountReceived;
+            _client.SetProfileImageUrlResultReceived += OnSetProfileImageUrlResultReceived;
+            // [추가] 업로드 시작/완료 응답은 UploadMyProfileImage()의 await 흐름과
+            // TaskCompletionSource로 연결한다 — 진행 중인 업로드가 없을 때
+            // (필드가 null일 때) 도착하면 조용히 무시한다.
+            _client.UploadProfileImageBeginResultReceived += data => _uploadBeginTcs?.TrySetResult(data);
+            _client.UploadProfileImageEndResultReceived += data => _uploadEndTcs?.TrySetResult(data);
             _client.Disconnected += OnDisconnected;
             _client.ErrorOccurred += OnErrorOccurred;
 
@@ -1028,7 +1650,7 @@ namespace ChatApp
                 _pendingSentEchoes.Enqueue(msg);
             }
 
-            AppendChat(_currentNickname ?? "나", msg, isMyMessage: true);
+            AppendChat(_currentNickname ?? "나", _myProfileImageUrl, msg, isMyMessage: true);
 
             _client?.SendChat(msg);
             _txtMessage.Clear();
@@ -1087,7 +1709,16 @@ namespace ChatApp
                     SetStatus(string.Empty, Color.Gray);
 
                     _currentNickname = res.Nickname;
+                    _myProfileImageUrl = res.ProfileImageUrl ?? string.Empty;
                     AppendSystemLog("[시스템] 로그인 성공 - 닉네임: " + res.Nickname, ColorSystemOk);
+
+                    // 서버가 기억하고 있는(=다른 사람에게 보이는) 프로필
+                    // 이미지가 있으면 내 화면에도 그 실제 이미지를 반영한다
+                    // — 로컬에서 마지막으로 설정한 이미지와 다를 수 있으므로
+                    // (다른 기기에서 URL로 설정했을 수 있음) 로그인 시점의
+                    // 서버 값을 우선한다.
+                    if (!string.IsNullOrEmpty(_myProfileImageUrl))
+                        LoadMyProfileImageFromUrl(_myProfileImageUrl);
 
                     // 서버가 로그인 직후 자동으로 로비에 배정한다 — 클라이언트도
                     // 그 전제로 현재 위치를 로비로 잡아둔다(서버의 RoomUserCountNotify가
@@ -1147,7 +1778,7 @@ namespace ChatApp
             if (isOwnEcho)
                 return;
 
-            Invoke((MethodInvoker)delegate { AppendChat(data.SenderNickname, data.Message, isMyMessage: false); });
+            Invoke((MethodInvoker)delegate { AppendChat(data.SenderNickname, data.SenderProfileImageUrl, data.Message, isMyMessage: false); });
         }
 
         private void OnRoomEnterResultReceived(RoomEnterResPacketData res)
@@ -1213,6 +1844,39 @@ namespace ChatApp
             {
                 _txtServerUserCount.Text = data.UserCount.ToString();
                 _txtLobbyUserCount.Text = data.LobbyUserCount.ToString();
+            });
+        }
+
+        //***************************************************************************
+        // @brief 프로필 이미지 URL 설정/해제 요청에 대한 서버 응답 처리.
+        //        응답 패킷 자체엔 URL이 없어서, 요청 시점에 이 폼이 기억해둔
+        //        _pendingProfileImageUrlRequest를 그대로 참고한다.
+        //***************************************************************************
+        private void OnSetProfileImageUrlResultReceived(SetProfileImageUrlResPacketData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (data.Success)
+                {
+                    _myProfileImageUrl = _pendingProfileImageUrlRequest ?? string.Empty;
+
+                    if (string.IsNullOrEmpty(_myProfileImageUrl))
+                    {
+                        _picProfileImage.Image?.Dispose();
+                        _picProfileImage.Image = null;
+                        _picProfileImage.BackColor = Color.LightGray;
+                        AppendSystemLog("[시스템] 프로필 이미지가 해제되었습니다.", ColorSystemOk);
+                    }
+                    else
+                    {
+                        LoadMyProfileImageFromUrl(_myProfileImageUrl);
+                        AppendSystemLog("[시스템] 프로필 이미지가 설정되었습니다 - " + _myProfileImageUrl, ColorSystemOk);
+                    }
+                }
+                else
+                {
+                    AppendSystemLog("[시스템] 프로필 이미지 설정 실패 - 서버 오류", ColorSystemError);
+                }
             });
         }
 
