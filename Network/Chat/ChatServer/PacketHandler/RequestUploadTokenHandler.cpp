@@ -51,7 +51,13 @@ namespace
 
 				if( success )
 				{
-					const size_t tokenCopyLen = (std::min)(uploadToken.size(), sizeof(res.uploadToken) - 1);
+					// [수정] uploadToken은 항상 정확히 64자(32바이트 난수의
+					// 16진 인코딩)라 필드 크기(64바이트)를 꽉 채운다 — 다른
+					// 가변 길이 문자열 필드처럼 NUL 종단 여유(-1)를 두면
+					// 마지막 한 글자가 잘려서 Redis에 SET한 실제 키와
+					// 안 맞게 된다(그래서 GET이 항상 실패했음). fileServerUrl은
+					// 가변 길이라 그 필드는 여유를 그대로 둔다.
+					const size_t tokenCopyLen = (std::min)(uploadToken.size(), sizeof(res.uploadToken));
 					::memcpy(res.uploadToken, uploadToken.data(), tokenCopyLen);
 
 					const size_t urlCopyLen = (std::min)(fileServerUrl.size(), sizeof(res.fileServerUrl) - 1);

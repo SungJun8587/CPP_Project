@@ -34,7 +34,7 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestDeleteProfileImage(sessionRef, publicId, imageId,
-			[sessionWeak](ELoginResult result, int64 /*imageId*/, bool wasActive)
+			[sessionWeak](ELoginResult result, int64 /*imageId*/, bool wasActive, const std::string& /*deletedImageRef*/)
 			{
 				auto session = sessionWeak.lock();
 				if( session == nullptr )

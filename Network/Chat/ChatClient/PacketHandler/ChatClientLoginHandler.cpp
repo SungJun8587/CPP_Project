@@ -26,6 +26,10 @@ namespace
 		char safeNicknameBuf[kNicknameBytes + 1] = {};
 		::memcpy(safeNicknameBuf, packet->nickname, sizeof(packet->nickname));
 
+		// profileImageUrl[kProfileImageUrlBytes]도 동일하게 방어
+		char safeUrlBuf[kProfileImageUrlBytes + 1] = {};
+		::memcpy(safeUrlBuf, packet->profileImageUrl, sizeof(packet->profileImageUrl));
+
 		std::array<BYTE, kPublicIdBytes> publicId{};
 		std::array<BYTE, kTokenBytes> token{};
 		if( packet->success != 0 )
@@ -35,7 +39,7 @@ namespace
 		}
 
 		if( CChatClientMain* client = session.GetClient() )
-			client->OnLoginResult(packet->success != 0, static_cast<ELoginResult>(packet->reason), safeNicknameBuf, publicId, token);
+			client->OnLoginResult(packet->success != 0, static_cast<ELoginResult>(packet->reason), safeNicknameBuf, publicId, token, safeUrlBuf);
 	}
 }
 

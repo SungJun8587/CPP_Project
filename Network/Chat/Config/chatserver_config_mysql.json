@@ -1,4 +1,6 @@
 {
+    "ServiceName": "",
+    "DisplayName": "",
     "Name": "ChatServer",
     "GroupId": 1,
     "ChannelId": 1,
@@ -12,6 +14,7 @@
     "DbWorkerThreadCnt": 4,
     "HeartbeatTtlSec": 15,
     "HeartbeatIntervalSec": 5,
+    "FileServerUrl": "http://127.0.0.1:8081",
     "DBNode": [
         {
             "ID": 2,

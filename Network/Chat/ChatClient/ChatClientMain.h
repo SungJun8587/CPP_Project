@@ -8,7 +8,7 @@
 #define UC_CHATCLIENTMAIN_H
 
 #include <Network/NetworkCommon.h>
-#include "ChatPacket.h"
+#include "ChatPacket.h"		// ELoginResult, kPublicIdBytes
 #include <Crypto/CryptoUtil.h>
 
 #include <string>
@@ -113,9 +113,38 @@ public:
 	//***************************************************************************
 	void RequestServerUserCount();
 
+	//***************************************************************************
+	// @brief 내 프로필 이미지 URL을 설정 요청합니다(폴링과 무관, 즉시 전송).
+	//        빈 문자열이면 "프로필 이미지 해제". 아직 연결/로그인 전이면
+	//        조용히 무시됩니다.
+	//***************************************************************************
+	void RequestSetProfileImageUrl(const std::string& url);
+
+	//***************************************************************************
+	// @brief 파일 서버 업로드용 임시 토큰 발급을 요청합니다.
+	// @details [설계] 실제 HTTP 업로드는 이 콘솔 클라이언트 범위 밖이다 —
+	//          토큰 발급까지의 프로토콜만 다룬다(ChatClient.cpp 참고).
+	//***************************************************************************
+	void RequestUploadToken();
+
+	//***************************************************************************
+	// @brief 내 프로필 이미지 갤러리 목록 조회를 요청합니다.
+	//***************************************************************************
+	void RequestListProfileImages();
+
+	//***************************************************************************
+	// @brief 갤러리 이미지 하나를 대표로 지정 요청합니다.
+	//***************************************************************************
+	void RequestSelectProfileImage(int64 imageId);
+
+	//***************************************************************************
+	// @brief 갤러리 이미지 하나 삭제를 요청합니다.
+	//***************************************************************************
+	void RequestDeleteProfileImage(int64 imageId);
+
 public:
-	using LoginResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& nickname)>;
-	using ChatMessageHandler = std::function<void(const std::string& senderNickname, const std::string& message)>;
+	using LoginResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& nickname, const std::string& profileImageUrl)>;
+	using ChatMessageHandler = std::function<void(const std::string& senderNickname, const std::string& senderProfileImageUrl, const std::string& message)>;
 	using DisconnectedHandler = std::function<void()>;
 	using NicknameGeneratedHandler = std::function<void(const std::string& nickname)>;
 	using NicknameChangeResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& newNickname)>;
@@ -123,6 +152,24 @@ public:
 	using RoomLeaveResultHandler = std::function<void(bool success, int32 roomId, int32 roomUserCount)>;
 	using RoomUserCountChangedHandler = std::function<void(int32 roomId, int32 userCount)>;
 	using ServerUserCountResultHandler = std::function<void(int32 userCount, int32 lobbyUserCount)>;
+	using SetProfileImageUrlResultHandler = std::function<void(bool success, const std::string& newUrl)>;
+
+	//***************************************************************************
+	// @brief 업로드 토큰 발급 결과. 실제 HTTP 업로드는 이 콘솔 클라이언트가
+	//        안 하므로, 발급된 토큰/파일서버 주소를 그대로 화면에 보여주는
+	//        용도로만 쓰인다(ChatClient.cpp 참고).
+	//***************************************************************************
+	using UploadTokenResultHandler = std::function<void(bool success, ELoginResult reason, const std::string& uploadToken, const std::string& fileServerUrl)>;
+
+	//***************************************************************************
+	// @brief 갤러리 목록 항목 하나(가변 개수라 항목마다 한 번씩 호출됨)와
+	//        목록 전송 완료(총 개수 통지)를 위한 핸들러.
+	//***************************************************************************
+	using ProfileImageListItemHandler = std::function<void(int64 imageId, const std::string& imageRef, bool isActive)>;
+	using ProfileImageListEndHandler = std::function<void(int32 totalCount)>;
+
+	using SelectProfileImageResultHandler = std::function<void(bool success, ELoginResult reason)>;
+	using DeleteProfileImageResultHandler = std::function<void(bool success, ELoginResult reason)>;
 
 	void SetOnLoginResult(LoginResultHandler handler) { _onLoginResult = std::move(handler); }
 	void SetOnChatMessage(ChatMessageHandler handler) { _onChatMessage = std::move(handler); }
@@ -133,6 +180,12 @@ public:
 	void SetOnRoomLeaveResult(RoomLeaveResultHandler handler) { _onRoomLeaveResult = std::move(handler); }
 	void SetOnRoomUserCountChanged(RoomUserCountChangedHandler handler) { _onRoomUserCountChanged = std::move(handler); }
 	void SetOnServerUserCountResult(ServerUserCountResultHandler handler) { _onServerUserCountResult = std::move(handler); }
+	void SetOnSetProfileImageUrlResult(SetProfileImageUrlResultHandler handler) { _onSetProfileImageUrlResult = std::move(handler); }
+	void SetOnUploadTokenResult(UploadTokenResultHandler handler) { _onUploadTokenResult = std::move(handler); }
+	void SetOnProfileImageListItem(ProfileImageListItemHandler handler) { _onProfileImageListItem = std::move(handler); }
+	void SetOnProfileImageListEnd(ProfileImageListEndHandler handler) { _onProfileImageListEnd = std::move(handler); }
+	void SetOnSelectProfileImageResult(SelectProfileImageResultHandler handler) { _onSelectProfileImageResult = std::move(handler); }
+	void SetOnDeleteProfileImageResult(DeleteProfileImageResultHandler handler) { _onDeleteProfileImageResult = std::move(handler); }
 
 public:
 	// CChatClientSession에서 호출하는 콜백들 (IOCP 워커 스레드에서 호출됨 — 클래스 상단 주석 참고)
@@ -146,8 +199,9 @@ public:
 	//***************************************************************************
 	void OnLoginResult(bool success, ELoginResult reason, const std::string& nickname,
 		const std::array<BYTE, kPublicIdBytes>& publicId,
-		const std::array<BYTE, kTokenBytes>& newToken);
-	void OnChatReceived(const std::string& senderNickname, const std::string& message);
+		const std::array<BYTE, kTokenBytes>& newToken,
+		const std::string& profileImageUrl);
+	void OnChatReceived(const std::string& senderNickname, const std::string& senderProfileImageUrl, const std::string& message);
 	void OnSessionClosed();
 	void OnNicknameGenerated(const std::string& nickname);
 
@@ -165,6 +219,24 @@ public:
 	void OnRoomLeaveResult(bool success, int32 roomId, int32 roomUserCount);
 	void OnRoomUserCountChanged(int32 roomId, int32 userCount);
 	void OnServerUserCountResult(int32 userCount, int32 lobbyUserCount);
+
+	//***************************************************************************
+	// @brief 프로필 이미지 URL 설정 응답 수신 시 CChatClientSession이 호출합니다.
+	//***************************************************************************
+	void OnSetProfileImageUrlResult(bool success, const std::string& newUrl);
+
+	//***************************************************************************
+	// @brief 업로드 토큰 발급 응답 수신 시 CChatClientSession이 호출합니다.
+	//***************************************************************************
+	void OnUploadTokenResult(bool success, ELoginResult reason, const std::string& uploadToken, const std::string& fileServerUrl);
+
+	//***************************************************************************
+	// @brief 갤러리 목록 항목/완료 통지, 선택/삭제 응답 수신 시 호출됩니다.
+	//***************************************************************************
+	void OnProfileImageListItem(int64 imageId, const std::string& imageRef, bool isActive);
+	void OnProfileImageListEnd(int32 totalCount);
+	void OnSelectProfileImageResult(bool success, ELoginResult reason);
+	void OnDeleteProfileImageResult(bool success, ELoginResult reason);
 
 private:
 	static _tstring TokenFilePath(const std::string& profileName);
@@ -199,6 +271,12 @@ private:
 	RoomLeaveResultHandler		_onRoomLeaveResult;
 	RoomUserCountChangedHandler	_onRoomUserCountChanged;
 	ServerUserCountResultHandler	_onServerUserCountResult;
+	SetProfileImageUrlResultHandler	_onSetProfileImageUrlResult;
+	UploadTokenResultHandler		_onUploadTokenResult;
+	ProfileImageListItemHandler	_onProfileImageListItem;
+	ProfileImageListEndHandler		_onProfileImageListEnd;
+	SelectProfileImageResultHandler	_onSelectProfileImageResult;
+	DeleteProfileImageResultHandler	_onDeleteProfileImageResult;
 };
 
 

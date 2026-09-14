@@ -237,7 +237,6 @@
     <ClInclude Include="DBDeleteProfileImageRequest.h" />
     <ClInclude Include="DBListProfileImagesRequest.h" />
     <ClInclude Include="DBSelectProfileImageRequest.h" />
-    <ClInclude Include="DbServiceManager.h" />
     <ClInclude Include="DBSetProfileImageUrlRequest.h" />
     <ClInclude Include="DBSignupRequest.h" />
     <ClInclude Include="NicknameValidation.h" />

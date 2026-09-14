@@ -62,7 +62,8 @@ struct ST_SIGNUP_REQ : public st_DBAsyncRq
 		ELoginResult result,
 		const std::string& nickname,
 		const std::array<BYTE, kPublicIdBytes>& publicId,
-		const std::array<BYTE, kTokenBytes>& newToken)>	onComplete;
+		const std::array<BYTE, kTokenBytes>& newToken,
+		const std::string& profileImageUrl)>	onComplete;
 };
 
 #endif // ndef UC_DBSIGNUPREQUEST_H

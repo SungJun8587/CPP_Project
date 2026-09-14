@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS users
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
 COLLATE = utf8mb4_unicode_ci
-COMMENT = '채팅 서버 회원 계정 — uid(내부 PK)/public_id(외부 식별자) 분리, 닉네임은 변경 가능한 표시용 컬럼(AccountDBHandler.cpp/ChangeNicknameDBHandler.cpp)';
+COMMENT = '채팅 서버 회원 계정';
 
 -- ---------------------------------------------------------------------------
 -- user_profile_images : 유저당 여러 장의 프로필 이미지를 저장하는 갤러리.
@@ -96,10 +96,9 @@ CREATE TABLE user_profile_images
 	user_public_id CHAR(32)     NOT NULL COMMENT 'users.public_id 참조 — 이 프로젝트 전체가 계정 식별에 쓰는 값과 동일',
 	image_ref    VARCHAR(500) NOT NULL COMMENT '"local:{경로}" 또는 실제 URL',
 	file_size    INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '원본 파일 크기(바이트). local: 참조일 때만 의미 있고, 외부 URL이면 0',
-	status       TINYINT(1)   NOT NULL DEFAULT 0 COMMENT '0=일반, 1=대표(활성) 프로필 이미지. 한 계정당 1인 행은 최대 하나만 있어야 하며, 애플리케이션(SetProfileImageUrlDBHandler.cpp/SelectProfileImageDBHandler.cpp)이 새로 1을 세팅하기 전에 기존 1인 행을 먼저 0으로 내려서 유지한다(DB 제약으로 강제하진 않음 — MySQL은 부분 유니크 인덱스를 지원하지 않음)',
+	status       TINYINT   NOT NULL DEFAULT 0 COMMENT '0=일반, 1=대표(활성) 프로필 이미지',
 	created_at   DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '업로드/등록 시각',
 
-	PRIMARY KEY (image_id),
 	INDEX idx_user_profile_images_public_id (user_public_id),
 	INDEX idx_user_profile_images_public_id_status (user_public_id, status),
 	CONSTRAINT fk_user_profile_images_user
@@ -109,7 +108,7 @@ CREATE TABLE user_profile_images
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
 COLLATE = utf8mb4_unicode_ci
-COMMENT = '유저당 여러 장 저장 가능한 프로필 이미지 갤러리 — status=1인 행이 현재 대표(활성) 이미지(SetProfileImageUrlDBHandler.cpp/SelectProfileImageDBHandler.cpp)';
+COMMENT = '유저당 여러 장 저장 가능한 프로필 이미지 갤러리';
 
 -- ---------------------------------------------------------------------------
 -- (선택) 애플리케이션 접속 계정 생성 — demo(ChatServer.cpp)의 CDBNode 설정과

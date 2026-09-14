@@ -131,6 +131,10 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="FileServer.cpp" />
+    <ClCompile Include="FileServerConfig.cpp" />
+    <ClCompile Include="FileServerMain.cpp" />
+    <ClCompile Include="FileServerSession.cpp" />
+    <ClCompile Include="LocalFileImageStorage.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -159,6 +163,9 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\ObjectPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Singleton.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpParseUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpRequestParser.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\MultipartFormParser.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.h" />
@@ -199,6 +206,11 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="FileServerConfig.h" />
+    <ClInclude Include="FileServerMain.h" />
+    <ClInclude Include="FileServerSession.h" />
+    <ClInclude Include="IImageStorage.h" />
+    <ClInclude Include="LocalFileImageStorage.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

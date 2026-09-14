@@ -89,6 +89,7 @@ using namespace std;
 #include "ChatPacketTypes.h"
 #include "ChatPacket.h"
 #include "ChatPacketDispatcher.h"
+#include "NicknameValidation.h"
 #include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 #include "DBChangeNicknameRequest.h"

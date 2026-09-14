@@ -72,9 +72,16 @@ using namespace std;
 #include <Network/NetworkCommon.h>
 #include <Network/HTTP/HttpParseUtil.h>
 #include <Network/HTTP/HttpRequestParser.h>
+#include <Network/HTTP/MultipartFormParser.h>
 
 #include <ServerConfig.h>
 
 #include <Redis/RedisCommon.h>
+
+#include "FileServerConfig.h"
+#include "IImageStorage.h"
+#include "LocalFileImageStorage.h"
+#include "FileServerSession.h"
+#include "FileServerMain.h"
 
 #endif // ndef PCH_H

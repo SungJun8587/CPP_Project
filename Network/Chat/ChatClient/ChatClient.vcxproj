@@ -108,6 +108,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetAddress.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetService.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetworkFactory.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\RingBuffer.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp" />
@@ -119,12 +120,16 @@
     <ClCompile Include="ChatClient.cpp" />
     <ClCompile Include="ChatClientMain.cpp" />
     <ClCompile Include="ChatClientSession.cpp" />
-    <ClCompile Include="Handler\ChatClientChangeNicknameHandler.cpp" />
-    <ClCompile Include="Handler\ChatClientLoginHandler.cpp" />
-    <ClCompile Include="Handler\ChatClientMessageHandler.cpp" />
-    <ClCompile Include="Handler\ChatClientNicknameHandler.cpp" />
-    <ClCompile Include="Handler\ChatClientRoomHandler.cpp" />
-    <ClCompile Include="Handler\ChatClientServerUserCountHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientChangeNicknameHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientDeleteProfileImageHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientListProfileImagesHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientLoginHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientMessageHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientNicknameHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientRoomHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientSelectProfileImageHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientServerUserCountHandler.cpp" />
+    <ClCompile Include="PacketHandler\ChatClientUploadTokenHandler.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -158,6 +163,8 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetworkCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetworkFactory.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetworkRedefineDataType.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Packet.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\RingBuffer.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Session.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.h" />

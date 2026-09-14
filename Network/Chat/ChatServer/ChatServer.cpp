@@ -100,7 +100,7 @@ int main()
 	// 6. 서버 설정 파일(JSON) 로드
 	// 6-1. 설정 파일 경로 지정
 	TCHAR tszConfigPath[FULLPATH_STRLEN];
-	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("Config\\server_config_mysql.json"));
+	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("Config\\chatserver_config_mysql.json"));
 
 	// 6-2. 설정 파일 파싱 — 실패 시 여기까지 초기화된 자원(BaseGlobal 등)을
 	//      MainClose()로 정리하고 종료

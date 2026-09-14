@@ -6,7 +6,8 @@
 
 #include "pch.h"
 #include "ChatClientMain.h"
-#include <Util/EncodingConvert.h>
+// [가정] AccountDBHandler.cpp 등과 동일한 경로 컨벤션으로 추정.
+#include <Util/EncodingConvert.h>	// UnicodeToUtf8()
 
 #include <iostream>
 #include <string>
@@ -227,7 +228,7 @@ int main()
 
 	CChatClientMain client;
 
-	client.SetOnLoginResult([](bool success, ELoginResult reason, const std::string& nickname)
+	client.SetOnLoginResult([](bool success, ELoginResult reason, const std::string& nickname, const std::string& profileImageUrl)
 		{
 			if( success )
 			{
@@ -242,7 +243,10 @@ int main()
 				// 곧바로 끊김). 로그인 성공은 세션의 "끝"이 아니라 "시작"
 				// 이므로, 여기서는 결과만 알리고 이후 흐름(채팅 루프)은
 				// main()이 정상적으로 이어가게 둔다.
-				PrintAsyncLine(L"[로그인 성공] 닉네임: " + Utf8ToTString(nickname), FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+				std::wstring msg = L"[로그인 성공] 닉네임: " + Utf8ToTString(nickname);
+				if( !profileImageUrl.empty() )
+					msg += L" (프로필 이미지: " + Utf8ToTString(profileImageUrl) + L")";
+				PrintAsyncLine(msg, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
 				return;
 			}
 
@@ -283,8 +287,10 @@ int main()
 			// 인프라를 강제로 뽑는 건 위험하다.
 		});
 
-	client.SetOnChatMessage([](const std::string& senderNickname, const std::string& message)
+	client.SetOnChatMessage([](const std::string& senderNickname, const std::string& /*senderProfileImageUrl*/, const std::string& message)
 		{
+			// [참고] 콘솔은 이미지를 렌더링할 수 없으므로 senderProfileImageUrl은
+			// 받기만 하고 화면엔 안 쓴다(GUI 클라이언트에서만 실제로 활용).
 			// [수정] 예전엔 여기서 곧바로 _tcout으로 출력해 std::getline()으로
 			// 입력 중이던 메인 스레드와 화면이 뒤섞였다 — 이제 PrintAsyncLine()이
 			// 입력 중이던 줄을 지웠다 복원까지 해주므로 걱정 없다.
@@ -320,6 +326,64 @@ int main()
 				break;
 			}
 			PrintAsyncLine(msg, FOREGROUND_RED | FOREGROUND_INTENSITY);
+		});
+
+	client.SetOnSetProfileImageUrlResult([](bool success, const std::string& newUrl)
+		{
+			if( success )
+			{
+				std::wstring msg = newUrl.empty()
+					? L"[프로필 이미지 해제됨]"
+					: (L"[프로필 이미지 설정 성공] -> " + Utf8ToTString(newUrl));
+				PrintAsyncLine(msg, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+			}
+			else
+			{
+				PrintAsyncLine(L"[프로필 이미지 설정 실패] 서버 오류 - 잠시 후 다시 시도해주세요.", FOREGROUND_RED | FOREGROUND_INTENSITY);
+			}
+		});
+
+	client.SetOnUploadTokenResult([](bool success, ELoginResult reason, const std::string& uploadToken, const std::string& fileServerUrl)
+		{
+			if( success )
+			{
+				// [참고] 이 콘솔 클라이언트는 실제 HTTP 업로드까지는 하지
+				// 않는다 — 발급된 토큰/파일서버 주소를 그대로 보여줄 뿐,
+				// 그걸로 파일 서버에 POST하는 건 별도 HTTP 클라이언트(예:
+				// curl, Postman, 또는 WinFormsClient)의 몫이다.
+				std::wstring msg = L"[업로드 토큰 발급 성공] token=" + Utf8ToTString(uploadToken)
+					+ L", fileServer=" + Utf8ToTString(fileServerUrl);
+				PrintAsyncLine(msg, FOREGROUND_GREEN | FOREGROUND_INTENSITY);
+			}
+			else
+			{
+				PrintAsyncLine(L"[업로드 토큰 발급 실패] 파일 서버가 설정돼 있지 않을 수 있습니다.", FOREGROUND_RED | FOREGROUND_INTENSITY);
+			}
+		});
+
+	client.SetOnProfileImageListItem([](int64 imageId, const std::string& imageRef, bool isActive)
+		{
+			std::wstring msg = L"  [" + std::to_wstring(imageId) + L"] " + Utf8ToTString(imageRef);
+			if( isActive )
+				msg += L"  <- 대표";
+			PrintAsyncLine(msg, isActive ? (FOREGROUND_GREEN | FOREGROUND_INTENSITY) : (FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE));
+		});
+
+	client.SetOnProfileImageListEnd([](int32 totalCount)
+		{
+			PrintAsyncLine(L"[갤러리] 총 " + std::to_wstring(totalCount) + L"개", FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+		});
+
+	client.SetOnSelectProfileImageResult([](bool success, ELoginResult /*reason*/)
+		{
+			PrintAsyncLine(success ? L"[대표 이미지 지정 성공]" : L"[대표 이미지 지정 실패]",
+				success ? (FOREGROUND_GREEN | FOREGROUND_INTENSITY) : (FOREGROUND_RED | FOREGROUND_INTENSITY));
+		});
+
+	client.SetOnDeleteProfileImageResult([](bool success, ELoginResult /*reason*/)
+		{
+			PrintAsyncLine(success ? L"[이미지 삭제 성공]" : L"[이미지 삭제 실패]",
+				success ? (FOREGROUND_GREEN | FOREGROUND_INTENSITY) : (FOREGROUND_RED | FOREGROUND_INTENSITY));
 		});
 
 	client.SetOnRoomEnterResult([](bool success, ERoomResult reason, int32 roomId, int32 roomUserCount)
@@ -381,7 +445,8 @@ int main()
 	g_pollThread = std::thread(ServerUserCountPollLoop, &client);
 
 	PrintAsyncLine(L"메시지를 입력하세요 (/quit 종료, /nick <새닉네임> 닉네임 변경, /room <1~"
-		+ std::to_wstring(kMaxRoomId) + L"> 방 입장, /leave 로비로 복귀):",
+		+ std::to_wstring(kMaxRoomId) + L"> 방 입장, /leave 로비로 복귀, /profileimg <URL> 프로필 이미지 설정(URL 생략 시 해제), "
+		L"/uploadtoken 업로드 토큰 발급, /gallery 갤러리 목록, /selectimg <ID> 대표 지정, /deleteimg <ID> 삭제):",
 		FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
 
 	for( ;; )
@@ -407,6 +472,64 @@ int main()
 			std::string newNickname = line.substr(std::strlen(kNickCommandPrefix));
 			if( !newNickname.empty() )
 				client.RequestChangeNickname(newNickname);
+			continue;
+		}
+
+		// [추가] 값 없이 "/profileimg"만 입력하면 해제(빈 URL 요청)로 처리한다
+		// — SetProfileImageUrlReqPacket은 빈 문자열을 "프로필 이미지 해제"로
+		// 해석하도록 서버/DB 핸들러가 이미 그렇게 설계돼 있다.
+		constexpr const char* kProfileImgCommandPrefix = "/profileimg";
+		if( line.rfind(kProfileImgCommandPrefix, 0) == 0 )
+		{
+			std::string rest = line.substr(std::strlen(kProfileImgCommandPrefix));
+			// 접두사 바로 뒤에 공백 하나(있으면)만 걷어내고 나머지를 URL로 쓴다.
+			if( !rest.empty() && rest.front() == ' ' )
+				rest.erase(0, 1);
+			client.RequestSetProfileImageUrl(rest);
+			continue;
+		}
+
+		constexpr const char* kUploadTokenCommand = "/uploadtoken";
+		if( line == kUploadTokenCommand )
+		{
+			client.RequestUploadToken();
+			continue;
+		}
+
+		constexpr const char* kGalleryCommand = "/gallery";
+		if( line == kGalleryCommand )
+		{
+			client.RequestListProfileImages();
+			continue;
+		}
+
+		constexpr const char* kSelectImgCommandPrefix = "/selectimg ";
+		if( line.rfind(kSelectImgCommandPrefix, 0) == 0 )
+		{
+			const std::string idStr = line.substr(std::strlen(kSelectImgCommandPrefix));
+			try
+			{
+				client.RequestSelectProfileImage(std::stoll(idStr));
+			}
+			catch( const std::exception& )
+			{
+				PrintAsyncLine(L"[사용법] /selectimg <이미지ID>", FOREGROUND_RED | FOREGROUND_INTENSITY);
+			}
+			continue;
+		}
+
+		constexpr const char* kDeleteImgCommandPrefix = "/deleteimg ";
+		if( line.rfind(kDeleteImgCommandPrefix, 0) == 0 )
+		{
+			const std::string idStr = line.substr(std::strlen(kDeleteImgCommandPrefix));
+			try
+			{
+				client.RequestDeleteProfileImage(std::stoll(idStr));
+			}
+			catch( const std::exception& )
+			{
+				PrintAsyncLine(L"[사용법] /deleteimg <이미지ID>", FOREGROUND_RED | FOREGROUND_INTENSITY);
+			}
 			continue;
 		}
 

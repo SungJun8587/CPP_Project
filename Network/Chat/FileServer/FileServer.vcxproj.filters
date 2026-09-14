@@ -117,6 +117,10 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp">
       <Filter>UtilCore\Network</Filter>
     </ClCompile>
+    <ClCompile Include="FileServerConfig.cpp" />
+    <ClCompile Include="FileServerMain.cpp" />
+    <ClCompile Include="FileServerSession.cpp" />
+    <ClCompile Include="LocalFileImageStorage.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -158,8 +162,8 @@
     <Filter Include="UtilCore\JSON">
       <UniqueIdentifier>{401716b6-1a79-4bc0-8d89-c54fd8187f72}</UniqueIdentifier>
     </Filter>
-    <Filter Include="PacketHandler">
-      <UniqueIdentifier>{778d97be-aecd-4f7d-b583-d1f7755aa9cb}</UniqueIdentifier>
+    <Filter Include="UtilCore\Network\HTTP">
+      <UniqueIdentifier>{279455c2-84d4-4dd6-baf1-73e1f02d1336}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -350,6 +354,20 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpParseUtil.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpRequestParser.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\MultipartFormParser.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="FileServerConfig.h" />
+    <ClInclude Include="FileServerMain.h" />
+    <ClInclude Include="FileServerSession.h" />
+    <ClInclude Include="IImageStorage.h" />
+    <ClInclude Include="LocalFileImageStorage.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">

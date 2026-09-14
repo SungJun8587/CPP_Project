@@ -223,7 +223,19 @@ public:
 		std::shared_ptr<CChatSession> session,
 		const std::array<BYTE, kPublicIdBytes>& publicId,
 		int64 imageId,
-		std::function<void(ELoginResult result, int64 imageId, bool wasActive)> onComplete);
+		std::function<void(ELoginResult result, int64 imageId, bool wasActive, const std::string& deletedImageRef)> onComplete);
+
+	//***************************************************************************
+	// @brief deletedImageRef가 이 서버가 알고 있는 파일 서버(_fileServerUrl)
+	//        소유의 참조("{fileServerUrl}/images/{경로}")면, 실제 파일 정리를
+	//        위해 그 상대 경로를 Redis 큐("FileServer:PendingDeletions")에
+	//        넣는다. 외부 URL이면(우리 파일 서버 소유가 아니면) 조용히 무시.
+	// @details [설계] 채팅 서버는 파일 서버에 직접 요청을 보내지 않는다 —
+	//          Redis 리스트에 "지울 것"만 적어두고, 파일 서버가 스스로
+	//          폴링하며 소비한다(FileServerMain::PollPendingDeletions() 참고).
+	//          두 서버가 서로 몰라도 되는 구조를 유지하기 위함.
+	//***************************************************************************
+	void ScheduleFileDeletionIfOwned(const std::string& deletedImageRef);
 
 	//***************************************************************************
 	// @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
@@ -275,6 +287,10 @@ public:
 	//          ServerUserCountReq로 주기적으로 물어보면 그 시점의 값을 그대로
 	//          돌려주는 폴링 방식으로 바꿨다 — ServerUserCountHandler.cpp가
 	//          이 함수를 호출해 응답을 만든다.
+	// @details [수정 — 접근 지정자 버그] 이 함수는 원래 public이어야 하는데
+	//          (ServerUserCountHandler.cpp가 외부에서 호출), 편집 과정에서
+	//          바로 아래 private: 구역에 잘못 끼어들어가 있었다. "'private
+	//          멤버에 액세스할 수 없습니다'" 컴파일 에러의 원인이었다.
 	//***************************************************************************
 	int32 GetServerUserCount() const;
 

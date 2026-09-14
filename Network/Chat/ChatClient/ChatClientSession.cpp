@@ -232,3 +232,49 @@ void CChatClientSession::SendSetProfileImageUrlReq(const std::string& url)
 
 	Send(&req, sizeof(req));
 }
+
+//***************************************************************************
+// @brief 업로드 토큰 발급 요청을 보냅니다. 바디 없음.
+//***************************************************************************
+void CChatClientSession::SendRequestUploadTokenReq()
+{
+	RequestUploadTokenReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::RequestUploadTokenReq);
+	req.size = sizeof(req);
+	Send(&req, sizeof(req));
+}
+
+//***************************************************************************
+// @brief 프로필 이미지 갤러리 목록 조회 요청을 보냅니다. 바디 없음.
+//***************************************************************************
+void CChatClientSession::SendListProfileImagesReq()
+{
+	ListProfileImagesReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::ListProfileImagesReq);
+	req.size = sizeof(req);
+	Send(&req, sizeof(req));
+}
+
+//***************************************************************************
+// @brief 갤러리 이미지 하나를 대표로 지정 요청을 보냅니다.
+//***************************************************************************
+void CChatClientSession::SendSelectProfileImageReq(int64 imageId)
+{
+	SelectProfileImageReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::SelectProfileImageReq);
+	req.size = sizeof(req);
+	req.imageId = imageId;
+	Send(&req, sizeof(req));
+}
+
+//***************************************************************************
+// @brief 갤러리 이미지 하나 삭제 요청을 보냅니다.
+//***************************************************************************
+void CChatClientSession::SendDeleteProfileImageReq(int64 imageId)
+{
+	DeleteProfileImageReqPacket req{};
+	req.type = static_cast<uint16>(EChatPacketType::DeleteProfileImageReq);
+	req.size = sizeof(req);
+	req.imageId = imageId;
+	Send(&req, sizeof(req));
+}

@@ -6,10 +6,10 @@
 
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
+#include "DbServiceManager.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
-#include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 #include "ChatSession.h"
 #include "NicknameValidation.h"
@@ -53,7 +53,7 @@ namespace
 // @brief 회원가입(hasToken==false) 또는 재접속 검증(hasToken==true)을 처리합니다.
 // @details [설계 변경] COdbcAsyncSrv 자신의 Instance()가 없어져서(도메인별
 //          다중 인스턴스를 지원하도록 CDbServiceManager로 소유권이 옮겨감),
-//          DECLARE_DBASYNC_HANDLER_VIA(command, instanceExpr) 매크로로
+//          DECLARE_DBASYNC_HANDLER_EX(instanceExpr, command) 매크로로
 //          "이 요청은 MEMBER_DB_ASYNC 인스턴스에
 //          등록된다"는 걸 명시한다. 매크로가 만드는 핸들러 클래스는
 //          기본 생성자만 가지므로(생성자로 풀을 주입받을 수 없음), 매
@@ -87,7 +87,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 	{
 		LOG_ERROR(_T("kDbCallIdent_Signup: No available ODBC connection in pool."));
 		if( req->onComplete )
-			req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken);
+			req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken, std::string());
 		return EDBReturnType::INVALID;
 	}
 
@@ -96,6 +96,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 	//     uid        BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
 	//     public_id  CHAR(32)     NOT NULL UNIQUE,   -- 16바이트 난수의 16진 인코딩
 	//     nickname   VARCHAR(16)  NOT NULL UNIQUE,
+	//     profile_image_url VARCHAR(500) NULL,   -- [삭제됨] 이제 없음 — user_profile_images.status로 대체(create_chat_db.sql 참고)
 	//     token_hash CHAR(64)     NOT NULL,   -- SHA-256 hex
 	//     created_at DATETIME     NOT NULL,
 	//     updated_at DATETIME     NOT NULL
@@ -108,7 +109,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		if( !IsValidNickname(req->nickname, nicknameLen) )
 		{
 			if( req->onComplete )
-				req->onComplete(ELoginResult::InvalidNickname, std::string(req->nickname, nicknameLen), emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::InvalidNickname, std::string(req->nickname, nicknameLen), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::OK;
 		}
 
@@ -118,7 +119,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		if( !Crypto::CCryptoUtil::GenerateRandomBytes(newPublicId.data(), newPublicId.size()) )
 		{
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -126,7 +127,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		if( !Crypto::CCryptoUtil::GenerateRandomBytes(newToken.data(), newToken.size()) )
 		{
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -137,7 +138,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -156,7 +157,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::Ok, nickname, newPublicId, newToken);
+				req->onComplete(ELoginResult::Ok, nickname, newPublicId, newToken, std::string());
 			return EDBReturnType::OK;
 		}
 
@@ -180,14 +181,14 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 			{
 				guard->ClearStmt();
 				if( req->onComplete )
-					req->onComplete(ELoginResult::NicknameTaken, nickname, emptyPublicId, emptyToken);
+					req->onComplete(ELoginResult::NicknameTaken, nickname, emptyPublicId, emptyToken, std::string());
 				return EDBReturnType::OK;
 			}
 			guard->ClearStmt();
 		}
 
 		if( req->onComplete )
-			req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken);
+			req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 		return EDBReturnType::INVALID;
 	}
 	else
@@ -197,7 +198,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -210,7 +211,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -218,7 +219,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::AccountNotFound, std::string(), emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::AccountNotFound, std::string(), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::FETCH_NOT_FIND;
 		}
 
@@ -236,7 +237,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -251,10 +252,32 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 		guard->ClearStmt();
+
+		// [수정 — 설계 변경] 프로필 이미지는 users 테이블 컬럼이 아니라
+		// user_profile_images(status=1인 행이 대표)에서 별도 쿼리로 가져온다
+		// (create_chat_db.sql 참고). 이 테이블에 해당 계정 행이 아예 없거나
+		// (한 번도 설정 안 함) status=1인 행이 없는(최근에 해제함) 경우는
+		// 에러가 아니라 "그냥 미설정"인 정상 상태이므로, 조회/Fetch 실패가
+		// 로그인 자체를 실패시키지 않는다 — 빈 문자열로 둘 뿐이다.
+		std::string profileImageUrl;
+		if( guard->PrepareQuery(_T("SELECT image_ref FROM user_profile_images WHERE user_public_id = ? AND status = 1 LIMIT 1")) )
+		{
+			SQLLEN profileQueryLenInd = SQL_NTS;
+			guard->BindParamInput(1, publicIdHexT.c_str(), profileQueryLenInd);
+
+			if( guard->Execute() && guard->Fetch() )
+			{
+				TCHAR imageRefBuf[kProfileImageUrlBytes] = {};
+				int32 imageRefBufLen = static_cast<int32>(sizeof(imageRefBuf));
+				if( guard->GetData(1, imageRefBuf, imageRefBufLen) )
+					profileImageUrl = TStringToUtf8(_tstring(imageRefBuf));
+			}
+			guard->ClearStmt();
+		}
 
 		const std::string nickname = TStringToUtf8(_tstring(nicknameBuf));
 		std::array<BYTE, kPublicIdBytes> publicId{};
@@ -273,7 +296,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		if( !tokenMatches )
 		{
 			if( req->onComplete )
-				req->onComplete(ELoginResult::TokenMismatch, nickname, emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::TokenMismatch, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::OK;
 		}
 
@@ -282,7 +305,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		if( !Crypto::CCryptoUtil::GenerateRandomBytes(rotatedToken.data(), rotatedToken.size()) )
 		{
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -292,7 +315,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
@@ -306,13 +329,13 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		{
 			guard->ClearStmt();
 			if( req->onComplete )
-				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken);
+				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 		guard->ClearStmt();
 
 		if( req->onComplete )
-			req->onComplete(ELoginResult::Ok, nickname, publicId, rotatedToken);
+			req->onComplete(ELoginResult::Ok, nickname, publicId, rotatedToken, profileImageUrl);
 		return EDBReturnType::OK;
 	}
 }

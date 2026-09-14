@@ -39,6 +39,10 @@ namespace
 		const size_t nicknameCopyLen = (std::min)(nickname.size(), sizeof(outPacket.nickname) - 1);
 		::memcpy(outPacket.nickname, nickname.data(), nicknameCopyLen);
 
+		const std::string& profileImageUrl = session.GetProfileImageUrl();
+		const size_t urlCopyLen = (std::min)(profileImageUrl.size(), sizeof(outPacket.profileImageUrl) - 1);
+		::memcpy(outPacket.profileImageUrl, profileImageUrl.data(), urlCopyLen);
+
 		::memcpy(outPacket.message, packet->message, sizeof(outPacket.message));
 
 		if( CChatServerMain* server = session.GetServer() )

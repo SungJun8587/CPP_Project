@@ -77,23 +77,38 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatClientChangeNicknameHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatClientChangeNicknameHandler.cpp">
+      <Filter>PacketHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatClientLoginHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatClientLoginHandler.cpp">
+      <Filter>PacketHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatClientMessageHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatClientMessageHandler.cpp">
+      <Filter>PacketHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatClientNicknameHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatClientNicknameHandler.cpp">
+      <Filter>PacketHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatClientRoomHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatClientRoomHandler.cpp">
+      <Filter>PacketHandler</Filter>
     </ClCompile>
-    <ClCompile Include="Handler\ChatClientServerUserCountHandler.cpp">
-      <Filter>Handler</Filter>
+    <ClCompile Include="PacketHandler\ChatClientServerUserCountHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatClientDeleteProfileImageHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatClientListProfileImagesHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatClientSelectProfileImageHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatClientUploadTokenHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp">
+      <Filter>UtilCore\Network</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -127,7 +142,7 @@
     <Filter Include="UtilCore\Crypto">
       <UniqueIdentifier>{23f5596c-1294-47e9-a247-70fabdd5a067}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Handler">
+    <Filter Include="PacketHandler">
       <UniqueIdentifier>{dab601b8-c609-4904-a984-8378f22e801c}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -253,6 +268,12 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
       <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Packet.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
+      <Filter>UtilCore\Network</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

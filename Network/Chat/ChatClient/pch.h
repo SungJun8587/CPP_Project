@@ -60,6 +60,7 @@ using namespace std;
 #include <Network/HTTP/HttpParseUtil.h>
 #include <Network/HTTP/HttpRequestParser.h>
 
+#include "ChatPacketTypes.h"
 #include "ChatPacket.h"
 #include "ChatClientPacketDispatcher.h"
 #include "ChatClientSession.h"

@@ -616,8 +616,6 @@ void CChatServerMain::RequestUploadToken(
 	const std::string redisKey = "UploadToken:" + tokenHex;
 	const std::string fileServerUrl = _fileServerUrl;
 
-	CJobQueueRef jobQueue = _jobQueue;
-
 	// SET key value EX seconds — 한 커맨드로 등록+TTL을 동시에 건다
 	// (RedisServerHeartbeat.cpp의 HSET+EXPIRE 두 단계보다 간단 — 여긴 필드가
 	// 값 하나뿐이라 SET의 EX 옵션만으로 충분하다).
@@ -628,19 +626,17 @@ void CChatServerMain::RequestUploadToken(
 	args.push_back("EX");
 	args.push_back("60");
 
-	_redisService->SendCommand(args, [jobQueue, onComplete, tokenHex, fileServerUrl](const RedisValue& /*res*/)
+	_redisService->SendCommand(args, [onComplete, tokenHex, fileServerUrl](const RedisValue& /*res*/)
 		{
 			// [참고] RedisValue의 성공/에러 판별 API를 이 헤더만으론 확인 못해,
 			// OnUserLogin()과 마찬가지로 콜백이 왔다는 것 자체를 "등록 완료"로
 			// 본다(TODO: 에러 체크 메서드가 있다면 감싸는 것을 권장).
-			if( jobQueue == nullptr )
-				return;
-
-			jobQueue->DoAsync([onComplete, tokenHex, fileServerUrl]()
-				{
-					if( onComplete )
-						onComplete(true, tokenHex, fileServerUrl);
-				});
+			// [수정] CRedisService::SendCommand()의 콜백은 이미 생성자에
+			// 넘긴 CJobQueue 스레드에서 안전하게 실행된다(RedisService.cpp
+			// 내부에서 DoAsync로 이관해줌) — 여기서 또 감싸는 건 불필요한
+			// 이중 디스패치였다.
+			if( onComplete )
+				onComplete(true, tokenHex, fileServerUrl);
 		});
 }
 
@@ -739,28 +735,32 @@ void CChatServerMain::RequestDeleteProfileImage(
 	std::shared_ptr<CChatSession> session,
 	const std::array<BYTE, kPublicIdBytes>& publicId,
 	int64 imageId,
-	std::function<void(ELoginResult result, int64 imageId, bool wasActive)> onComplete)
+	std::function<void(ELoginResult result, int64 imageId, bool wasActive, const std::string& deletedImageRef)> onComplete)
 {
 	if( session == nullptr )
 		return;
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, int64 completedImageId,
-		bool wasActive, const std::string& /*deletedImageRef*/)
+	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, int64 completedImageId,
+		bool wasActive, const std::string& deletedImageRef)
 		{
-			// [설계 변경] 실제 파일 삭제는 이제 이 서버의 책임이 아니다 —
-			// 이미지 저장을 별도 파일 서버로 분리하면서, 이 서버는
-			// DB(user_profile_images) 레코드만 관리한다. deletedImageRef가
-			// 실제 접근 가능한 URL이라는 것만 알 뿐, 그 파일을 지우는 건
-			// 파일 서버 쪽 API(또는 만료 정책)의 몫이다.
+			// [설계] 실제 파일 삭제는 이 서버가 직접 하지 않는다 — 대신
+			// deletedImageRef가 우리 파일 서버 소유면 Redis 큐에 "지울 것"만
+			// 남겨두고, 파일 서버가 스스로 폴링하며 소비한다
+			// (ScheduleFileDeletionIfOwned() 참고). DB 삭제가 확정된 뒤,
+			// 아직 DB 워커 스레드인 이 시점에서 Redis에 적어둔다 — Redis
+			// 쓰기 자체도 비동기라 이 스레드를 오래 붙잡지 않는다.
+			if( result == ELoginResult::Ok )
+				ScheduleFileDeletionIfOwned(deletedImageRef);
+
 			if( jobQueue == nullptr )
 				return;
 
-			jobQueue->DoAsync([onComplete, result, completedImageId, wasActive]()
+			jobQueue->DoAsync([onComplete, result, completedImageId, wasActive, deletedImageRef]()
 				{
 					if( onComplete )
-						onComplete(result, completedImageId, wasActive);
+						onComplete(result, completedImageId, wasActive, deletedImageRef);
 				});
 		};
 
@@ -778,6 +778,36 @@ void CChatServerMain::RequestDeleteProfileImage(
 	if( !pushed )
 	{
 		if( onComplete )
-			onComplete(ELoginResult::DbError, imageId, false);
+			onComplete(ELoginResult::DbError, imageId, false, std::string());
 	}
+}
+
+//***************************************************************************
+// @brief deletedImageRef가 이 서버의 파일 서버 소유면 삭제 큐에 등록한다.
+//***************************************************************************
+void CChatServerMain::ScheduleFileDeletionIfOwned(const std::string& deletedImageRef)
+{
+	if( deletedImageRef.empty() || _fileServerUrl.empty() || _redisService == nullptr )
+		return;
+
+	// "{fileServerUrl}/images/{상대경로}" 형식만 우리 파일 서버 소유로 본다 —
+	// FileServerMain::BuildPublicUrl()이 만드는 형식과 정확히 일치해야 한다.
+	std::string prefix = _fileServerUrl;
+	if( !prefix.empty() && prefix.back() == '/' )
+		prefix.pop_back();
+	prefix += "/images/";
+
+	if( deletedImageRef.rfind(prefix, 0) != 0 )
+		return; // 외부 URL(사용자가 직접 등록한 URL 등) — 우리가 지울 대상이 아님
+
+	const std::string relativePath = deletedImageRef.substr(prefix.size());
+	if( relativePath.empty() )
+		return;
+
+	CVector<std::string> args;
+	args.push_back("RPUSH");
+	args.push_back("FileServer:PendingDeletions");
+	args.push_back(relativePath);
+
+	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
 }

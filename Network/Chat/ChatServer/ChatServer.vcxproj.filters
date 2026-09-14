@@ -394,7 +394,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobTimer.h">
       <Filter>UtilCore\Job</Filter>
     </ClInclude>
-    <ClInclude Include="DBSignupRequest.h" />
     <ClInclude Include="ChatPacketDispatcher.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h">
       <Filter>UtilCore\Crypto</Filter>
@@ -438,9 +437,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h">
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
-    <ClInclude Include="DbServiceManager.h" />
     <ClInclude Include="NicknameValidation.h" />
-    <ClInclude Include="DBChangeNicknameRequest.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\Packet.h">
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
@@ -448,10 +445,12 @@
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
     <ClInclude Include="ChatPacketTypes.h" />
+    <ClInclude Include="DBChangeNicknameRequest.h" />
     <ClInclude Include="DBDeleteProfileImageRequest.h" />
-    <ClInclude Include="DBSetProfileImageUrlRequest.h" />
     <ClInclude Include="DBListProfileImagesRequest.h" />
     <ClInclude Include="DBSelectProfileImageRequest.h" />
+    <ClInclude Include="DBSetProfileImageUrlRequest.h" />
+    <ClInclude Include="DBSignupRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

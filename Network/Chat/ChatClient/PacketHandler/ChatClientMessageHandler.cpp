@@ -20,15 +20,19 @@ namespace
 	{
 		const ChatPacket* packet = reinterpret_cast<const ChatPacket*>(header);
 
-		// nickname[kNicknameBytes]/message[256]이 NUL로 안 끝났을 가능성 방어
+		// nickname[kNicknameBytes]/profileImageUrl[kProfileImageUrlBytes]/message[256]이
+		// NUL로 안 끝났을 가능성 방어
 		char safeNicknameBuf[kNicknameBytes + 1] = {};
 		::memcpy(safeNicknameBuf, packet->nickname, sizeof(packet->nickname));
+
+		char safeUrlBuf[kProfileImageUrlBytes + 1] = {};
+		::memcpy(safeUrlBuf, packet->profileImageUrl, sizeof(packet->profileImageUrl));
 
 		char safeMessageBuf[sizeof(packet->message) + 1] = {};
 		::memcpy(safeMessageBuf, packet->message, sizeof(packet->message));
 
 		if( CChatClientMain* client = session.GetClient() )
-			client->OnChatReceived(safeNicknameBuf, safeMessageBuf);
+			client->OnChatReceived(safeNicknameBuf, safeUrlBuf, safeMessageBuf);
 	}
 }
 

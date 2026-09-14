@@ -73,7 +73,8 @@ namespace
 		server->RequestSignup(sessionRef, nickname, hasToken, publicId, token,
 			[sessionWeak](ELoginResult result, const std::string& completedNickname,
 				const std::array<BYTE, kPublicIdBytes>& completedPublicId,
-				const std::array<BYTE, kTokenBytes>& newToken)
+				const std::array<BYTE, kTokenBytes>& newToken,
+				const std::string& profileImageUrl)
 			{
 				auto session = sessionWeak.lock();
 				if( session == nullptr )
@@ -94,9 +95,12 @@ namespace
 
 				if( result == ELoginResult::Ok )
 				{
-					session->MarkLoggedIn(completedPublicId, completedNickname);
+					session->MarkLoggedIn(completedPublicId, completedNickname, profileImageUrl);
 					::memcpy(res.publicId, completedPublicId.data(), completedPublicId.size());
 					::memcpy(res.token, newToken.data(), newToken.size());
+
+					const size_t urlCopyLen = (std::min)(profileImageUrl.size(), sizeof(res.profileImageUrl) - 1);
+					::memcpy(res.profileImageUrl, profileImageUrl.data(), urlCopyLen);
 				}
 
 				session->Send(&res, sizeof(res));

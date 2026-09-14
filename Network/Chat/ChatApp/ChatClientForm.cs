@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // ChatClientForm.cs : 메인 창 — 접속/채팅/닉네임 변경/방 입퇴장 UI.
 //
 // [설계] Designer.cs 없이 코드로 컨트롤을 직접 배치했다(단일 파일 전달을
@@ -90,6 +91,7 @@ namespace ChatApp
         private Button _btnConnect;
         private Button _btnDisconnect;
         private Label _lblStatus;
+        private Panel _pnlStatusDot;
         private TextBox _txtServerUserCount;
         private System.Windows.Forms.Timer _serverUserCountPollTimer;
 
@@ -97,11 +99,12 @@ namespace ChatApp
         private string _myProfileImageUrl = string.Empty; // 서버에 현재 설정돼 있는(=다른 사람에게 보이는) 내 프로필 이미지 URL
         private string _pendingProfileImageUrlRequest; // SetMyProfileImageUrl()/ClearMyProfileImageUrl()이 요청한 값 — 응답(success/reason만 있음) 처리 시 참고용
 
-        // [추가] UploadMyProfileImage()가 await로 기다리는 업로드 시작/완료 응답.
+        // [추가] UploadMyProfileImage()가 await로 기다리는 업로드 토큰 발급 응답.
         // 업로드가 진행 중이 아닐 때(null)는 이벤트가 와도 조용히 무시된다.
-        private TaskCompletionSource<UploadProfileImageBeginResData> _uploadBeginTcs;
-        private TaskCompletionSource<UploadProfileImageEndResData> _uploadEndTcs;
+        private TaskCompletionSource<RequestUploadTokenResData> _uploadTokenTcs;
         private Button _btnOpenNicknameDialog;
+        private TabControl _tabControl;
+        private ProfileImageGalleryPanel _galleryPanel;
 
         // [추가] 프로필 이미지 — 로컬 전용(네트워크로 다른 사람에게 전송되지
         // 않음). 프로필 이름별로 이미지 파일 경로를 저장해뒀다가 다음 실행 때
@@ -134,6 +137,15 @@ namespace ChatApp
             = new Dictionary<int, List<(string Url, RectangleF Bounds)>>();
         private Font _timeFont;
 
+        // [추가] 말풍선 그리기용 색상 브러시 — DrawItem마다 새로 만들면 GDI
+        // 핸들이 누적되므로(스크롤/재도색 때마다 호출됨), 폰트와 같은 방식으로
+        // 한 번만 만들어 재사용한다.
+        private Brush _myBubbleBrush;
+        private Brush _myTextBrush;
+        private Brush _otherTextBrush;
+        private Brush _bubbleNameBrush;
+        private Brush _bubbleTimeBrush;
+
         //***************************************************************************
         // @brief 링크(URL) 미리보기 — 카카오톡처럼 메시지 속 URL의 제목/설명/
         //        썸네일을 비동기로 가져와 메시지 아래 카드로 보여준다.
@@ -159,6 +171,11 @@ namespace ChatApp
         }
 
         private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        // [추가] 파일 업로드는 크기(최대 2MB)와 파일 서버의 디스크 I/O 때문에
+        // 링크 미리보기/아바타 fetch(_httpClient, 5초)보다 오래 걸릴 수 있다 —
+        // HttpClient.Timeout은 인스턴스 전체에 적용되는 값이라(호출마다 다르게
+        // 줄 수 없음) 업로드 전용으로 타임아웃을 넉넉히 둔 별도 인스턴스를 쓴다.
+        private static readonly HttpClient _uploadHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         private readonly Dictionary<string, LinkPreviewData> _linkPreviewCache = new Dictionary<string, LinkPreviewData>();
 
         // [추가] 프로필 이미지 — 채팅 메시지에 실려오는 발신자의 profileImageUrl로
@@ -191,17 +208,113 @@ namespace ChatApp
             InitializeComponents();
         }
 
+        // ── 디자인 시스템 — 갤러리 탭(ProfileImageGalleryPanel)과 동일한
+        // 팔레트를 대화 탭에도 그대로 적용해 두 탭이 한 앱처럼 보이게 한다. ──
+        private static readonly Color AccentColor = Color.FromArgb(61, 123, 247);
+        private static readonly Color SuccessColor = Color.FromArgb(47, 184, 112);
+        private static readonly Color DangerColor = Color.FromArgb(214, 69, 69);
+        private static readonly Color PageBackColor = Color.FromArgb(247, 248, 250);
+        private static readonly Color BorderColor = Color.FromArgb(226, 228, 232);
+        private static readonly Color TextSecondaryColor = Color.FromArgb(138, 143, 152);
+        private static readonly Color TextMutedColor = Color.FromArgb(176, 180, 186);
+
+        //***************************************************************************
+        // @brief GroupBox의 투박한 테두리 대신 쓰는 둥근 모서리 흰 카드 패널.
+        //        ProfileImageGalleryPanel의 GalleryTile과 동일한 방식(GraphicsPath
+        //        직접 그리기)으로 앤티앨리어싱된 모서리를 낸다 — Region 클리핑만
+        //        쓰면 작은 반지름에서 계단현상이 보이기 때문.
+        //***************************************************************************
+        private class CardPanel : Panel
+        {
+            public CardPanel()
+            {
+                DoubleBuffered = true;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+                using (var path = RoundedRectPath(rect, 10))
+                {
+                    using (var b = new SolidBrush(Color.White))
+                        g.FillPath(b, path);
+                    using (var pen = new Pen(BorderColor))
+                        g.DrawPath(pen, path);
+                }
+            }
+        }
+
+        private static System.Drawing.Drawing2D.GraphicsPath RoundedRectPath(Rectangle bounds, int radius)
+        {
+            int d = radius * 2;
+            var path = new System.Drawing.Drawing2D.GraphicsPath();
+            path.AddArc(bounds.X, bounds.Y, d, d, 180, 90);
+            path.AddArc(bounds.Right - d, bounds.Y, d, d, 270, 90);
+            path.AddArc(bounds.Right - d, bounds.Bottom - d, d, d, 0, 90);
+            path.AddArc(bounds.X, bounds.Bottom - d, d, d, 90, 90);
+            path.CloseFigure();
+            return path;
+        }
+
+        //***************************************************************************
+        // @brief 버튼을 채워진 액센트 색(filled) 또는 테두리만 있는 아웃라인
+        //        스타일로 통일해서 꾸민다. 모서리도 살짝 둥글게(Region).
+        // @param dangerOutline true면 아웃라인 글자색을 위험(빨강)으로 — 삭제/
+        //        나가기 계열 버튼용.
+        //***************************************************************************
+        private static void StyleButton(Button btn, bool filled, bool dangerOutline = false)
+        {
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.FlatAppearance.BorderSize = filled ? 0 : 1;
+            btn.FlatAppearance.BorderColor = BorderColor;
+            btn.Cursor = Cursors.Hand;
+
+            if (filled)
+            {
+                btn.BackColor = AccentColor;
+                btn.ForeColor = Color.White;
+            }
+            else
+            {
+                btn.BackColor = Color.White;
+                btn.ForeColor = dangerOutline ? DangerColor : AccentColor;
+            }
+
+            // [수정] Region으로 둥근 모서리를 주면 FlatStyle.Flat의 네이티브
+            // 테두리(FlatAppearance.BorderSize/BorderColor) 렌더링이 그 Region에
+            // 함께 잘려나가 버린다 — 특히 아웃라인 버튼은 배경이 흰색이라
+            // 테두리가 없으면 카드 배경과 구분이 안 되고, 텍스트도 Region
+            // 경계에 걸려 잘려 보일 수 있다(실제로 "배경 설정"이 "배경 설"로
+            // 잘려 보인 원인). 그래서 일반 버튼엔 Region을 안 쓴다 — 각진
+            // 사각형 flat 버튼으로도 충분히 깔끔하다. 완전히 직접 그리는
+            // 커스텀 컨트롤(GalleryTile, CircleBadgeButton처럼 OnPaint를
+            // 전부 스스로 담당하는 경우)은 이 문제가 없어서 그쪽만 Region을 쓴다.
+        }
+
         private void InitializeComponents()
         {
             Text = "채팅 클라이언트 (WinForms)";
-            ClientSize = new Size(577, 630);
+            ClientSize = new Size(577, 704);
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             DoubleBuffered = true;
+            BackColor = PageBackColor;
 
-            // ── 그룹박스 1: 서버 접속 ──────────────────────────────────────
-            var groupBox1 = new GroupBox { Text = "서버 접속", Left = 10, Top = 9, Width = 557, Height = 85 };
+            // ── 카드 1: 서버 접속 ──────────────────────────────────────
+            var groupBox1 = new CardPanel { Left = 10, Top = 9, Width = 557, Height = 85 };
+            var lblCard1Title = new Label
+            {
+                Text = "서버 접속",
+                Left = 14,
+                Top = 4,
+                Width = 100,
+                Height = 14,
+                ForeColor = TextSecondaryColor,
+                Font = new Font(Font.FontFamily, 8f, FontStyle.Bold),
+            };
 
             var lblIp = new Label { Text = "서버 IP", Left = 11, Top = 25, Width = 45 };
             _txtServerIp = new TextBox { Left = 60, Top = 21, Width = 120, Text = "127.0.0.1" };
@@ -218,6 +331,7 @@ namespace ChatApp
             // (NicknameChangeDialog)이 뜨고, 그 안에 자동 생성/변경 버튼이 있다.
             _btnOpenNicknameDialog = new Button { Text = "닉네임 변경", Left = 245, Top = 46, Width = 90, Height = 25, Visible = false };
             _btnOpenNicknameDialog.Click += BtnOpenNicknameDialog_Click;
+            StyleButton(_btnOpenNicknameDialog, filled: false);
 
             // [추가] 프로필 이미지 — 클릭하면 파일 선택 창이 뜬다. 기본은
             // 회색 빈 칸(이미지 없음 표시)이고, 로그인 전에도 조작 가능
@@ -241,33 +355,47 @@ namespace ChatApp
             profileImageMenu.Items.Add("이미지 업로드 (서버에 저장, 공유)", null, (s, e) => UploadMyProfileImage());
             profileImageMenu.Items.Add("로컬 파일로 설정 (나만 보임)", null, (s, e) => SetMyProfileImage());
             profileImageMenu.Items.Add("프로필 이미지 해제 (공유 해제)", null, (s, e) => ClearMyProfileImageUrl());
-            profileImageMenu.Items.Add("갤러리 관리", null, (s, e) => OpenProfileImageGallery());
+            profileImageMenu.Items.Add("갤러리 관리", null, (s, e) => SwitchToGalleryTab());
             _picProfileImage.Click += (s, e) => profileImageMenu.Show(_picProfileImage, new Point(0, _picProfileImage.Height));
 
-            _btnConnect = new Button { Text = "접속", Left = 390, Top = 19, Width = 52, Height = 25 };
+            _btnConnect = new Button { Text = "접속", Left = 385, Top = 19, Width = 58, Height = 25 };
             _btnConnect.Click += BtnConnect_Click;
-            // [추가] 활성화 상태를 색으로 눈에 띄게 표시 — FlatStyle을 바꿔야
-            // BackColor가 실제로 반영된다(기본 Standard 스타일은 시스템 테마가
-            // 우선해서 BackColor를 무시하는 경우가 많다). 비활성화되면
-            // .NET이 자동으로 흐리게 렌더링해줘서 별도 처리 없이도 구분된다.
-            _btnConnect.FlatStyle = FlatStyle.Flat;
-            _btnConnect.FlatAppearance.BorderSize = 0;
-            _btnConnect.BackColor = Color.FromArgb(46, 160, 67); // 초록 계열
-            _btnConnect.ForeColor = Color.White;
+            StyleButton(_btnConnect, filled: true);
 
-            _btnDisconnect = new Button { Text = "끊기", Left = 445, Top = 19, Width = 52, Height = 25, Enabled = false };
+            _btnDisconnect = new Button { Text = "끊기", Left = 451, Top = 19, Width = 58, Height = 25, Enabled = false };
             _btnDisconnect.Click += BtnDisconnect_Click;
+            StyleButton(_btnDisconnect, filled: false, dangerOutline: true);
 
-            _lblStatus = new Label { Text = "연결 안 됨", Left = 390, Top = 47, Width = 160, ForeColor = Color.Gray };
+            var pnlStatusDot = new Panel { Left = 390, Top = 52, Width = 8, Height = 8 };
+            pnlStatusDot.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var b = new SolidBrush(_lblStatus.ForeColor))
+                    e.Graphics.FillEllipse(b, 0, 0, pnlStatusDot.Width - 1, pnlStatusDot.Height - 1);
+            };
+            _pnlStatusDot = pnlStatusDot;
+
+            _lblStatus = new Label { Text = "연결 안 됨", Left = 402, Top = 47, Width = 148, ForeColor = TextMutedColor };
 
             groupBox1.Controls.AddRange(new Control[]
             {
+                lblCard1Title,
                 lblIp, _txtServerIp, lblPort, _txtServerPort, lblProfile, _txtProfileName, _btnOpenNicknameDialog,
-                _picProfileImage, _btnConnect, _btnDisconnect, _lblStatus,
+                _picProfileImage, _btnConnect, _btnDisconnect, _pnlStatusDot, _lblStatus,
             });
 
             // ── 그룹박스 2: 채팅방(로비/룸) ──────────────────────────────
-            var groupBox2 = new GroupBox { Text = "채팅방", Left = 10, Top = 100, Width = 557, Height = 374 };
+            var groupBox2 = new CardPanel { Left = 10, Top = 100, Width = 557, Height = 374 };
+            var lblCard2Title = new Label
+            {
+                Text = "채팅방",
+                Left = 14,
+                Top = 4,
+                Width = 100,
+                Height = 14,
+                ForeColor = TextSecondaryColor,
+                Font = new Font(Font.FontFamily, 8f, FontStyle.Bold),
+            };
 
             _cbChatRoomId = new ComboBox { Left = 11, Top = 23, Width = 71, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = false };
             for (int roomId = 1; roomId <= ProtocolConstants.MaxRoomId; roomId++)
@@ -277,9 +405,11 @@ namespace ChatApp
 
             _btnRoomEnter = new Button { Text = "방 입장", Left = 88, Top = 22, Width = 70, Height = 25, Enabled = false };
             _btnRoomEnter.Click += BtnRoomEnter_Click;
+            StyleButton(_btnRoomEnter, filled: false);
 
             _btnRoomLeave = new Button { Text = "방 나가기", Left = 163, Top = 22, Width = 70, Height = 25, Enabled = false };
             _btnRoomLeave.Click += BtnRoomLeave_Click;
+            StyleButton(_btnRoomLeave, filled: false, dangerOutline: true);
 
             // [추가] 채팅창 배경 설정 — 색상/이미지 선택 또는 기본값 초기화를
             // 컨텍스트 메뉴로 고르게 한다. 방 선택 줄 오른쪽에 남는 공간에 배치.
@@ -288,8 +418,9 @@ namespace ChatApp
             chatBackgroundMenu.Items.Add("이미지로 설정", null, (s, e) => SetChatBackgroundImage());
             chatBackgroundMenu.Items.Add("기본값으로 초기화", null, (s, e) => ResetChatBackground());
 
-            _btnChatBackground = new Button { Text = "배경 설정", Left = 480, Top = 22, Width = 67, Height = 25 };
+            _btnChatBackground = new Button { Text = "배경 설정", Left = 470, Top = 22, Width = 77, Height = 25 };
             _btnChatBackground.Click += (s, e) => chatBackgroundMenu.Show(_btnChatBackground, new Point(0, _btnChatBackground.Height));
+            StyleButton(_btnChatBackground, filled: false);
 
             // [수정] 서버 동접자수를 로비 유저수 왼쪽에 배치 — 프로필 이름과
             // 같은 형태(정적 라벨 + 읽기전용 텍스트박스)로 통일했다. 그룹박스1이
@@ -305,23 +436,14 @@ namespace ChatApp
             var lblRoomUserCount = new Label { Text = "방 유저수 : ", Left = 286, Top = 58, Width = 68 };
             _txtRoomUserCount = new TextBox { Left = 354, Top = 54, Width = 45, ReadOnly = true, TextAlign = HorizontalAlignment.Center };
 
-            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 58, Width = 150, ForeColor = Color.Gray };
+            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 58, Width = 150, ForeColor = TextMutedColor };
 
             _txtMessage = new TextBox { Left = 10, Top = 88, Width = 465, Height = 26, Enabled = false, BorderStyle = BorderStyle.FixedSingle, Multiline = true };
             _txtMessage.KeyDown += TxtMessage_KeyDown;
 
-            _btnSend = new Button { Text = "채팅", Left = 480, Top = 88, Width = 67, Height = 26, Enabled = false, Visible = true };
-            // [추가] 기본 시스템 버튼 스타일은 Enabled=false일 때 테두리가
-            // 테마에 따라 거의 안 보이게 그려지는 경우가 있다. FlatStyle로
-            // 직접 그리게 하면 활성/비활성 상태와 무관하게 테두리가 항상
-            // 보인다.
-            _btnSend.FlatStyle = FlatStyle.Flat;
-            _btnSend.FlatAppearance.BorderSize = 1;
-            _btnSend.FlatAppearance.BorderColor = Color.Gray;
-            // [추가] 활성화 상태를 색으로 눈에 띄게 표시 — _btnConnect와 같은 이유.
-            _btnSend.BackColor = Color.FromArgb(0, 132, 255); // 파랑 계열
-            _btnSend.ForeColor = Color.White;
+            _btnSend = new Button { Text = "전송", Left = 480, Top = 88, Width = 67, Height = 26, Enabled = false, Visible = true };
             _btnSend.Click += BtnSend_Click;
+            StyleButton(_btnSend, filled: true);
 
             _listBoxChat = new ListBox
             {
@@ -341,9 +463,15 @@ namespace ChatApp
             // 말풍선의 닉네임/시간 표시용 폰트 — DrawItem에서 재사용(캐시).
             _nameFont = new Font(_listBoxChat.Font.FontFamily, 8.5f, FontStyle.Bold);
             _timeFont = new Font(_listBoxChat.Font.FontFamily, 7.5f, FontStyle.Regular);
+            _myBubbleBrush = new SolidBrush(AccentColor);
+            _myTextBrush = Brushes.White;
+            _otherTextBrush = new SolidBrush(Color.FromArgb(26, 29, 33));
+            _bubbleNameBrush = new SolidBrush(TextSecondaryColor);
+            _bubbleTimeBrush = new SolidBrush(TextMutedColor);
 
             groupBox2.Controls.AddRange(new Control[]
             {
+                lblCard2Title,
                 _cbChatRoomId, _btnRoomEnter, _btnRoomLeave, _btnChatBackground,
                 lblServerUserCount, _txtServerUserCount, lblLobbyUserCount, _txtLobbyUserCount,
                 lblRoomUserCount, _txtRoomUserCount, _lblCurrentRoom,
@@ -360,10 +488,125 @@ namespace ChatApp
                 DrawMode = DrawMode.OwnerDrawFixed,
                 ItemHeight = 16,
                 ScrollAlwaysVisible = true,
+                BorderStyle = BorderStyle.None,
+                BackColor = Color.White,
             };
             _listBoxMsg.DrawItem += ColoredListBox_DrawItem;
 
-            Controls.AddRange(new Control[] { groupBox1, groupBox2, _listBoxMsg });
+            // ── 탭 구성: "대화"(기존 화면 전체) / "갤러리"(카카오톡 스타일로
+            // 별도 창이 아니라 메인 창 안에 탭으로 통합) ──────────────────
+            var tabControl = new TabControl { Dock = DockStyle.Fill, DrawMode = TabDrawMode.OwnerDrawFixed, SizeMode = TabSizeMode.Fixed, ItemSize = new Size(90, 32) };
+            tabControl.DrawItem += (s, e) =>
+            {
+                var g = e.Graphics;
+                var tabRect = e.Bounds;
+                bool selected = e.Index == tabControl.SelectedIndex;
+
+                using (var b = new SolidBrush(Color.White))
+                    g.FillRectangle(b, tabRect);
+
+                string text = tabControl.TabPages[e.Index].Text;
+                using (var font = new Font(Font.FontFamily, 9f, selected ? FontStyle.Bold : FontStyle.Regular))
+                using (var brush = new SolidBrush(selected ? AccentColor : TextSecondaryColor))
+                using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                    g.DrawString(text, font, brush, tabRect, fmt);
+
+                if (selected)
+                {
+                    using (var pen = new Pen(AccentColor, 2))
+                        g.DrawLine(pen, tabRect.Left + 8, tabRect.Bottom - 1, tabRect.Right - 8, tabRect.Bottom - 1);
+                }
+            };
+
+            var tabPageChat = new TabPage("대화");
+            // [수정] TabPage.BackColor는 비주얼 스타일이 켜져 있으면 무시되고
+            // 시스템 기본 흰색이 그려지는 WinForms의 잘 알려진 한계가 있다 —
+            // 그래서 TabPage에 컨트롤을 직접 넣지 않고, 원하는 배경색을 가진
+            // Panel(Dock=Fill)로 한 번 감싸서 그 안에 넣는다. Panel은 이
+            // 문제가 없다.
+            var chatPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+            // 시스템 로그도 다른 두 카드와 같은 톤으로 감싼다 — 리스트박스 자체는
+            // 카드 안에서 (0,0) 기준 상대좌표로 다시 배치.
+            var card3 = new CardPanel { Left = 10, Top = 480, Width = 557, Height = 139 };
+            var lblCard3Title = new Label
+            {
+                Text = "시스템 로그",
+                Left = 14,
+                Top = 4,
+                Width = 100,
+                Height = 14,
+                ForeColor = TextSecondaryColor,
+                Font = new Font(Font.FontFamily, 8f, FontStyle.Bold),
+            };
+            _listBoxMsg.Left = 6;
+            _listBoxMsg.Top = 20;
+            _listBoxMsg.Width = 545;
+            _listBoxMsg.Height = 113;
+            card3.Controls.AddRange(new Control[] { lblCard3Title, _listBoxMsg });
+
+            chatPagePanel.Controls.AddRange(new Control[] { groupBox1, groupBox2, card3 });
+            tabPageChat.Controls.Add(chatPagePanel);
+
+            var tabPageGallery = new TabPage("갤러리");
+            var galleryPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+            _galleryPanel = new ProfileImageGalleryPanel(_httpClient);
+            _galleryPanel.ActiveImageChanged += OnGalleryActiveImageChanged;
+            // [추가] 갤러리 상단 카메라 배지 메뉴는 실제 업로드/네트워크 로직을
+            // 갖고 있지 않다(그건 여전히 이 폼이 소유) — 이벤트로 위임만 받아서
+            // 채팅 탭의 프로필 이미지 메뉴와 똑같은 메서드를 그대로 재사용한다.
+            _galleryPanel.UploadRequested += () => UploadMyProfileImage();
+            _galleryPanel.SetUrlRequested += () => SetMyProfileImageUrl();
+            _galleryPanel.LocalFileRequested += () => SetMyProfileImage();
+            _galleryPanel.ClearRequested += () => ClearMyProfileImageUrl();
+            galleryPagePanel.Controls.Add(_galleryPanel);
+            tabPageGallery.Controls.Add(galleryPagePanel);
+
+            tabControl.TabPages.Add(tabPageChat);
+            tabControl.TabPages.Add(tabPageGallery);
+
+            // 갤러리 탭으로 전환할 때마다 최신 목록을 다시 받아온다 — 방금
+            // 다른 탭(대화)에서 업로드/설정한 이미지가 곧바로 반영되게.
+            tabControl.SelectedIndexChanged += (s, e) =>
+            {
+                if (tabControl.SelectedTab == tabPageGallery)
+                    _galleryPanel.RefreshList();
+            };
+
+            _tabControl = tabControl;
+
+            Controls.Add(_tabControl);
+
+            // ── 상단 헤더 바 — 로고 + 앱 이름. Dock 순서 주의: _tabControl(Fill)을
+            // 먼저 추가해야 헤더(Top)가 나중에 그 위쪽 띠를 차지할 수 있다. ──
+            var headerPanel = new Panel { Dock = DockStyle.Top, Height = 44, BackColor = Color.White };
+            headerPanel.Paint += (s, e) =>
+            {
+                using (var pen = new Pen(BorderColor))
+                    e.Graphics.DrawLine(pen, 0, headerPanel.Height - 1, headerPanel.Width, headerPanel.Height - 1);
+            };
+
+            var logoBox = new Panel { Left = 14, Top = 11, Width = 22, Height = 22 };
+            logoBox.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using (var path = RoundedRectPath(new Rectangle(0, 0, logoBox.Width - 1, logoBox.Height - 1), 6))
+                using (var b = new SolidBrush(AccentColor))
+                    e.Graphics.FillPath(b, path);
+            };
+
+            var lblAppName = new Label
+            {
+                Text = "ChatApp",
+                Left = 44,
+                Top = 12,
+                Width = 160,
+                Height = 20,
+                Font = new Font(Font.FontFamily, 10f, FontStyle.Regular),
+                ForeColor = Color.FromArgb(26, 29, 33),
+            };
+
+            headerPanel.Controls.AddRange(new Control[] { logoBox, lblAppName });
+            Controls.Add(headerPanel);
 
             // [추가] 서버 동접자수 폴링 — 로그인 성공 시 시작, 연결 끊기면 정지.
             // 39초마다 서버에 물어보는 방식이라(예전의 로그인/로그아웃마다
@@ -557,12 +800,25 @@ namespace ChatApp
             if (e.Index < 0 || e.Index >= _listBoxChat.Items.Count)
                 return;
 
-            // [수정 — 배경 설정 기능] e.DrawBackground()를 부르면 이 아이템
-            // 영역이 시스템 기본색(또는 선택 하이라이트)으로 덮어써져서,
-            // _listBoxChat.BackgroundImage/BackColor로 설정한 사용자 배경이
-            // 안 보이게 된다. 컨트롤 자신의 배경(이미지 또는 BackColor)은
-            // 이 콜백이 불리기 전에 이미 그려져 있으므로, 여기선 그냥
-            // 그 위에 말풍선/텍스트만 얹으면 된다 — 별도로 지울 필요 없음.
+            // [수정] owner-draw(DrawMode.OwnerDrawFixed) 리스트박스는
+            // BackgroundImage를 자동으로 그려주지 않는다 — 예전 주석은
+            // "컨트롤이 알아서 그려놨을 것"이라고 가정했는데 실제로는 그렇지
+            // 않아서, 이미지로 배경을 설정해도 화면엔 안 보였다(색상은
+            // BackColor가 owner-draw에서도 비교적 안정적으로 반영돼서 그나마
+            // 동작했음). 그래서 여기서 이미지를 직접 그린다 — 컨트롤 전체에
+            // Stretch로 깔린 것처럼 보이게, 이 아이템의 세로 구간에 해당하는
+            // 원본 이미지 조각만 계산해서 그 자리에 그려 넣는다.
+            if (_listBoxChat.BackgroundImage != null && _listBoxChat.ClientSize.Height > 0)
+            {
+                Image bg = _listBoxChat.BackgroundImage;
+                float ratioY = (float)bg.Height / _listBoxChat.ClientSize.Height;
+                var srcRect = new RectangleF(0, e.Bounds.Top * ratioY, bg.Width, e.Bounds.Height * ratioY);
+                e.Graphics.DrawImage(bg, e.Bounds, srcRect, GraphicsUnit.Pixel);
+            }
+            else
+            {
+                e.DrawBackground(); // 이미지가 없으면(BackColor만 설정된 경우 포함) 기존처럼 기본 배경 처리에 맡긴다.
+            }
 
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -575,11 +831,11 @@ namespace ChatApp
 
                 Font msgFont = _listBoxChat.Font;
 
-                Brush myBubbleColor = Brushes.Khaki;
+                Brush myBubbleColor = _myBubbleBrush;
                 Brush otherBubbleColor = Brushes.White;
-                Brush textColor = Brushes.Black;
-                Brush nameColor = Brushes.DimGray;
-                Brush timeColor = Brushes.Gray;
+                Brush textColor = item.IsMyMessage ? _myTextBrush : _otherTextBrush;
+                Brush nameColor = _bubbleNameBrush;
+                Brush timeColor = _bubbleTimeBrush;
 
                 int maxBubbleWidth = (int)(bounds.Width * 0.65);
                 SizeF textSize = g.MeasureString(item.Message, msgFont, maxBubbleWidth);
@@ -599,7 +855,6 @@ namespace ChatApp
                     using (var path = GetRoundedRectPath(bubbleRect, kBubbleCornerRadius))
                     {
                         g.FillPath(myBubbleColor, path);
-                        g.DrawPath(Pens.DarkKhaki, path);
                     }
 
                     DrawMessageWithLinks(g, item.Message, msgFont, textColor, new RectangleF(bubbleX + 8, bubbleY + 5, maxBubbleWidth, textSize.Height), e.Index);
@@ -1094,60 +1349,80 @@ namespace ChatApp
                     return;
                 }
 
-                if (fileBytes.Length > ProtocolConstants.MaxProfileImageBytes)
-                {
-                    MessageBox.Show(this, $"이미지가 너무 큽니다(최대 {ProtocolConstants.MaxProfileImageBytes / 1024 / 1024}MB).", "알림");
-                    return;
-                }
-
-                string extension = Path.GetExtension(dlg.FileName);
-                if (string.IsNullOrEmpty(extension))
-                    extension = ".png";
-
-                AppendSystemLog("[시스템] 프로필 이미지 업로드 중...", ColorSystemInfo);
+                AppendSystemLog("[시스템] 업로드 토큰 발급 중...", ColorSystemInfo);
 
                 try
                 {
-                    _uploadBeginTcs = new TaskCompletionSource<UploadProfileImageBeginResData>();
-                    _client.RequestUploadProfileImageBegin(fileBytes.Length, extension);
+                    _uploadTokenTcs = new TaskCompletionSource<RequestUploadTokenResData>();
+                    _client.RequestUploadToken();
 
-                    var beginResult = await WaitWithTimeout(_uploadBeginTcs.Task, TimeSpan.FromSeconds(10));
-                    if (beginResult == null || !beginResult.Success)
+                    var tokenResult = await WaitWithTimeout(_uploadTokenTcs.Task, TimeSpan.FromSeconds(10));
+                    if (tokenResult == null || !tokenResult.Success || string.IsNullOrEmpty(tokenResult.FileServerUrl))
                     {
-                        AppendSystemLog("[시스템] 업로드 시작 실패", ColorSystemError);
+                        AppendSystemLog("[시스템] 업로드 토큰 발급 실패 — 파일 서버가 설정돼 있지 않을 수 있습니다.", ColorSystemError);
                         return;
                     }
 
-                    uint uploadId = beginResult.UploadId;
+                    AppendSystemLog("[시스템] 파일 서버에 업로드 중...", ColorSystemInfo);
 
-                    for (int offset = 0; offset < fileBytes.Length; offset += ProtocolConstants.ImageChunkBytes)
+                    string uploadedUrl;
+                    try
                     {
-                        int chunkSize = Math.Min(ProtocolConstants.ImageChunkBytes, fileBytes.Length - offset);
-                        var chunk = new byte[chunkSize];
-                        Array.Copy(fileBytes, offset, chunk, 0, chunkSize);
-                        uint chunkIndex = (uint)(offset / ProtocolConstants.ImageChunkBytes);
-                        _client.SendUploadProfileImageChunk(uploadId, chunkIndex, chunk, chunkSize);
+                        uploadedUrl = await UploadToFileServerAsync(tokenResult.FileServerUrl, tokenResult.UploadToken, dlg.FileName, fileBytes);
                     }
-
-                    _uploadEndTcs = new TaskCompletionSource<UploadProfileImageEndResData>();
-                    _client.RequestUploadProfileImageEnd(uploadId);
-
-                    var endResult = await WaitWithTimeout(_uploadEndTcs.Task, TimeSpan.FromSeconds(15));
-                    if (endResult == null || !endResult.Success)
+                    catch (Exception ex)
                     {
-                        AppendSystemLog("[시스템] 업로드 완료 처리 실패", ColorSystemError);
+                        AppendSystemLog("[시스템] 파일 서버 업로드 실패: " + ex.Message, ColorSystemError);
                         return;
                     }
 
-                    _myProfileImageUrl = endResult.ImageRef;
-                    LoadMyProfileImageFromUrl(_myProfileImageUrl);
-                    AppendSystemLog("[시스템] 프로필 이미지 업로드 및 대표 지정 완료", ColorSystemOk);
+                    if (string.IsNullOrEmpty(uploadedUrl))
+                    {
+                        AppendSystemLog("[시스템] 파일 서버가 URL을 돌려주지 않았습니다.", ColorSystemError);
+                        return;
+                    }
+
+                    // 업로드된 URL을 채팅 서버에 새 대표 이미지로 등록한다 —
+                    // SetMyProfileImageUrl()과 동일한 등록 경로(SetProfileImageUrlReq)를
+                    // 그대로 재사용한다. 성공/실패 결과 처리는
+                    // OnSetProfileImageUrlResultReceived()가 공통으로 담당한다.
+                    _pendingProfileImageUrlRequest = uploadedUrl;
+                    _client.RequestSetProfileImageUrl(uploadedUrl);
                 }
                 finally
                 {
-                    _uploadBeginTcs = null;
-                    _uploadEndTcs = null;
+                    _uploadTokenTcs = null;
                 }
+            }
+        }
+
+        //***************************************************************************
+        // @brief 파일 서버에 이미지를 업로드하고, 결과로 접근 가능한 URL을 돌려받는다.
+        // @details [파일 서버 API 계약] multipart/form-data POST
+        //          {fileServerUrl}/upload — 폼 필드 "file"에 이미지 바이트,
+        //          "token"에 채팅 서버가 발급한 업로드 토큰. 성공하면 본문에
+        //          평문(text/plain)으로 접근 가능한 이미지 URL을 돌려준다.
+        //          [설계] 파일 서버는 아직 별도로 구현되지 않았다 — 이 계약은
+        //          채팅 서버 쪽 RequestUploadTokenRes 설계(토큰+파일서버주소
+        //          발급, ChatServerMain::RequestUploadToken() 참고)와 짝을
+        //          이루도록 클라이언트가 미리 정해둔 것이다. 실제 파일 서버
+        //          구현이 이 계약과 다르게 나온다면 이 메서드만 고치면 되고,
+        //          나머지 흐름(토큰 발급, 대표 이미지 등록)은 영향받지 않는다.
+        //***************************************************************************
+        private async Task<string> UploadToFileServerAsync(string fileServerUrl, string uploadToken, string localFilePath, byte[] fileBytes)
+        {
+            using (var content = new MultipartFormDataContent())
+            {
+                var fileContent = new ByteArrayContent(fileBytes);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+                content.Add(fileContent, "file", Path.GetFileName(localFilePath));
+                content.Add(new StringContent(uploadToken), "token");
+
+                string uploadUrl = fileServerUrl.TrimEnd('/') + "/upload";
+                HttpResponseMessage response = await _uploadHttpClient.PostAsync(uploadUrl, content);
+                response.EnsureSuccessStatusCode();
+
+                return (await response.Content.ReadAsStringAsync()).Trim();
             }
         }
 
@@ -1163,11 +1438,10 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief 프로필 이미지 갤러리(목록/선택/삭제) 팝업을 연다. 갤러리 안에서
-        //        대표 이미지가 바뀌었으면(ProfileImageGalleryDialog.ActiveImageRef가
-        //        null이 아니면), 닫힌 뒤 내 프로필 이미지 표시도 그에 맞게 갱신한다.
+        // @brief "갤러리 관리" 메뉴 클릭 시 — 별도 창을 띄우는 대신 갤러리
+        //        탭으로 전환한다(카카오톡 스타일 통합).
         //***************************************************************************
-        private void OpenProfileImageGallery()
+        private void SwitchToGalleryTab()
         {
             if (_client == null)
             {
@@ -1175,26 +1449,17 @@ namespace ChatApp
                 return;
             }
 
-            using (var dialog = new ProfileImageGalleryDialog(_client, _httpClient))
-            {
-                dialog.ShowDialog(this);
+            _tabControl.SelectedIndex = 1; // 0=대화, 1=갤러리
+        }
 
-                if (dialog.ActiveImageRef != null)
-                {
-                    _myProfileImageUrl = dialog.ActiveImageRef;
-
-                    if (string.IsNullOrEmpty(_myProfileImageUrl))
-                    {
-                        _picProfileImage.Image?.Dispose();
-                        _picProfileImage.Image = null;
-                        _picProfileImage.BackColor = Color.LightGray;
-                    }
-                    else
-                    {
-                        LoadMyProfileImageFromUrl(_myProfileImageUrl);
-                    }
-                }
-            }
+        //***************************************************************************
+        // @brief 갤러리 탭에서 대표 이미지가 바뀔 때마다(선택/삭제 성공) 호출된다.
+        //        예전(모달 다이얼로그)엔 창이 닫힌 뒤에야 한 번 반영했는데,
+        //        이제는 탭을 안 벗어나도 즉시 반영된다.
+        //***************************************************************************
+        private void OnGalleryActiveImageChanged(string newImageRef)
+        {
+            ApplyProfileImageUrl(newImageRef);
         }
 
         //***************************************************************************
@@ -1248,100 +1513,21 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief url의 이미지를 내려받아 아바타 캐시에 저장한다. 실패하면
-        //        캐시에 아무것도 안 넣는다 — DrawAvatar()가 계속 생성 아바타로
-        //        대체하며, 재시도는 하지 않는다(데모 범위에서 재시도 정책까지는
-        //        과함).
-        //***************************************************************************
-        //***************************************************************************
-        // @brief imageRef가 "local:"이면 TCP 청크 다운로드 프로토콜로, 아니면
-        //        (실제 URL) 기존처럼 HttpClient로 이미지 바이트를 가져온다.
-        //        링크 미리보기 썸네일, 아바타, 내 프로필 이미지 표시 등
-        //        이미지가 필요한 모든 곳이 이 헬퍼 하나로 통일해서 쓴다.
+        // @brief imageRef로 이미지 바이트를 가져온다. 링크 미리보기 썸네일,
+        //        아바타, 내 프로필 이미지 표시 등 이미지가 필요한 모든 곳이
+        //        이 헬퍼 하나로 통일해서 쓴다.
+        // @details [설계 변경] 예전엔 "local:" 접두사가 있으면 채팅 서버와의
+        //          TCP 청크 다운로드 프로토콜을 썼는데, 이미지 저장/서빙을
+        //          별도 파일 서버로 분리하면서 그 프로토콜 자체가 없어졌다 —
+        //          이제 모든 이미지 참조는 실제로 HTTP(S)로 접근 가능한 URL
+        //          (외부 호스팅이든, 우리 파일 서버가 돌려준 주소든)이라
+        //          HttpClient 하나로 통일된다.
         //***************************************************************************
         private async Task<byte[]> FetchImageBytesAsync(string imageRef)
         {
-            if (imageRef.StartsWith("local:", StringComparison.OrdinalIgnoreCase))
-                return await DownloadLocalProfileImageAsync(imageRef);
-
             return await _httpClient.GetByteArrayAsync(imageRef);
         }
 
-        //***************************************************************************
-        // @brief 서버가 로컬에 저장한 이미지를 청크 다운로드 프로토콜로 받아온다.
-        // @details 이벤트 기반 네트워크 콜백을 TaskCompletionSource로 감싸서
-        //          await 가능한 형태로 만든다. 여러 다운로드가 동시에 진행돼도
-        //          각 호출이 자기 downloadId만 걸러서 처리하므로 서로 안 섞인다
-        //          — 다만 이벤트 구독/해지를 매번 하므로, 아주 많은 이미지를
-        //          한꺼번에 내려받으면(예: 큰 갤러리) 구독이 잠깐 여러 개
-        //          겹칠 수 있다(정확성엔 문제없고, 약간의 오버헤드만 있음).
-        //***************************************************************************
-        private Task<byte[]> DownloadLocalProfileImageAsync(string imageRef)
-        {
-            var tcs = new TaskCompletionSource<byte[]>();
-
-            if (_client == null)
-            {
-                tcs.TrySetResult(null);
-                return tcs.Task;
-            }
-
-            var buffer = new List<byte>();
-            uint expectedDownloadId = 0;
-            bool started = false;
-
-            Action<DownloadProfileImageBeginResData> onBegin = null;
-            Action<DownloadProfileImageChunkResData> onChunk = null;
-            Action<DownloadProfileImageEndResData> onEnd = null;
-
-            void Cleanup()
-            {
-                _client.DownloadProfileImageBeginReceived -= onBegin;
-                _client.DownloadProfileImageChunkReceived -= onChunk;
-                _client.DownloadProfileImageEndReceived -= onEnd;
-            }
-
-            onBegin = data =>
-            {
-                if (started) // 이미 다른 다운로드의 Begin을 처리한 뒤라면 무시(방어적)
-                    return;
-
-                if (!data.Success)
-                {
-                    Cleanup();
-                    tcs.TrySetResult(null);
-                    return;
-                }
-
-                expectedDownloadId = data.DownloadId;
-                started = true;
-            };
-
-            onChunk = data =>
-            {
-                if (!started || data.DownloadId != expectedDownloadId)
-                    return; // 다른 다운로드의 청크 — 무시
-
-                buffer.AddRange(data.ChunkData);
-            };
-
-            onEnd = data =>
-            {
-                if (!started || data.DownloadId != expectedDownloadId)
-                    return;
-
-                Cleanup();
-                tcs.TrySetResult(buffer.ToArray());
-            };
-
-            _client.DownloadProfileImageBeginReceived += onBegin;
-            _client.DownloadProfileImageChunkReceived += onChunk;
-            _client.DownloadProfileImageEndReceived += onEnd;
-
-            _client.RequestDownloadProfileImage(imageRef);
-
-            return tcs.Task;
-        }
 
         private async Task FetchAvatarImageAsync(string url, int itemIndex)
         {
@@ -1595,11 +1781,10 @@ namespace ChatApp
             _client.RoomUserCountChanged += OnRoomUserCountChanged;
             _client.ServerUserCountReceived += OnServerUserCountReceived;
             _client.SetProfileImageUrlResultReceived += OnSetProfileImageUrlResultReceived;
-            // [추가] 업로드 시작/완료 응답은 UploadMyProfileImage()의 await 흐름과
-            // TaskCompletionSource로 연결한다 — 진행 중인 업로드가 없을 때
+            // [추가] 업로드 토큰 발급 응답은 UploadMyProfileImage()의 await 흐름과
+            // TaskCompletionSource로 연결한다 — 진행 중인 요청이 없을 때
             // (필드가 null일 때) 도착하면 조용히 무시한다.
-            _client.UploadProfileImageBeginResultReceived += data => _uploadBeginTcs?.TrySetResult(data);
-            _client.UploadProfileImageEndResultReceived += data => _uploadEndTcs?.TrySetResult(data);
+            _client.UploadTokenReceived += data => _uploadTokenTcs?.TrySetResult(data);
             _client.Disconnected += OnDisconnected;
             _client.ErrorOccurred += OnErrorOccurred;
 
@@ -1719,6 +1904,11 @@ namespace ChatApp
                     // 서버 값을 우선한다.
                     if (!string.IsNullOrEmpty(_myProfileImageUrl))
                         LoadMyProfileImageFromUrl(_myProfileImageUrl);
+
+                    // 갤러리는 로그인된 세션이 있어야 조회 가능(서버가
+                    // IsLoggedIn() 확인)하므로, TCP 연결 시점이 아니라
+                    // 로그인 성공 시점에 붙인다.
+                    _galleryPanel.AttachClient(_client);
 
                     // 서버가 로그인 직후 자동으로 로비에 배정한다 — 클라이언트도
                     // 그 전제로 현재 위치를 로비로 잡아둔다(서버의 RoomUserCountNotify가
@@ -1858,26 +2048,42 @@ namespace ChatApp
             {
                 if (data.Success)
                 {
-                    _myProfileImageUrl = _pendingProfileImageUrlRequest ?? string.Empty;
+                    ApplyProfileImageUrl(_pendingProfileImageUrlRequest ?? string.Empty);
 
                     if (string.IsNullOrEmpty(_myProfileImageUrl))
-                    {
-                        _picProfileImage.Image?.Dispose();
-                        _picProfileImage.Image = null;
-                        _picProfileImage.BackColor = Color.LightGray;
                         AppendSystemLog("[시스템] 프로필 이미지가 해제되었습니다.", ColorSystemOk);
-                    }
                     else
-                    {
-                        LoadMyProfileImageFromUrl(_myProfileImageUrl);
                         AppendSystemLog("[시스템] 프로필 이미지가 설정되었습니다 - " + _myProfileImageUrl, ColorSystemOk);
-                    }
                 }
                 else
                 {
                     AppendSystemLog("[시스템] 프로필 이미지 설정 실패 - 서버 오류", ColorSystemError);
                 }
             });
+        }
+
+        //***************************************************************************
+        // @brief 대표 프로필 이미지 URL이 바뀔 때(설정/업로드/해제/갤러리에서
+        //        선택·삭제) 화면에 그 결과를 반영하는 단일 진입점. 채팅 탭의
+        //        작은 프로필 사진과 갤러리 탭의 큰 대표 이미지, 두 군데를
+        //        항상 같이 갱신해서 두 화면이 서로 어긋나지 않게 한다.
+        //***************************************************************************
+        private void ApplyProfileImageUrl(string url)
+        {
+            _myProfileImageUrl = url ?? string.Empty;
+
+            if (string.IsNullOrEmpty(_myProfileImageUrl))
+            {
+                _picProfileImage.Image?.Dispose();
+                _picProfileImage.Image = null;
+                _picProfileImage.BackColor = Color.LightGray;
+            }
+            else
+            {
+                LoadMyProfileImageFromUrl(_myProfileImageUrl);
+            }
+
+            _galleryPanel.SetActiveImagePreview(_myProfileImageUrl);
         }
 
         private void OnDisconnected()
@@ -1909,6 +2115,8 @@ namespace ChatApp
                 {
                     _pendingSentEchoes.Clear();
                 }
+
+                _galleryPanel.DetachClient();
             });
         }
 
@@ -1921,6 +2129,7 @@ namespace ChatApp
         {
             _lblStatus.Text = text;
             _lblStatus.ForeColor = color;
+            _pnlStatusDot?.Invalidate(); // 점은 _lblStatus.ForeColor를 그대로 참조해서 그리므로 다시 그리기만 하면 됨
         }
 
         private static string DescribeLoginResult(LoginResult reason)

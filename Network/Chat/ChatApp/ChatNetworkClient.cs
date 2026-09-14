@@ -33,11 +33,7 @@ namespace ChatApp
         public event Action<SetProfileImageUrlResPacketData> SetProfileImageUrlResultReceived;
 
         // [추가] 프로필 이미지 업로드/다운로드/갤러리 관련 이벤트.
-        public event Action<UploadProfileImageBeginResData> UploadProfileImageBeginResultReceived;
-        public event Action<UploadProfileImageEndResData> UploadProfileImageEndResultReceived;
-        public event Action<DownloadProfileImageBeginResData> DownloadProfileImageBeginReceived;
-        public event Action<DownloadProfileImageChunkResData> DownloadProfileImageChunkReceived;
-        public event Action<DownloadProfileImageEndResData> DownloadProfileImageEndReceived;
+        public event Action<RequestUploadTokenResData> UploadTokenReceived;
         public event Action<ProfileImageListItemData> ProfileImageListItemReceived;
         public event Action<ListProfileImagesEndResData> ProfileImageListEndReceived;
         public event Action<SelectProfileImageResData> SelectProfileImageResultReceived;
@@ -97,14 +93,7 @@ namespace ChatApp
         public void RequestServerUserCount() => SendRaw(PacketBuilder.BuildServerUserCountReq());
 
         // [추가] 프로필 이미지 업로드/다운로드/갤러리 관련 전송 메서드.
-        public void RequestUploadProfileImageBegin(int totalBytes, string fileExtension) =>
-            SendRaw(PacketBuilder.BuildUploadProfileImageBeginReq(totalBytes, fileExtension));
-        public void SendUploadProfileImageChunk(uint uploadId, uint chunkIndex, byte[] chunkData, int chunkSize) =>
-            SendRaw(PacketBuilder.BuildUploadProfileImageChunkReq(uploadId, chunkIndex, chunkData, chunkSize));
-        public void RequestUploadProfileImageEnd(uint uploadId) =>
-            SendRaw(PacketBuilder.BuildUploadProfileImageEndReq(uploadId));
-        public void RequestDownloadProfileImage(string imageRef) =>
-            SendRaw(PacketBuilder.BuildDownloadProfileImageReq(imageRef));
+        public void RequestUploadToken() => SendRaw(PacketBuilder.BuildRequestUploadTokenReq());
         public void RequestListProfileImages() => SendRaw(PacketBuilder.BuildListProfileImagesReq());
         public void RequestSelectProfileImage(long imageId) => SendRaw(PacketBuilder.BuildSelectProfileImageReq(imageId));
         public void RequestDeleteProfileImage(long imageId) => SendRaw(PacketBuilder.BuildDeleteProfileImageReq(imageId));
@@ -207,8 +196,7 @@ namespace ChatApp
                 case PacketType.SetProfileImageUrlRes:
                     SetProfileImageUrlResultReceived?.Invoke(PacketParser.ParseSetProfileImageUrlRes(full));
                     break;
-                
-                /*
+
                 case PacketType.RoomEnterRes:
                     RoomEnterResultReceived?.Invoke(PacketParser.ParseRoomEnterRes(full));
                     break;
@@ -224,25 +212,9 @@ namespace ChatApp
                 case PacketType.ServerUserCountRes:
                     ServerUserCountReceived?.Invoke(PacketParser.ParseServerUserCountRes(full));
                     break;
-                */
-                case PacketType.UploadProfileImageBeginRes:
-                    UploadProfileImageBeginResultReceived?.Invoke(PacketParser.ParseUploadProfileImageBeginRes(full));
-                    break;
 
-                case PacketType.UploadProfileImageEndRes:
-                    UploadProfileImageEndResultReceived?.Invoke(PacketParser.ParseUploadProfileImageEndRes(full));
-                    break;
-
-                case PacketType.DownloadProfileImageBeginRes:
-                    DownloadProfileImageBeginReceived?.Invoke(PacketParser.ParseDownloadProfileImageBeginRes(full));
-                    break;
-
-                case PacketType.DownloadProfileImageChunkRes:
-                    DownloadProfileImageChunkReceived?.Invoke(PacketParser.ParseDownloadProfileImageChunkRes(full));
-                    break;
-
-                case PacketType.DownloadProfileImageEndRes:
-                    DownloadProfileImageEndReceived?.Invoke(PacketParser.ParseDownloadProfileImageEndRes(full));
+                case PacketType.RequestUploadTokenRes:
+                    UploadTokenReceived?.Invoke(PacketParser.ParseRequestUploadTokenRes(full));
                     break;
 
                 case PacketType.ListProfileImagesItemRes:

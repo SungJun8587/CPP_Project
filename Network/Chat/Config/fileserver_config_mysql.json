@@ -1,0 +1,25 @@
+{
+    "ServiceName": "",
+    "DisplayName": "",    
+    "Name": "FileServer",
+    "GroupId": 1,
+    "ChannelId": 0,    
+    "IP": "0.0.0.0",
+    "Port": 8081,
+    "MaxSessionCount": 500,
+    "WorkerThreadCnt": 4,
+    "RedisPoolSize": 4,
+    "StorageDir": "ProfileImages",
+    "PublicBaseUrl": "http://127.0.0.1:8081",
+    "MaxUploadBytes": 2097152,
+    "RedisNode": [
+        {
+            "ID": 1,
+            "IP": "127.0.0.1",
+            "Port": 16379,
+            "UID": "",
+            "PWD": "",
+            "DBIndex": 0
+        }    
+    ]
+}

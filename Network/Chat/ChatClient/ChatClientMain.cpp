@@ -8,7 +8,6 @@
 #include "ChatClientMain.h"
 #include "ChatClientSession.h"
 #include <Crypto/CryptoUtil.h>
-// [가정] AccountDBHandler.cpp와 동일한 경로 컨벤션으로 추정.
 #include <Util/EncodingConvert.h>
 
 #include <fstream>
@@ -250,30 +249,91 @@ void CChatClientMain::RequestServerUserCount()
 }
 
 //***************************************************************************
+// @brief 내 프로필 이미지 URL을 설정 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestSetProfileImageUrl(const std::string& url)
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendSetProfileImageUrlReq(url);
+}
+
+//***************************************************************************
+// @brief 파일 서버 업로드용 임시 토큰 발급을 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestUploadToken()
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendRequestUploadTokenReq();
+}
+
+//***************************************************************************
+// @brief 내 프로필 이미지 갤러리 목록 조회를 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestListProfileImages()
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendListProfileImagesReq();
+}
+
+//***************************************************************************
+// @brief 갤러리 이미지 하나를 대표로 지정 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestSelectProfileImage(int64 imageId)
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendSelectProfileImageReq(imageId);
+}
+
+//***************************************************************************
+// @brief 갤러리 이미지 하나 삭제를 요청합니다.
+//***************************************************************************
+void CChatClientMain::RequestDeleteProfileImage(int64 imageId)
+{
+	auto session = _session.lock();
+	if( session == nullptr )
+		return;
+
+	session->SendDeleteProfileImageReq(imageId);
+}
+
+//***************************************************************************
 // @brief 로그인 응답 수신 시 CChatClientSession이 호출합니다.
 // @details 성공 시 서버가 반환한 public_id와 회전 발급한 새 토큰을 로컬
 //          파일(프로필 이름 기준)에 저장한 뒤, 앱 쪽 콜백에는
-//          success/reason/nickname을 전달한다(저장은 이 클래스가 전담하는
-//          내부 구현 세부사항).
+//          success/reason/nickname/profileImageUrl을 전달한다(저장은 이
+//          클래스가 전담하는 내부 구현 세부사항).
 //***************************************************************************
 void CChatClientMain::OnLoginResult(bool success, ELoginResult reason, const std::string& nickname,
 	const std::array<BYTE, kPublicIdBytes>& publicId,
-	const std::array<BYTE, kTokenBytes>& newToken)
+	const std::array<BYTE, kTokenBytes>& newToken,
+	const std::string& profileImageUrl)
 {
 	if( success )
 		SaveAccount(_userId, publicId, newToken);
 
 	if( _onLoginResult )
-		_onLoginResult(success, reason, nickname);
+		_onLoginResult(success, reason, nickname, profileImageUrl);
 }
 
 //***************************************************************************
 // @brief 채팅 메시지 수신 시 CChatClientSession이 호출합니다.
 //***************************************************************************
-void CChatClientMain::OnChatReceived(const std::string& senderNickname, const std::string& message)
+void CChatClientMain::OnChatReceived(const std::string& senderNickname, const std::string& senderProfileImageUrl, const std::string& message)
 {
 	if( _onChatMessage )
-		_onChatMessage(senderNickname, message);
+		_onChatMessage(senderNickname, senderProfileImageUrl, message);
 }
 
 //***************************************************************************
@@ -339,4 +399,46 @@ void CChatClientMain::OnServerUserCountResult(int32 userCount, int32 lobbyUserCo
 {
 	if( _onServerUserCountResult )
 		_onServerUserCountResult(userCount, lobbyUserCount);
+}
+
+//***************************************************************************
+// @brief 프로필 이미지 URL 설정 응답 수신 시 핸들러가 호출합니다.
+//***************************************************************************
+void CChatClientMain::OnSetProfileImageUrlResult(bool success, const std::string& newUrl)
+{
+	if( _onSetProfileImageUrlResult )
+		_onSetProfileImageUrlResult(success, newUrl);
+}
+
+//***************************************************************************
+// @brief 업로드 토큰 발급 응답 수신 시 CChatClientSession이 호출합니다.
+//***************************************************************************
+void CChatClientMain::OnUploadTokenResult(bool success, ELoginResult reason, const std::string& uploadToken, const std::string& fileServerUrl)
+{
+	if( _onUploadTokenResult )
+		_onUploadTokenResult(success, reason, uploadToken, fileServerUrl);
+}
+
+void CChatClientMain::OnProfileImageListItem(int64 imageId, const std::string& imageRef, bool isActive)
+{
+	if( _onProfileImageListItem )
+		_onProfileImageListItem(imageId, imageRef, isActive);
+}
+
+void CChatClientMain::OnProfileImageListEnd(int32 totalCount)
+{
+	if( _onProfileImageListEnd )
+		_onProfileImageListEnd(totalCount);
+}
+
+void CChatClientMain::OnSelectProfileImageResult(bool success, ELoginResult reason)
+{
+	if( _onSelectProfileImageResult )
+		_onSelectProfileImageResult(success, reason);
+}
+
+void CChatClientMain::OnDeleteProfileImageResult(bool success, ELoginResult reason)
+{
+	if( _onDeleteProfileImageResult )
+		_onDeleteProfileImageResult(success, reason);
 }
