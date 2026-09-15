@@ -38,7 +38,7 @@ namespace ChatApp
         //***************************************************************************
         private class GalleryTile : Panel
         {
-            private static readonly Color Accent = Color.FromArgb(61, 123, 247);
+            private static Color Accent => ChatTheme.Current.Accent;
 
             public GalleryItem Item;
             public bool IsSelected;
@@ -69,7 +69,7 @@ namespace ChatApp
                             g.DrawPath(pen, path);
 
                         int cx = Width / 2, cy = Height / 2, s = Math.Min(Width, Height) / 6;
-                        using (var pen = new Pen(Color.FromArgb(176, 180, 186), 2))
+                        using (var pen = new Pen(ChatTheme.Current.TextMuted, 2))
                         {
                             g.DrawLine(pen, cx - s, cy, cx + s, cy);
                             g.DrawLine(pen, cx, cy - s, cx, cy + s);
@@ -137,9 +137,19 @@ namespace ChatApp
             {
                 FlatStyle = FlatStyle.Flat;
                 FlatAppearance.BorderSize = 0;
-                BackColor = Color.FromArgb(61, 123, 247);
+                BackColor = ChatTheme.Current.Accent;
                 Cursor = Cursors.Hand;
                 DoubleBuffered = true;
+            }
+
+            //***************************************************************************
+            // @brief 스킨 전환 시 ChatClientForm이 호출 — BackColor는 생성 시점에
+            //        굳어버리는 실제 프로퍼티라 페인트만으로는 안 바뀐다.
+            //***************************************************************************
+            public void RefreshThemeColor()
+            {
+                BackColor = ChatTheme.Current.Accent;
+                Invalidate();
             }
 
             protected override void OnResize(EventArgs e)
@@ -218,7 +228,7 @@ namespace ChatApp
         private void InitializeComponents()
         {
             Dock = DockStyle.Fill;
-            BackColor = Color.FromArgb(247, 248, 250);
+            BackColor = ChatTheme.Current.PageBack;
 
             // ── 상단: 대표 이미지 크게 + 카메라 배지 ──────────────────────
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 190 };
@@ -229,7 +239,7 @@ namespace ChatApp
                 Left = (577 - 140) / 2,
                 Top = 16,
                 SizeMode = PictureBoxSizeMode.StretchImage,
-                BackColor = Color.FromArgb(237, 242, 254),
+                BackColor = ControlPaint.Light(ChatTheme.Current.Accent, 0.9f),
             };
             ApplyRoundedRegion(_picActive, 18);
             _picActive.Resize += (s, e) => ApplyRoundedRegion(_picActive, 18);
@@ -256,7 +266,7 @@ namespace ChatApp
                 Width = 577,
                 Height = 18,
                 TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.FromArgb(138, 143, 152),
+                ForeColor = ChatTheme.Current.TextSecondary,
                 Font = new Font(Font.FontFamily, 8.5f),
             };
 
@@ -280,8 +290,8 @@ namespace ChatApp
             StyleActionButton(_btnSelect, filled: true);
             _btnSelect.Click += BtnSelect_Click;
 
-            _btnDelete = new Button { Text = "삭제", Dock = DockStyle.Right, Width = 270, Height = 32 };
-            StyleActionButton(_btnDelete, filled: false);
+            _btnDelete = new Button { Text = "삭제", Dock = DockStyle.Right, Width = 270, Height = 32, Enabled = false };
+            StyleDynamicButton(_btnDelete);
             _btnDelete.Click += BtnDelete_Click;
 
             buttonPanel.Controls.AddRange(new Control[] { _btnSelect, _btnDelete });
@@ -291,7 +301,7 @@ namespace ChatApp
                 Dock = DockStyle.Bottom,
                 Height = 22,
                 TextAlign = ContentAlignment.MiddleCenter,
-                ForeColor = Color.FromArgb(176, 180, 186),
+                ForeColor = ChatTheme.Current.TextMuted,
                 Font = new Font(Font.FontFamily, 8f),
                 Text = "서버에 접속하면 갤러리를 볼 수 있습니다.",
             };
@@ -302,7 +312,7 @@ namespace ChatApp
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
                 Padding = new Padding(8),
-                BackColor = Color.FromArgb(247, 248, 250),
+                BackColor = ChatTheme.Current.PageBack,
             };
 
             Controls.Add(_flowThumbnails);
@@ -312,20 +322,52 @@ namespace ChatApp
             Controls.Add(topPanel);
         }
 
+        //***************************************************************************
+        // @brief 활성/비활성 상태에 따라 자동으로 모양이 바뀌는 버튼 스타일
+        //        (ChatClientForm의 동일 로직 사본 — 별개 클래스라 공유 불가).
+        //        활성화면 액센트 배경+흰 글씨, 비활성화면 회색 배경+회색
+        //        글씨로 확실히 구분되게 하고, 테두리는 항상 그린다.
+        //***************************************************************************
+        private static void RefreshDynamicButtonColors(Button btn)
+        {
+            btn.FlatAppearance.BorderSize = 1;
+
+            if (btn.Enabled)
+            {
+                btn.BackColor = ChatTheme.Current.Accent;
+                btn.ForeColor = Color.White;
+                btn.FlatAppearance.BorderColor = ChatTheme.Current.Accent;
+            }
+            else
+            {
+                btn.BackColor = Color.FromArgb(236, 238, 241);
+                btn.ForeColor = ChatTheme.Current.TextMuted;
+                btn.FlatAppearance.BorderColor = ChatTheme.Current.Border;
+            }
+        }
+
+        private static void StyleDynamicButton(Button btn)
+        {
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.Cursor = Cursors.Hand;
+            btn.EnabledChanged += (s, e) => RefreshDynamicButtonColors(btn);
+            RefreshDynamicButtonColors(btn);
+        }
+
         private static void StyleActionButton(Button btn, bool filled)
         {
             btn.FlatStyle = FlatStyle.Flat;
             btn.FlatAppearance.BorderSize = filled ? 0 : 1;
-            btn.FlatAppearance.BorderColor = Color.FromArgb(226, 228, 232);
+            btn.FlatAppearance.BorderColor = ChatTheme.Current.Border;
             if (filled)
             {
-                btn.BackColor = Color.FromArgb(61, 123, 247);
+                btn.BackColor = ChatTheme.Current.Accent;
                 btn.ForeColor = Color.White;
             }
             else
             {
                 btn.BackColor = Color.White;
-                btn.ForeColor = Color.FromArgb(214, 69, 69);
+                btn.ForeColor = ChatTheme.Current.Danger;
             }
         }
 
@@ -373,13 +415,39 @@ namespace ChatApp
 
             ClearThumbnails();
             _selectedTile = null;
+            _btnDelete.Enabled = false;
 
             _picActive.Image?.Dispose();
             _picActive.Image = null;
-            _picActive.BackColor = Color.FromArgb(237, 242, 254);
+            _picActive.BackColor = ControlPaint.Light(ChatTheme.Current.Accent, 0.9f);
 
-            _lblStatus.ForeColor = Color.FromArgb(176, 180, 186);
+            _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "서버에 접속하면 갤러리를 볼 수 있습니다.";
+        }
+
+        //***************************************************************************
+        // @brief 스킨 전환 시 ChatClientForm이 호출 — Panel.BackColor,
+        //        Button.BackColor/ForeColor처럼 생성 시점에 굳어버린 값들을
+        //        새 ChatTheme.Current로 다시 씌우고 다시 그린다. 그리드 타일
+        //        (GalleryTile)과 카메라 배지는 각각 Accent를 페인트 시점에
+        //        다시 읽거나(GalleryTile) RefreshThemeColor()로 갱신한다.
+        //***************************************************************************
+        public void RefreshTheme()
+        {
+            BackColor = ChatTheme.Current.PageBack;
+            _flowThumbnails.BackColor = ChatTheme.Current.PageBack;
+
+            if (_picActive.Image == null)
+                _picActive.BackColor = ControlPaint.Light(ChatTheme.Current.Accent, 0.9f);
+
+            _lblActiveCaption.ForeColor = ChatTheme.Current.TextSecondary;
+            _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
+
+            _btnCameraBadge.RefreshThemeColor();
+            StyleActionButton(_btnSelect, filled: true);
+            RefreshDynamicButtonColors(_btnDelete);
+
+            Invalidate(true);
         }
 
         //***************************************************************************
@@ -392,8 +460,9 @@ namespace ChatApp
 
             ClearThumbnails();
             _selectedTile = null;
+            _btnDelete.Enabled = false;
 
-            _lblStatus.ForeColor = Color.FromArgb(176, 180, 186);
+            _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "불러오는 중...";
             _client.RequestListProfileImages();
         }
@@ -408,7 +477,7 @@ namespace ChatApp
             {
                 _picActive.Image?.Dispose();
                 _picActive.Image = null;
-                _picActive.BackColor = Color.FromArgb(237, 242, 254);
+                _picActive.BackColor = ControlPaint.Light(ChatTheme.Current.Accent, 0.9f);
                 return;
             }
 
@@ -469,7 +538,7 @@ namespace ChatApp
             BeginInvoke((MethodInvoker)delegate
             {
                 _lblSectionTitle.Text = $"전체 사진  {data.TotalCount}장";
-                _lblStatus.ForeColor = Color.FromArgb(176, 180, 186);
+                _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
                 _lblStatus.Text = "사진을 선택하면 대표 지정 또는 삭제할 수 있습니다.";
             });
         }
@@ -483,7 +552,7 @@ namespace ChatApp
             {
                 if (data.Success)
                 {
-                    _lblStatus.ForeColor = Color.FromArgb(47, 184, 112);
+                    _lblStatus.ForeColor = ChatTheme.Current.Success;
                     _lblStatus.Text = "대표로 지정했습니다.";
                     string newRef = _selectedTile?.Item?.ImageRef ?? string.Empty;
                     ActiveImageChanged?.Invoke(newRef);
@@ -491,7 +560,7 @@ namespace ChatApp
                 }
                 else
                 {
-                    _lblStatus.ForeColor = Color.FromArgb(214, 69, 69);
+                    _lblStatus.ForeColor = ChatTheme.Current.Danger;
                     _lblStatus.Text = "지정 실패";
                 }
             });
@@ -506,7 +575,7 @@ namespace ChatApp
             {
                 if (data.Success)
                 {
-                    _lblStatus.ForeColor = Color.FromArgb(47, 184, 112);
+                    _lblStatus.ForeColor = ChatTheme.Current.Success;
                     _lblStatus.Text = "삭제했습니다.";
 
                     if (_pendingDeleteWasActive)
@@ -516,7 +585,7 @@ namespace ChatApp
                 }
                 else
                 {
-                    _lblStatus.ForeColor = Color.FromArgb(214, 69, 69);
+                    _lblStatus.ForeColor = ChatTheme.Current.Danger;
                     _lblStatus.Text = "삭제 실패";
                 }
             });
@@ -567,9 +636,9 @@ namespace ChatApp
                 tile.IsSelected = true;
                 tile.Invalidate();
             }
-        }
 
-        // ── 이미지 fetch — 모든 imageRef가 실제 HTTP(S) URL이므로 HttpClient 하나로 충분. ──
+            _btnDelete.Enabled = _selectedTile != null;
+        }
 
         private async Task<byte[]> FetchImageBytesAsync(string imageRef)
         {
@@ -618,7 +687,7 @@ namespace ChatApp
             if (_client == null || _selectedTile == null || _selectedTile.IsAddTile)
                 return;
 
-            _lblStatus.ForeColor = Color.FromArgb(176, 180, 186);
+            _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "대표로 지정하는 중...";
             _client.RequestSelectProfileImage(_selectedTile.Item.ImageId);
         }
@@ -633,7 +702,7 @@ namespace ChatApp
 
             _pendingDeleteWasActive = _selectedTile.Item.IsActive;
 
-            _lblStatus.ForeColor = Color.FromArgb(176, 180, 186);
+            _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "삭제하는 중...";
             _client.RequestDeleteProfileImage(_selectedTile.Item.ImageId);
         }

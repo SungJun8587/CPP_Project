@@ -174,10 +174,17 @@ namespace ChatApp
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms))
             {
-                ushort size = (ushort)(ProtocolConstants.HeaderBytes + ProtocolConstants.NicknameBytes + ProtocolConstants.ChatMessageBytes);
+                // [수정] ChatPacket.h::ChatPacket에 profileImageUrl 필드가
+                // 추가됐는데 여기서 빠져있었다 — 서버가 기대하는 패킷 크기
+                // (헤더+nickname+profileImageUrl+message)보다 256바이트
+                // (ProfileImageUrlBytes) 작게 보내고 있어서, 서버의 크기
+                // 검증(SizeViolation)에 걸려 연결이 끊기는 원인이었다.
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + ProtocolConstants.NicknameBytes
+                    + ProtocolConstants.ProfileImageUrlBytes + ProtocolConstants.ChatMessageBytes);
                 bw.Write(size);
                 bw.Write((ushort)PacketType.Chat);
                 bw.Write(new byte[ProtocolConstants.NicknameBytes]); // 서버가 무시 — 0으로 채움
+                bw.Write(new byte[ProtocolConstants.ProfileImageUrlBytes]); // 서버가 무시 — 0으로 채움(nickname과 동일한 규칙)
                 bw.Write(FixedUtf8(message, ProtocolConstants.ChatMessageBytes));
                 return ms.ToArray();
             }

@@ -60,6 +60,7 @@ namespace ChatApp
         {
             public string Text;
             public Color Color;
+            public DateTime Timestamp;
             public override string ToString() => Text; // 접근성 등 폴백 경로용
         }
 
@@ -85,14 +86,25 @@ namespace ChatApp
             }
         }
 
+        //***************************************************************************
+        // @brief 채팅 로그 중간에 끼워 넣는 날짜 구분선("2026년 9월 15일 월요일").
+        //        ChatBubbleItem이 아닌 항목은 ChatListBox_DrawItem의 기존
+        //        폴백 경로(ToString()을 가운데 정렬 회색 텍스트로 그림)를 그대로
+        //        타므로, 별도 그리기 코드 없이 이 클래스만 추가하면 된다.
+        //***************************************************************************
+        private class DateSeparatorItem
+        {
+            public DateTime Date;
+            public override string ToString() => Date.ToString("yyyy년 M월 d일 dddd", new System.Globalization.CultureInfo("ko-KR"));
+        }
+
         private TextBox _txtServerIp;
         private TextBox _txtServerPort;
         private TextBox _txtProfileName;
         private Button _btnConnect;
-        private Button _btnDisconnect;
         private Label _lblStatus;
         private Panel _pnlStatusDot;
-        private TextBox _txtServerUserCount;
+        private Label _txtServerUserCount;
         private System.Windows.Forms.Timer _serverUserCountPollTimer;
 
         private string _currentNickname; // 화면에 별도로 표시하지 않고, 닉네임 변경 다이얼로그에 넘겨줄 용도로만 보관
@@ -104,6 +116,11 @@ namespace ChatApp
         private TaskCompletionSource<RequestUploadTokenResData> _uploadTokenTcs;
         private Button _btnOpenNicknameDialog;
         private TabControl _tabControl;
+        private Panel _headerPanel;
+        private Label _lblAppName;
+        private Button _btnSkin;
+        private Panel _chatPagePanel;
+        private Panel _galleryPagePanel;
         private ProfileImageGalleryPanel _galleryPanel;
 
         // [추가] 프로필 이미지 — 로컬 전용(네트워크로 다른 사람에게 전송되지
@@ -114,13 +131,12 @@ namespace ChatApp
         private ComboBox _cbChatRoomId;
         private Button _btnRoomEnter;
         private Button _btnRoomLeave;
-        private TextBox _txtLobbyUserCount;
-        private TextBox _txtRoomUserCount;
+        private Label _txtLobbyUserCount;
+        private Label _txtRoomUserCount;
         private Label _lblCurrentRoom;
 
         private TextBox _txtMessage;
         private Button _btnSend;
-        private Button _btnChatBackground;
         private ListBox _listBoxChat;
         // [추가] 참고 코드는 DrawItem마다 Font를 새로 만들고 버렸는데, 매 프레임
         // GDI 리소스를 할당/해제하는 건 낭비라 필드로 캐시해서 재사용한다.
@@ -209,14 +225,35 @@ namespace ChatApp
         }
 
         // ── 디자인 시스템 — 갤러리 탭(ProfileImageGalleryPanel)과 동일한
-        // 팔레트를 대화 탭에도 그대로 적용해 두 탭이 한 앱처럼 보이게 한다. ──
-        private static readonly Color AccentColor = Color.FromArgb(61, 123, 247);
-        private static readonly Color SuccessColor = Color.FromArgb(47, 184, 112);
-        private static readonly Color DangerColor = Color.FromArgb(214, 69, 69);
-        private static readonly Color PageBackColor = Color.FromArgb(247, 248, 250);
-        private static readonly Color BorderColor = Color.FromArgb(226, 228, 232);
-        private static readonly Color TextSecondaryColor = Color.FromArgb(138, 143, 152);
-        private static readonly Color TextMutedColor = Color.FromArgb(176, 180, 186);
+        // 팔레트를 대화 탭에도 그대로 적용해 두 탭이 한 앱처럼 보이게 한다.
+        // [수정 — 윈도우 스킨 기능] 예전엔 이 색상들이 컴파일 타임에 고정된
+        // static readonly 필드였는데, 이제 CurrentTheme(교체 가능한 인스턴스)를
+        // 두고 각 색상은 거기서 값을 가져오는 static 프로퍼티로 바꿨다.
+        // 이렇게 하면 기존에 AccentColor/BorderColor 등을 참조하던 코드
+        // (카드 Paint 이벤트, 말풍선 DrawItem, 갤러리 타일 등 대부분 페인트
+        // 시점에 값을 다시 읽는 코드)는 한 줄도 안 고쳐도 CurrentTheme만
+        // 바꾸고 다시 그리면 새 색으로 반영된다. 다만 Button.BackColor처럼
+        // 생성 시점에 값을 그대로 굳혀버린 것들은 ApplyTheme()에서 별도로
+        // 다시 씌워줘야 한다.
+        // [수정] ChatTheme 클래스 자체는 ProfileImageGalleryPanel.cs도 같이
+        // 참조해야 해서 이 클래스 밖(네임스페이스 레벨)으로 옮겼다 —
+        // ChatTheme.Current가 앱 전체가 공유하는 단일 진실 공급원이다.
+        private static ChatTheme CurrentTheme => ChatTheme.Current;
+
+        private static Color AccentColor => CurrentTheme.Accent;
+        private static Color SuccessColor => CurrentTheme.Success;
+        private static Color DangerColor => CurrentTheme.Danger;
+        // [수정] 스킨은 버튼/테두리/말풍선 색상에만 적용되고, 창/페이지
+        // 배경은 항상 고정된 밝은 색을 쓴다 — Label의 "투명 배경" 렌더링이
+        // 커스텀 그리기 부모(CardPanel) 위에서 부모의 부모(폼) 배경색을
+        // 잘못 참조하는 WinForms의 알려진 문제가 있어서, 폼 배경이 어두운
+        // 색으로 바뀌면 카드 위 라벨들 뒤에 어두운 상자가 비쳐 보이는
+        // 문제가 있었다. 창 배경 자체를 스킨과 무관하게 고정하면 이 문제도
+        // 같이 해결된다.
+        private static Color PageBackColor => ChatTheme.Blue.PageBack;
+        private static Color BorderColor => CurrentTheme.Border;
+        private static Color TextSecondaryColor => CurrentTheme.TextSecondary;
+        private static Color TextMutedColor => CurrentTheme.TextMuted;
 
         //***************************************************************************
         // @brief GroupBox의 투박한 테두리 대신 쓰는 둥근 모서리 흰 카드 패널.
@@ -236,11 +273,16 @@ namespace ChatApp
                 var g = e.Graphics;
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 var rect = new Rectangle(0, 0, Width - 1, Height - 1);
-                using (var path = RoundedRectPath(rect, 10))
+                // 내부 콘텐츠 여백이 다시 넉넉해졌으니(11~14px) 모서리
+                // 반지름도 적당히 복원 — 4는 지나치게 각져 보여서 8로.
+                using (var path = RoundedRectPath(rect, 8))
                 {
                     using (var b = new SolidBrush(Color.White))
                         g.FillPath(b, path);
-                    using (var pen = new Pen(BorderColor))
+                    // [수정] 중립 회색(BorderColor) 대신 스킨의 액센트 색을
+                    // 그대로 써서, 카드 테두리에서도 지금 선택된 스킨이
+                    // 눈에 띄게 반영되게 한다.
+                    using (var pen = new Pen(AccentColor))
                         g.DrawPath(pen, path);
                 }
             }
@@ -264,6 +306,107 @@ namespace ChatApp
         // @param dangerOutline true면 아웃라인 글자색을 위험(빨강)으로 — 삭제/
         //        나가기 계열 버튼용.
         //***************************************************************************
+        //***************************************************************************
+        // @brief 말풍선 그리기용 캐시 브러시를 현재 테마(CurrentTheme) 색상으로
+        //        (다시) 만든다. 초기화 시점과 스킨 전환 시점 둘 다에서 호출된다.
+        //        기존 브러시가 있으면 GDI 핸들 누수 방지를 위해 먼저 Dispose한다.
+        //***************************************************************************
+        private void RebuildBubbleBrushes()
+        {
+            (_myBubbleBrush as IDisposable)?.Dispose();
+            (_myTextBrush as IDisposable)?.Dispose();
+            (_otherTextBrush as IDisposable)?.Dispose();
+            (_bubbleNameBrush as IDisposable)?.Dispose();
+            (_bubbleTimeBrush as IDisposable)?.Dispose();
+
+            _myBubbleBrush = new SolidBrush(CurrentTheme.MyBubble);
+            _myTextBrush = new SolidBrush(CurrentTheme.MyText);
+            _otherTextBrush = new SolidBrush(CurrentTheme.OtherText);
+            _bubbleNameBrush = new SolidBrush(TextSecondaryColor);
+            _bubbleTimeBrush = new SolidBrush(TextMutedColor);
+        }
+
+        //***************************************************************************
+        // @brief 스킨(테마)을 교체하고, 생성 시점에 색이 굳어버린 컨트롤들
+        //        (버튼의 BackColor/ForeColor 등)을 다시 씌운 뒤 전체를 다시
+        //        그린다. 카드(CardPanel)/탭 밑줄/말풍선처럼 Paint 이벤트에서
+        //        색을 그때그때 다시 읽는 컨트롤들은 Invalidate(true) 한 번으로
+        //        자동 반영된다. [설계] 창/페이지/헤더 배경은 스킨과 무관하게
+        //        항상 고정된 밝은 색을 유지한다(PageBackColor 선언부 참고) —
+        //        그래서 여기서 배경색을 다시 씌우는 코드가 없다.
+        //***************************************************************************
+        private void ApplyTheme(ChatTheme theme)
+        {
+            ChatTheme.Current = theme;
+            RebuildBubbleBrushes();
+            // [수정] 채팅 리스트박스 배경은 이제 스킨과 무관하게 고정이라
+            // 여기서 다시 씌울 필요가 없다(ChatTheme.FixedChatBackground).
+
+            if (_picProfileImage != null && _picProfileImage.Image == null)
+                _picProfileImage.BackColor = ControlPaint.Light(AccentColor, 0.9f);
+
+            // 버튼들 — 처음 만들 때와 같은 filled/outline/danger 조합으로 재적용.
+            StyleButton(_btnConnect, filled: true);
+            StyleButton(_btnOpenNicknameDialog, filled: false);
+            RefreshDynamicButtonColors(_btnRoomEnter);
+            RefreshDynamicButtonColors(_btnRoomLeave);
+            RefreshDynamicButtonColors(_btnSend);
+            if (_btnSkin != null) RefreshDynamicButtonColors(_btnSkin);
+
+            AppendSystemLog($"[시스템] 스킨을 '{theme.Name}'(으)로 변경했습니다.", ColorSystemInfo);
+
+            // Invalidate(true)는 이미 재귀적으로 모든 자식 컨트롤까지 다시
+            // 그리게 하므로 별도로 자식을 순회할 필요는 없다.
+            // ProfileImageGalleryPanel(갤러리 탭)은 별도 클래스라 자기 색상도
+            // 직접 갱신해줘야 한다 — 같은 ChatTheme.Current를 참조하지만
+            // 버튼/라벨의 BackColor/ForeColor는 생성 시점에 굳어있으므로.
+            _galleryPanel?.RefreshTheme();
+
+            Invalidate(true);
+        }
+
+        //***************************************************************************
+        // @brief 활성/비활성 상태에 따라 자동으로 모양이 바뀌는 버튼 스타일.
+        //        활성화(Enabled=true)면 접속 버튼과 같은 "채워진" 모양(액센트
+        //        배경+흰 글씨), 비활성화면 회색 배경+회색 글씨로 확실히
+        //        구분되게 한다. 테두리는 상태와 무관하게 항상 그려서 배경과
+        //        분리돼 보이게 한다("버튼임"이 항상 눈에 띄어야 하므로).
+        //***************************************************************************
+        private static void RefreshDynamicButtonColors(Button btn)
+        {
+            btn.FlatAppearance.BorderSize = 1;
+
+            if (btn.Enabled)
+            {
+                btn.BackColor = AccentColor;
+                btn.ForeColor = Color.White;
+                btn.FlatAppearance.BorderColor = AccentColor;
+            }
+            else
+            {
+                btn.BackColor = Color.FromArgb(236, 238, 241);
+                btn.ForeColor = TextMutedColor;
+                btn.FlatAppearance.BorderColor = BorderColor;
+            }
+        }
+
+        //***************************************************************************
+        // @brief RefreshDynamicButtonColors()를 최초 1회 적용하고, 이후
+        //        Enabled 값이 바뀔 때마다(방 입장/퇴장, 접속/해제 등으로
+        //        Enabled = true/false가 바뀔 때) 자동으로 다시 적용되도록
+        //        EnabledChanged에 걸어둔다. 스킨이 바뀔 때는 이 이벤트가 아니라
+        //        ApplyTheme()가 RefreshDynamicButtonColors()를 직접 다시
+        //        호출한다(새 액센트 색 반영 목적 — Enabled 값 자체는 안
+        //        바뀌므로 EnabledChanged가 안 불림).
+        //***************************************************************************
+        private static void StyleDynamicButton(Button btn)
+        {
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.Cursor = Cursors.Hand;
+            btn.EnabledChanged += (s, e) => RefreshDynamicButtonColors(btn);
+            RefreshDynamicButtonColors(btn);
+        }
+
         private static void StyleButton(Button btn, bool filled, bool dangerOutline = false)
         {
             btn.FlatStyle = FlatStyle.Flat;
@@ -304,7 +447,7 @@ namespace ChatApp
             BackColor = PageBackColor;
 
             // ── 카드 1: 서버 접속 ──────────────────────────────────────
-            var groupBox1 = new CardPanel { Left = 10, Top = 9, Width = 557, Height = 85 };
+            var groupBox1 = new CardPanel { Left = 3, Top = 9, Width = 562, Height = 85 };
             var lblCard1Title = new Label
             {
                 Text = "서버 접속",
@@ -316,20 +459,20 @@ namespace ChatApp
                 Font = new Font(Font.FontFamily, 8f, FontStyle.Bold),
             };
 
-            var lblIp = new Label { Text = "서버 IP", Left = 11, Top = 25, Width = 45 };
-            _txtServerIp = new TextBox { Left = 60, Top = 21, Width = 120, Text = "127.0.0.1" };
+            var lblIp = new Label { Text = "서버 IP", Left = 14, Top = 25, Width = 45 };
+            _txtServerIp = new TextBox { Left = 63, Top = 21, Width = 120, Text = "127.0.0.1" };
 
-            var lblPort = new Label { Text = "포트", Left = 190, Top = 25, Width = 35 };
-            _txtServerPort = new TextBox { Left = 225, Top = 21, Width = 60, Text = "30201" };
+            var lblPort = new Label { Text = "포트", Left = 193, Top = 25, Width = 35 };
+            _txtServerPort = new TextBox { Left = 228, Top = 21, Width = 60, Text = "30201" };
 
-            var lblProfile = new Label { Text = "프로필 이름", Left = 11, Top = 51, Width = 80 };
-            _txtProfileName = new TextBox { Left = 90, Top = 47, Width = 150 };
+            var lblProfile = new Label { Text = "프로필 이름", Left = 14, Top = 51, Width = 80 };
+            _txtProfileName = new TextBox { Left = 93, Top = 47, Width = 150 };
 
             // [추가] 프로필 이름 옆의 닉네임 변경 버튼 — 서버에 로그인 성공한
             // 뒤에만 보인다(Visible, 단순 Enabled가 아님 — 로그인 전에는
             // 아예 존재를 드러내지 않는다는 요구사항). 누르면 별도 팝업
             // (NicknameChangeDialog)이 뜨고, 그 안에 자동 생성/변경 버튼이 있다.
-            _btnOpenNicknameDialog = new Button { Text = "닉네임 변경", Left = 245, Top = 46, Width = 90, Height = 25, Visible = false };
+            _btnOpenNicknameDialog = new Button { Text = "닉네임 변경", Left = 248, Top = 46, Width = 90, Height = 25, Visible = false };
             _btnOpenNicknameDialog.Click += BtnOpenNicknameDialog_Click;
             StyleButton(_btnOpenNicknameDialog, filled: false);
 
@@ -338,13 +481,14 @@ namespace ChatApp
             // (네트워크와 무관한 순수 로컬 개인화 기능이므로).
             _picProfileImage = new PictureBox
             {
-                Left = 340,
+                Visible = false,
+                Left = 343,
                 Top = 44,
                 Width = 28,
                 Height = 28,
                 SizeMode = PictureBoxSizeMode.StretchImage,
                 BorderStyle = BorderStyle.FixedSingle,
-                BackColor = Color.LightGray,
+                BackColor = ControlPaint.Light(AccentColor, 0.9f), // 이미지 미설정 시 플레이스홀더 배경도 스킨 색상 반영
                 Cursor = Cursors.Hand,
             };
             // [수정] 로컬 파일 선택(나만 보임)과 URL 설정(모두에게 공유) 중
@@ -358,15 +502,12 @@ namespace ChatApp
             profileImageMenu.Items.Add("갤러리 관리", null, (s, e) => SwitchToGalleryTab());
             _picProfileImage.Click += (s, e) => profileImageMenu.Show(_picProfileImage, new Point(0, _picProfileImage.Height));
 
-            _btnConnect = new Button { Text = "접속", Left = 385, Top = 19, Width = 58, Height = 25 };
+            _btnConnect = new Button { Text = "접속", Left = 499, Top = 19, Width = 58, Height = 25 };
             _btnConnect.Click += BtnConnect_Click;
             StyleButton(_btnConnect, filled: true);
 
-            _btnDisconnect = new Button { Text = "끊기", Left = 451, Top = 19, Width = 58, Height = 25, Enabled = false };
-            _btnDisconnect.Click += BtnDisconnect_Click;
-            StyleButton(_btnDisconnect, filled: false, dangerOutline: true);
 
-            var pnlStatusDot = new Panel { Left = 390, Top = 52, Width = 8, Height = 8 };
+            var pnlStatusDot = new Panel { Left = 405, Top = 27, Width = 8, Height = 8 };
             pnlStatusDot.Paint += (s, e) =>
             {
                 e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
@@ -375,17 +516,17 @@ namespace ChatApp
             };
             _pnlStatusDot = pnlStatusDot;
 
-            _lblStatus = new Label { Text = "연결 안 됨", Left = 402, Top = 47, Width = 148, ForeColor = TextMutedColor };
+            _lblStatus = new Label { Text = "연결 안 됨", Left = 417, Top = 23, Width = 74, ForeColor = TextMutedColor };
 
             groupBox1.Controls.AddRange(new Control[]
             {
                 lblCard1Title,
                 lblIp, _txtServerIp, lblPort, _txtServerPort, lblProfile, _txtProfileName, _btnOpenNicknameDialog,
-                _picProfileImage, _btnConnect, _btnDisconnect, _pnlStatusDot, _lblStatus,
+                _picProfileImage, _btnConnect, _pnlStatusDot, _lblStatus,
             });
 
             // ── 그룹박스 2: 채팅방(로비/룸) ──────────────────────────────
-            var groupBox2 = new CardPanel { Left = 10, Top = 100, Width = 557, Height = 374 };
+            var groupBox2 = new CardPanel { Left = 3, Top = 100, Width = 562, Height = 374 };
             var lblCard2Title = new Label
             {
                 Text = "채팅방",
@@ -405,55 +546,45 @@ namespace ChatApp
 
             _btnRoomEnter = new Button { Text = "방 입장", Left = 88, Top = 22, Width = 70, Height = 25, Enabled = false };
             _btnRoomEnter.Click += BtnRoomEnter_Click;
-            StyleButton(_btnRoomEnter, filled: false);
+            StyleDynamicButton(_btnRoomEnter);
 
             _btnRoomLeave = new Button { Text = "방 나가기", Left = 163, Top = 22, Width = 70, Height = 25, Enabled = false };
             _btnRoomLeave.Click += BtnRoomLeave_Click;
-            StyleButton(_btnRoomLeave, filled: false, dangerOutline: true);
-
-            // [추가] 채팅창 배경 설정 — 색상/이미지 선택 또는 기본값 초기화를
-            // 컨텍스트 메뉴로 고르게 한다. 방 선택 줄 오른쪽에 남는 공간에 배치.
-            var chatBackgroundMenu = new ContextMenuStrip();
-            chatBackgroundMenu.Items.Add("색상으로 설정", null, (s, e) => SetChatBackgroundColor());
-            chatBackgroundMenu.Items.Add("이미지로 설정", null, (s, e) => SetChatBackgroundImage());
-            chatBackgroundMenu.Items.Add("기본값으로 초기화", null, (s, e) => ResetChatBackground());
-
-            _btnChatBackground = new Button { Text = "배경 설정", Left = 470, Top = 22, Width = 77, Height = 25 };
-            _btnChatBackground.Click += (s, e) => chatBackgroundMenu.Show(_btnChatBackground, new Point(0, _btnChatBackground.Height));
-            StyleButton(_btnChatBackground, filled: false);
+            StyleDynamicButton(_btnRoomLeave);
 
             // [수정] 서버 동접자수를 로비 유저수 왼쪽에 배치 — 프로필 이름과
             // 같은 형태(정적 라벨 + 읽기전용 텍스트박스)로 통일했다. 그룹박스1이
             // 아니라 여기(그룹박스2)로 옮긴 이유는 "로비 유저수 왼쪽"이라는
             // 배치 요구를 만족하려면 로비/방 유저수와 같은 줄에 있어야 하기
             // 때문이다.
-            var lblServerUserCount = new Label { Text = "서버 동접자수 : ", Left = 11, Top = 58, Width = 94 };
-            _txtServerUserCount = new TextBox { Left = 105, Top = 54, Width = 45, ReadOnly = true, TextAlign = HorizontalAlignment.Center };
+            var lblServerUserCount = new Label { Text = "서버 동접자수 : ", Left = 11, Top = 58, Width = 94, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
+            _txtServerUserCount = new Label { Left = 105, Top = 58, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
 
-            var lblLobbyUserCount = new Label { Text = "로비 유저수 : ", Left = 155, Top = 58, Width = 81 };
-            _txtLobbyUserCount = new TextBox { Left = 236, Top = 54, Width = 45, ReadOnly = true, TextAlign = HorizontalAlignment.Center };
+            var lblLobbyUserCount = new Label { Text = "로비 유저수 : ", Left = 155, Top = 58, Width = 81, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
+            _txtLobbyUserCount = new Label { Left = 236, Top = 58, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
 
-            var lblRoomUserCount = new Label { Text = "방 유저수 : ", Left = 286, Top = 58, Width = 68 };
-            _txtRoomUserCount = new TextBox { Left = 354, Top = 54, Width = 45, ReadOnly = true, TextAlign = HorizontalAlignment.Center };
+            var lblRoomUserCount = new Label { Text = "방 유저수 : ", Left = 286, Top = 58, Width = 68, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
+            _txtRoomUserCount = new Label { Left = 354, Top = 58, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
 
-            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 58, Width = 150, ForeColor = TextMutedColor };
+            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 58, Width = 153, ForeColor = TextMutedColor };
 
-            _txtMessage = new TextBox { Left = 10, Top = 88, Width = 465, Height = 26, Enabled = false, BorderStyle = BorderStyle.FixedSingle, Multiline = true };
+            _txtMessage = new TextBox { Left = 10, Top = 338, Width = 474, Height = 24, Enabled = false, BorderStyle = BorderStyle.FixedSingle, Multiline = true };
             _txtMessage.KeyDown += TxtMessage_KeyDown;
 
-            _btnSend = new Button { Text = "전송", Left = 480, Top = 88, Width = 67, Height = 26, Enabled = false, Visible = true };
+            _btnSend = new Button { Text = "전송", Left = 490, Top = 338, Width = 67, Height = 26, Enabled = false, Visible = true };
             _btnSend.Click += BtnSend_Click;
-            StyleButton(_btnSend, filled: true);
+            StyleDynamicButton(_btnSend);
 
             _listBoxChat = new ListBox
             {
                 Left = 10,
-                Top = 123,
-                Width = 537,
-                Height = 233,
+                Top = 88,
+                Width = 542,
+                Height = 244,
                 DrawMode = DrawMode.OwnerDrawVariable,
                 HorizontalScrollbar = false, // 말풍선 너비를 자동으로 줄바꿈하려면 가로 스크롤은 꺼둬야 함
                 ScrollAlwaysVisible = true,
+                BackColor = ChatTheme.FixedChatBackground,
             };
             _listBoxChat.MeasureItem += ChatListBox_MeasureItem;
             _listBoxChat.DrawItem += ChatListBox_DrawItem;
@@ -463,35 +594,18 @@ namespace ChatApp
             // 말풍선의 닉네임/시간 표시용 폰트 — DrawItem에서 재사용(캐시).
             _nameFont = new Font(_listBoxChat.Font.FontFamily, 8.5f, FontStyle.Bold);
             _timeFont = new Font(_listBoxChat.Font.FontFamily, 7.5f, FontStyle.Regular);
-            _myBubbleBrush = new SolidBrush(AccentColor);
-            _myTextBrush = Brushes.White;
-            _otherTextBrush = new SolidBrush(Color.FromArgb(26, 29, 33));
-            _bubbleNameBrush = new SolidBrush(TextSecondaryColor);
-            _bubbleTimeBrush = new SolidBrush(TextMutedColor);
+            // [수정] 이미지 레퍼런스처럼 카카오톡 스타일 노란 말풍선으로 —
+            // 파란 배경엔 흰 글씨가 맞지만, 노란 배경엔 대비상 검정 글씨가 맞다.
+            RebuildBubbleBrushes();
 
             groupBox2.Controls.AddRange(new Control[]
             {
                 lblCard2Title,
-                _cbChatRoomId, _btnRoomEnter, _btnRoomLeave, _btnChatBackground,
+                _cbChatRoomId, _btnRoomEnter, _btnRoomLeave,
                 lblServerUserCount, _txtServerUserCount, lblLobbyUserCount, _txtLobbyUserCount,
                 lblRoomUserCount, _txtRoomUserCount, _lblCurrentRoom,
                 _txtMessage, _btnSend, _listBoxChat,
             });
-
-            // ── 하단: 시스템 로그(로그인/닉네임 변경/방 입퇴장 결과/연결 끊김/오류 등) ──
-            _listBoxMsg = new ListBox
-            {
-                Left = 10,
-                Top = 480,
-                Width = 557,
-                Height = 139,
-                DrawMode = DrawMode.OwnerDrawFixed,
-                ItemHeight = 16,
-                ScrollAlwaysVisible = true,
-                BorderStyle = BorderStyle.None,
-                BackColor = Color.White,
-            };
-            _listBoxMsg.DrawItem += ColoredListBox_DrawItem;
 
             // ── 탭 구성: "대화"(기존 화면 전체) / "갤러리"(카카오톡 스타일로
             // 별도 창이 아니라 메인 창 안에 탭으로 통합) ──────────────────
@@ -525,9 +639,10 @@ namespace ChatApp
             // Panel(Dock=Fill)로 한 번 감싸서 그 안에 넣는다. Panel은 이
             // 문제가 없다.
             var chatPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+            _chatPagePanel = chatPagePanel;
             // 시스템 로그도 다른 두 카드와 같은 톤으로 감싼다 — 리스트박스 자체는
             // 카드 안에서 (0,0) 기준 상대좌표로 다시 배치.
-            var card3 = new CardPanel { Left = 10, Top = 480, Width = 557, Height = 139 };
+            var card3 = new CardPanel { Left = 3, Top = 480, Width = 562, Height = 139 };
             var lblCard3Title = new Label
             {
                 Text = "시스템 로그",
@@ -538,10 +653,20 @@ namespace ChatApp
                 ForeColor = TextSecondaryColor,
                 Font = new Font(Font.FontFamily, 8f, FontStyle.Bold),
             };
-            _listBoxMsg.Left = 6;
-            _listBoxMsg.Top = 20;
-            _listBoxMsg.Width = 545;
-            _listBoxMsg.Height = 113;
+
+            // ── 하단: 시스템 로그(로그인/닉네임 변경/방 입퇴장 결과/연결 끊김/오류 등) ──
+            _listBoxMsg = new ListBox
+            {
+                Left = 10,
+                Top = 20,
+                Width = 542,
+                Height = 116,
+                DrawMode = DrawMode.OwnerDrawFixed,
+                ItemHeight = 16,
+                ScrollAlwaysVisible = true,
+                BackColor = ChatTheme.FixedChatBackground,
+            };
+            _listBoxMsg.DrawItem += ColoredListBox_DrawItem;
             card3.Controls.AddRange(new Control[] { lblCard3Title, _listBoxMsg });
 
             chatPagePanel.Controls.AddRange(new Control[] { groupBox1, groupBox2, card3 });
@@ -549,6 +674,7 @@ namespace ChatApp
 
             var tabPageGallery = new TabPage("갤러리");
             var galleryPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+            _galleryPagePanel = galleryPagePanel;
             _galleryPanel = new ProfileImageGalleryPanel(_httpClient);
             _galleryPanel.ActiveImageChanged += OnGalleryActiveImageChanged;
             // [추가] 갤러리 상단 카메라 배지 메뉴는 실제 업로드/네트워크 로직을
@@ -578,12 +704,13 @@ namespace ChatApp
 
             // ── 상단 헤더 바 — 로고 + 앱 이름. Dock 순서 주의: _tabControl(Fill)을
             // 먼저 추가해야 헤더(Top)가 나중에 그 위쪽 띠를 차지할 수 있다. ──
-            var headerPanel = new Panel { Dock = DockStyle.Top, Height = 44, BackColor = Color.White };
+            var headerPanel = new Panel { Dock = DockStyle.Top, Height = 44, BackColor = ChatTheme.Blue.HeaderBack };
             headerPanel.Paint += (s, e) =>
             {
                 using (var pen = new Pen(BorderColor))
                     e.Graphics.DrawLine(pen, 0, headerPanel.Height - 1, headerPanel.Width, headerPanel.Height - 1);
             };
+            _headerPanel = headerPanel;
 
             var logoBox = new Panel { Left = 14, Top = 11, Width = 22, Height = 22 };
             logoBox.Paint += (s, e) =>
@@ -599,13 +726,37 @@ namespace ChatApp
                 Text = "ChatApp",
                 Left = 44,
                 Top = 12,
-                Width = 160,
+                Width = 120,
                 Height = 20,
                 Font = new Font(Font.FontFamily, 10f, FontStyle.Regular),
-                ForeColor = Color.FromArgb(26, 29, 33),
+                ForeColor = Color.FromArgb(26, 29, 33), // 헤더 배경이 항상 밝은 색으로 고정이라 어두운 글씨로 고정
             };
+            _lblAppName = lblAppName;
 
-            headerPanel.Controls.AddRange(new Control[] { logoBox, lblAppName });
+            // [추가] 스킨 선택 버튼 — 헤더 우측.
+            var btnSkin = new Button { Text = "스킨", Left = 504, Top = 8, Width = 56, Height = 28 };
+            _btnSkin = btnSkin;
+            StyleDynamicButton(btnSkin);
+            var skinMenu = new ContextMenuStrip();
+            foreach (var theme in ChatTheme.All)
+            {
+                var themeForMenu = theme;
+                var item = new ToolStripMenuItem(theme.Name);
+                item.Click += (s, e) => ApplyTheme(themeForMenu);
+                skinMenu.Items.Add(item);
+            }
+            // 메뉴를 열 때마다 지금 적용된 스킨에만 체크 표시를 갱신한다 —
+            // ApplyTheme() 시점이 아니라 여기서 하는 이유는, 메뉴가 안 열려
+            //있는 동안에는 체크 상태가 화면에 안 보이니 굳이 미리 갱신해둘
+            // 필요가 없어서다(연 순간에만 맞으면 충분).
+            skinMenu.Opening += (s, e) =>
+            {
+                foreach (ToolStripMenuItem menuItem in skinMenu.Items)
+                    menuItem.Checked = menuItem.Text == ChatTheme.Current.Name;
+            };
+            btnSkin.Click += (s, e) => skinMenu.Show(btnSkin, new Point(0, btnSkin.Height));
+
+            headerPanel.Controls.AddRange(new Control[] { logoBox, lblAppName, btnSkin });
             Controls.Add(headerPanel);
 
             // [추가] 서버 동접자수 폴링 — 로그인 성공 시 시작, 연결 끊기면 정지.
@@ -643,9 +794,17 @@ namespace ChatApp
             var entry = (ColoredEntry)listBox.Items[e.Index];
 
             e.DrawBackground();
+
+            string timePrefix = entry.Timestamp.ToString("HH:mm:ss") + "  ";
+            SizeF timeSize = e.Graphics.MeasureString(timePrefix, listBox.Font);
+
+            using (var timeBrush = new SolidBrush(TextMutedColor))
+                e.Graphics.DrawString(timePrefix, listBox.Font, timeBrush, e.Bounds);
+
+            var textRect = new RectangleF(e.Bounds.X + timeSize.Width, e.Bounds.Y, e.Bounds.Width - timeSize.Width, e.Bounds.Height);
             using (var brush = new SolidBrush(entry.Color))
             {
-                e.Graphics.DrawString(entry.Text, listBox.Font, brush, e.Bounds);
+                e.Graphics.DrawString(entry.Text, listBox.Font, brush, textRect);
             }
             e.DrawFocusRectangle();
         }
@@ -800,25 +959,10 @@ namespace ChatApp
             if (e.Index < 0 || e.Index >= _listBoxChat.Items.Count)
                 return;
 
-            // [수정] owner-draw(DrawMode.OwnerDrawFixed) 리스트박스는
-            // BackgroundImage를 자동으로 그려주지 않는다 — 예전 주석은
-            // "컨트롤이 알아서 그려놨을 것"이라고 가정했는데 실제로는 그렇지
-            // 않아서, 이미지로 배경을 설정해도 화면엔 안 보였다(색상은
-            // BackColor가 owner-draw에서도 비교적 안정적으로 반영돼서 그나마
-            // 동작했음). 그래서 여기서 이미지를 직접 그린다 — 컨트롤 전체에
-            // Stretch로 깔린 것처럼 보이게, 이 아이템의 세로 구간에 해당하는
-            // 원본 이미지 조각만 계산해서 그 자리에 그려 넣는다.
-            if (_listBoxChat.BackgroundImage != null && _listBoxChat.ClientSize.Height > 0)
-            {
-                Image bg = _listBoxChat.BackgroundImage;
-                float ratioY = (float)bg.Height / _listBoxChat.ClientSize.Height;
-                var srcRect = new RectangleF(0, e.Bounds.Top * ratioY, bg.Width, e.Bounds.Height * ratioY);
-                e.Graphics.DrawImage(bg, e.Bounds, srcRect, GraphicsUnit.Pixel);
-            }
-            else
-            {
-                e.DrawBackground(); // 이미지가 없으면(BackColor만 설정된 경우 포함) 기존처럼 기본 배경 처리에 맡긴다.
-            }
+            // [수정] 배경을 사용자가 직접 색상/이미지로 고르는 기능은 제거하고
+            // 스킨(ChatTheme.ChatBackground)에 포함시켰다 — e.DrawBackground()가
+            // _listBoxChat.BackColor(스킨이 정해준 값)를 그대로 반영한다.
+            e.DrawBackground();
 
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -848,9 +992,18 @@ namespace ChatApp
                 if (item.IsMyMessage)
                 {
                     // ── 내가 보낸 메시지 — 우측 배치 ──────────────────────
-                    int bubbleX = bounds.Right - bubbleWidth - 10;
+                    // [추가] 상대 메시지와 대칭으로, 말풍선 오른쪽에 내
+                    // 아바타를 그린다. 말풍선 X 위치도 그만큼 왼쪽으로 밀어서
+                    // 아바타와 안 겹치게 한다.
+                    const int kAvatarSize = 28;
+                    const int kAvatarGap = 6;
+
+                    int bubbleX = bounds.Right - bubbleWidth - kAvatarSize - kAvatarGap - 10;
                     int bubbleY = bounds.Top + 5;
                     Rectangle bubbleRect = new Rectangle(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+
+                    DrawAvatar(g, item.SenderName, item.SenderProfileImageUrl,
+                        new Rectangle(bounds.Right - kAvatarSize - 10, bounds.Top + 2, kAvatarSize, kAvatarSize), e.Index);
 
                     using (var path = GetRoundedRectPath(bubbleRect, kBubbleCornerRadius))
                     {
@@ -863,8 +1016,8 @@ namespace ChatApp
                     g.DrawString(timeStr, _timeFont, timeColor, bubbleX - timeSize.Width - 5, bubbleY + bubbleHeight - timeSize.Height);
 
                     // 내 메시지는 우측 정렬이라, 미리보기 카드도 말풍선과 같은
-                    // 오른쪽 기준선에 맞춘다.
-                    DrawLinkPreviewCardIfAny(g, item.Message, bounds.Right - Math.Min(maxBubbleWidth, 220) - 10,
+                    // 오른쪽 기준선에 맞춘다(아바타 폭만큼 같이 밀어줌).
+                    DrawLinkPreviewCardIfAny(g, item.Message, bounds.Right - Math.Min(maxBubbleWidth, 220) - kAvatarSize - kAvatarGap - 10,
                         bubbleY + bubbleHeight + 4, Math.Min(maxBubbleWidth, 220), e.Index);
                 }
                 else
@@ -1113,68 +1266,6 @@ namespace ChatApp
         // @brief 채팅창 배경을 단색으로 설정한다. 기존에 이미지가 설정돼
         //        있었다면 먼저 정리한다(GDI 리소스 누수 방지).
         //***************************************************************************
-        private void SetChatBackgroundColor()
-        {
-            using (var dlg = new ColorDialog())
-            {
-                if (dlg.ShowDialog(this) != DialogResult.OK)
-                    return;
-
-                _listBoxChat.BackgroundImage?.Dispose();
-                _listBoxChat.BackgroundImage = null;
-                _listBoxChat.BackColor = dlg.Color;
-                _listBoxChat.Invalidate();
-            }
-        }
-
-        //***************************************************************************
-        // @brief 채팅창 배경을 이미지 파일로 설정한다.
-        // @details [알려진 한계] ListBox는 항목을 직접 그리는(OwnerDraw) 방식이라,
-        //          배경 이미지는 스크롤과 무관하게 항상 컨트롤 클라이언트
-        //          영역 기준으로 고정 배치된다(카카오톡의 "고정 배경화면"과
-        //          비슷한 느낌 — 메시지가 스크롤돼도 배경 자체는 안 움직임).
-        //          말풍선(불투명 배경)이 그려지는 부분은 당연히 이미지가
-        //          가려진다.
-        //***************************************************************************
-        private void SetChatBackgroundImage()
-        {
-            using (var dlg = new OpenFileDialog { Filter = "이미지 파일|*.png;*.jpg;*.jpeg;*.bmp;*.gif" })
-            {
-                if (dlg.ShowDialog(this) != DialogResult.OK)
-                    return;
-
-                try
-                {
-                    // 파일을 직접 스트림으로 열어둔 채로 Image를 만들면 그 파일이
-                    // 잠겨서 나중에 못 지우거나 다시 못 여는 경우가 있다 — 메모리로
-                    // 복사한 뒤(Bitmap 생성자) 파일 핸들 의존성을 끊는다.
-                    using (var original = Image.FromFile(dlg.FileName))
-                    {
-                        _listBoxChat.BackgroundImage?.Dispose();
-                        _listBoxChat.BackgroundImage = new Bitmap(original);
-                    }
-
-                    _listBoxChat.BackgroundImageLayout = ImageLayout.Stretch;
-                    _listBoxChat.Invalidate();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(this, "이미지를 불러오지 못했습니다: " + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-        }
-
-        //***************************************************************************
-        // @brief 채팅창 배경을 기본값(흰색, 이미지 없음)으로 되돌린다.
-        //***************************************************************************
-        private void ResetChatBackground()
-        {
-            _listBoxChat.BackgroundImage?.Dispose();
-            _listBoxChat.BackgroundImage = null;
-            _listBoxChat.BackColor = SystemColors.Window;
-            _listBoxChat.Invalidate();
-        }
-
         //***************************************************************************
         // @brief 프로필 이미지 파일을 골라 _picProfileImage에 표시하고, 프로필
         //        이름별로 경로를 로컬에 저장해둔다(다음 실행 때 다시 불러옴).
@@ -1689,6 +1780,21 @@ namespace ChatApp
 
         private void AppendChat(string senderName, string senderProfileImageUrl, string message, bool isMyMessage)
         {
+            // [추가] 마지막 메시지와 날짜(일 단위)가 다르면(또는 첫 메시지면)
+            // 구분선을 먼저 끼워 넣는다 — 카카오톡 등에서 흔히 보이는 패턴.
+            DateTime now = DateTime.Now;
+            DateTime? lastDate = null;
+            for (int i = _listBoxChat.Items.Count - 1; i >= 0; i--)
+            {
+                if (_listBoxChat.Items[i] is ChatBubbleItem prevItem)
+                {
+                    lastDate = prevItem.Timestamp.Date;
+                    break;
+                }
+            }
+            if (lastDate == null || lastDate.Value != now.Date)
+                _listBoxChat.Items.Add(new DateSeparatorItem { Date = now });
+
             _listBoxChat.Items.Add(new ChatBubbleItem(senderName, senderProfileImageUrl, message, isMyMessage));
             int newIndex = _listBoxChat.Items.Count - 1;
             _listBoxChat.TopIndex = newIndex;
@@ -1703,7 +1809,7 @@ namespace ChatApp
 
         private void AppendSystemLog(string text, Color color)
         {
-            _listBoxMsg.Items.Add(new ColoredEntry { Text = text, Color = color });
+            _listBoxMsg.Items.Add(new ColoredEntry { Text = text, Color = color, Timestamp = DateTime.Now });
             _listBoxMsg.TopIndex = _listBoxMsg.Items.Count - 1;
         }
 
@@ -1731,8 +1837,18 @@ namespace ChatApp
         // @brief "접속" 버튼 — 로컬에 저장된 계정이 있으면 재접속, 없으면
         //        입력한 프로필 이름을 원하는 닉네임으로 신규 가입을 시도합니다.
         //***************************************************************************
+        //***************************************************************************
+        // @brief 접속/끊기를 하나의 버튼으로 통합 — 현재 버튼 텍스트로 상태를
+        //        판단한다("접속"이면 연결 시도, "끊기"면 연결 종료).
+        //***************************************************************************
         private void BtnConnect_Click(object sender, EventArgs e)
         {
+            if (_btnConnect.Text == "끊기")
+            {
+                _client?.Close();
+                return;
+            }
+
             string serverIp = _txtServerIp.Text.Trim();
             if (string.IsNullOrEmpty(serverIp))
             {
@@ -1793,8 +1909,9 @@ namespace ChatApp
             SetStatus(hasToken ? "재접속 중..." : "가입 중...", Color.Orange);
             AppendSystemLog(hasToken ? "[시스템] 저장된 계정으로 재접속을 시도합니다." : "[시스템] 신규 가입을 시도합니다.", ColorSystemInfo);
 
-            _btnConnect.Enabled = false;
-            _btnDisconnect.Enabled = true;
+            // [수정] 접속/끊기를 하나의 버튼으로 통합 — 연결 시도 시작과 동시에
+            // "끊기"로 바뀌어서 진행 중인 접속 시도도 바로 취소할 수 있게 한다.
+            _btnConnect.Text = "끊기";
 
             // [추가] 접속 시도 중/접속된 동안엔 이 값들을 바꿀 수 없게 잠근다 —
             // 이미 시작된(또는 진행 중인) 연결의 대상을 몰래 바꾸는 걸 막기 위함.
@@ -1802,11 +1919,24 @@ namespace ChatApp
             _txtServerIp.Enabled = false;
             _txtServerPort.Enabled = false;
             _txtProfileName.Enabled = false;
+
+            ForceBorderRepaint(_txtServerIp);
+            ForceBorderRepaint(_txtServerPort);
+            ForceBorderRepaint(_txtProfileName);
         }
 
-        private void BtnDisconnect_Click(object sender, EventArgs e)
+        //***************************************************************************
+        // @brief TextBox의 BorderStyle.Fixed3D 테두리는 논클라이언트 영역이라
+        //        Invalidate()/Refresh()로는 안 지워진다(특히 포커스가 있다가
+        //        Enabled=false가 된 컨트롤에서 두드러짐). BorderStyle을
+        //        순간적으로 바꿨다가 원래대로 되돌리면 Windows가 논클라이언트
+        //        영역까지 포함해서 강제로 다시 계산하게 만들 수 있다.
+        //***************************************************************************
+        private static void ForceBorderRepaint(TextBox txt)
         {
-            _client?.Close();
+            BorderStyle original = txt.BorderStyle;
+            txt.BorderStyle = BorderStyle.None;
+            txt.BorderStyle = original;
         }
 
         private void TxtMessage_KeyDown(object sender, KeyEventArgs e)
@@ -1889,9 +2019,9 @@ namespace ChatApp
                 {
                     AccountStorage.Save(_profileName, res.PublicId, res.Token);
 
-                    // [수정] "로그인 성공" 텍스트를 따로 띄우지 않는다 — 채팅/방
-                    // 관련 컨트롤이 활성화되는 것 자체가 성공의 신호다.
-                    SetStatus(string.Empty, Color.Gray);
+                    // [수정] 접속 성공 = 초록으로 되돌림("성공은 초록"이라는
+                    // 일반적인 관례대로).
+                    SetStatus("연결됨", Color.FromArgb(47, 184, 112));
 
                     _currentNickname = res.Nickname;
                     _myProfileImageUrl = res.ProfileImageUrl ?? string.Empty;
@@ -1920,6 +2050,7 @@ namespace ChatApp
                     _cbChatRoomId.Enabled = true;
                     _txtMessage.Enabled = true;
                     _btnOpenNicknameDialog.Visible = true;
+                    _picProfileImage.Visible = true;
 
                     // 로그인 성공 시점부터 39초 주기 폴링 시작.
                     _serverUserCountPollTimer.Start();
@@ -2001,7 +2132,7 @@ namespace ChatApp
                     AppendSystemLog($"[시스템] {res.RoomId}번 방에서 나감 (남은 인원 {res.RoomUserCount}명)", ColorSystemOk);
 
                     _currentRoomId = ProtocolConstants.LobbyRoomId;
-                    _txtRoomUserCount.Clear(); // 로비 자체 인원수는 이 텍스트박스가 아니라 RoomUserCountNotify로 별도 관리하지 않음(단순화)
+                    _txtRoomUserCount.Text = ""; // 로비 자체 인원수는 이 라벨이 아니라 RoomUserCountNotify로 별도 관리하지 않음(단순화)
                     UpdateRoomStatusUI();
                 }
                 else
@@ -2076,7 +2207,7 @@ namespace ChatApp
             {
                 _picProfileImage.Image?.Dispose();
                 _picProfileImage.Image = null;
-                _picProfileImage.BackColor = Color.LightGray;
+                _picProfileImage.BackColor = ControlPaint.Light(AccentColor, 0.9f);
             }
             else
             {
@@ -2092,15 +2223,16 @@ namespace ChatApp
             {
                 SetStatus("연결 끊김", Color.Gray);
                 _serverUserCountPollTimer.Stop();
-                _txtServerUserCount.Clear();
-                _txtLobbyUserCount.Clear();
+                _txtServerUserCount.Text = "";
+                _txtLobbyUserCount.Text = "";
                 AppendSystemLog("[시스템] 서버와 연결이 끊어졌습니다.", ColorSystemError);
                 _btnConnect.Enabled = true;
-                _btnDisconnect.Enabled = false;
+                _btnConnect.Text = "접속";
                 _btnSend.Enabled = false;
                 _cbChatRoomId.Enabled = false;
                 _txtMessage.Enabled = false;
                 _btnOpenNicknameDialog.Visible = false;
+                _picProfileImage.Visible = false;
 
                 // [추가] 접속 시도 때 잠갔던 필드를 다시 풀어준다.
                 _txtServerIp.Enabled = true;
@@ -2108,7 +2240,7 @@ namespace ChatApp
                 _txtProfileName.Enabled = true;
 
                 _currentRoomId = -1;
-                _txtRoomUserCount.Clear();
+                _txtRoomUserCount.Text = "";
                 UpdateRoomStatusUI();
 
                 lock (_pendingSentEchoesLock)
