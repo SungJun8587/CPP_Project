@@ -50,12 +50,14 @@ public:
 	// @param publicBaseUrl 클라이언트에게 돌려줄 URL의 기본 주소(예:
 	//        "http://192.168.0.10:8081") — 이 뒤에 "/images/{path}"를 붙인다.
 	// @param maxUploadBytes 업로드 가능한 최대 파일 크기(바이트).
+	// @param maxImageDimension 저장할 이미지의 가로/세로 허용 최댓값(픽셀) —
+	//        넘으면 비율 유지한 채 줄여서 저장(ImageResizeUtil 참고).
 	//***************************************************************************
 	bool Start(
 		const _tstring& bindIp, uint16 bindPort,
 		CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
 		int32 maxSessionCount, uint32 workerThreadCount,
-		_tstring storageDir, std::string publicBaseUrl, int32 maxUploadBytes);
+		_tstring storageDir, std::string publicBaseUrl, int32 maxUploadBytes, int32 maxImageDimension);
 
 	void Stop();
 
@@ -158,6 +160,7 @@ private:
 
 	std::string					_publicBaseUrl;
 	int32						_maxUploadBytes = 0;
+	int32						_maxImageDimension = 0;
 };
 
 #endif // ndef UC_FILESERVERMAIN_H

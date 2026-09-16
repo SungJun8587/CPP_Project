@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // FileServerMain.cpp: implementation of the CFileServerMain class.
 //
 //***************************************************************************
@@ -7,6 +8,7 @@
 #include "FileServerMain.h"
 #include "FileServerSession.h"
 #include "LocalFileImageStorage.h"
+#include "ImageResizeUtil.h"
 #include <Network/HTTP/MultipartFormParser.h>
 #include <Redis/RedisResultSet.h>
 
@@ -31,10 +33,17 @@ bool CFileServerMain::Start(
 	const _tstring& bindIp, uint16 bindPort,
 	CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
 	int32 maxSessionCount, uint32 workerThreadCount,
-	_tstring storageDir, std::string publicBaseUrl, int32 maxUploadBytes)
+	_tstring storageDir, std::string publicBaseUrl, int32 maxUploadBytes, int32 maxImageDimension)
 {
 	_publicBaseUrl = std::move(publicBaseUrl);
 	_maxUploadBytes = maxUploadBytes;
+	_maxImageDimension = maxImageDimension;
+
+	// 0. GDI+ 초기화 — 업로드된 이미지 리사이즈용(ImageResizeUtil). 실패해도
+	// 서버 자체는 계속 띄운다 — 리사이즈만 건너뛰고 원본을 그대로 저장하는
+	// 형태로 계속 동작 가능하다(ResizeIfLarger()가 항상 안전하게 실패 처리함).
+	if( !ImageResizeUtil::Startup() )
+		LOG_ERROR(_T("CFileServerMain::Start: ImageResizeUtil::Startup 실패 — 이미지 리사이즈 없이 원본 그대로 저장됩니다."));
 
 	// 1. IOCP 코어 + JobQueue(Redis 콜백을 안전한 스레드로 넘기는 용도)
 	_iocpCore = MakeShared<CIocpCore>();
@@ -101,6 +110,8 @@ void CFileServerMain::Stop()
 	_imageStorage.reset();
 	_jobQueue.reset();
 	_iocpCore.reset();
+
+	ImageResizeUtil::Shutdown();
 }
 
 //***************************************************************************
@@ -111,13 +122,6 @@ void CFileServerMain::HandleRequest(std::shared_ptr<CFileServerSession> session,
 	const std::string& method = request.GetMethod();
 	const std::string_view path = request.GetPath();
 	const bool keepAlive = request.IsKeepAlive();
-
-	// [진단용] 요청이 실제로 여기까지 도달하는지부터 확인 — 문제가 TCP
-	// 연결 자체가 아니라 요청 처리 로직 어딘가에서 멈추는 것 같다면, 이
-	// 로그가 안 찍힌다는 것만으로도 "파싱 단계(HTTP 요청 자체가 완성되지
-	// 않음)에서 막혔다"는 걸 확정할 수 있다.
-	LOG_INFO(_T("CFileServerMain::HandleRequest: %hs %.*hs (keepAlive=%d)"),
-		method.c_str(), static_cast<int>(path.size()), path.data(), keepAlive ? 1 : 0);
 
 	constexpr std::string_view kImagesPrefix = "/images/";
 
@@ -137,7 +141,6 @@ void CFileServerMain::HandleRequest(std::shared_ptr<CFileServerSession> session,
 	}
 	else
 	{
-		LOG_INFO(_T("CFileServerMain::HandleRequest: 매칭되는 라우트 없음 -> 404"));
 		SendSimpleResponse(session, 404, "Not Found", "text/plain", "404 Not Found", keepAlive);
 	}
 }
@@ -147,8 +150,6 @@ void CFileServerMain::HandleRequest(std::shared_ptr<CFileServerSession> session,
 //***************************************************************************
 void CFileServerMain::HandleUpload(std::shared_ptr<CFileServerSession> session, const CHttpRequestParser& request, bool keepAlive)
 {
-	LOG_INFO(_T("CFileServerMain::HandleUpload: 시작 (body=%zu bytes)"), request.GetBody().size());
-
 	const std::string_view contentType = request.FindHeader("Content-Type");
 
 	std::string boundary;
@@ -165,16 +166,6 @@ void CFileServerMain::HandleUpload(std::shared_ptr<CFileServerSession> session, 
 		LOG_ERROR(_T("CFileServerMain::HandleUpload: 멀티파트 파싱 실패"));
 		SendSimpleResponse(session, 400, "Bad Request", "text/plain", "Malformed multipart body", keepAlive);
 		return;
-	}
-
-	LOG_INFO(_T("CFileServerMain::HandleUpload: 멀티파트 파싱 완료 (필드 %zu개, boundary=%hs)"), fields.size(), boundary.c_str());
-	for( size_t i = 0; i < fields.size(); ++i )
-	{
-		// [진단용] 이름이 정확히 뭘로 파싱됐는지 그대로 찍는다 — 따옴표로
-		// 감싸서 출력하면 앞뒤에 공백/CRLF 같은 눈에 안 보이는 문자가
-		// 섞여 있어도 로그에서 바로 드러난다.
-		LOG_INFO(_T("  [%zu] name=\"%hs\" filename=\"%hs\" contentType=\"%hs\" dataSize=%zu"),
-			i, fields[i].name.c_str(), fields[i].filename.c_str(), fields[i].contentType.c_str(), fields[i].data.size());
 	}
 
 	const HTTP::SMultipartField* tokenField = HTTP::FindMultipartField(fields, "token");
@@ -208,16 +199,12 @@ void CFileServerMain::HandleUpload(std::shared_ptr<CFileServerSession> session, 
 	const std::string fileBytes = fileField->data;
 	const std::string tokenHex = tokenField->data;
 
-	LOG_INFO(_T("CFileServerMain::HandleUpload: 토큰 검증 요청 (token=%hs, fileBytes=%zu)"), tokenHex.c_str(), fileBytes.size());
-
 	std::weak_ptr<CFileServerSession> sessionWeak = session;
 	IImageStorage* storage = _imageStorage.get();
 
 	VerifyAndConsumeUploadToken(tokenHex,
 		[this, sessionWeak, storage, fileBytes, fileExtension, keepAlive](bool success, const std::string& ownerPublicIdHex)
 		{
-			LOG_INFO(_T("CFileServerMain::HandleUpload: 토큰 검증 콜백 도착 (success=%d)"), success ? 1 : 0);
-
 			auto session = sessionWeak.lock();
 			if( session == nullptr )
 			{
@@ -232,8 +219,17 @@ void CFileServerMain::HandleUpload(std::shared_ptr<CFileServerSession> session, 
 			}
 
 			const std::vector<BYTE> data(fileBytes.begin(), fileBytes.end());
+
+			// [추가] 해상도가 크면 줄여서 저장 용량을 아낀다. 실패하거나
+			// 애초에 작으면 ResizeIfLarger()가 false를 돌려주고, 그 경우
+			// resizedData는 비워둔 채 원본(data)을 그대로 저장한다 —
+			// 리사이즈 버그가 있어도 업로드 기능 자체는 절대 안 깨지게.
+			std::vector<BYTE> resizedData;
+			const bool wasResized = ImageResizeUtil::ResizeIfLarger(data, fileExtension, _maxImageDimension, resizedData);
+			const std::vector<BYTE>& dataToSave = wasResized ? resizedData : data;
+
 			std::string relativePath;
-			if( storage == nullptr || !storage->SaveImage(ownerPublicIdHex, fileExtension, data, relativePath) )
+			if( storage == nullptr || !storage->SaveImage(ownerPublicIdHex, fileExtension, dataToSave, relativePath) )
 			{
 				LOG_ERROR(_T("CFileServerMain::HandleUpload: SaveImage 실패(storage=%d)"), storage != nullptr);
 				SendSimpleResponse(session, 500, "Internal Server Error", "text/plain", "Failed to save file", keepAlive);
@@ -241,7 +237,6 @@ void CFileServerMain::HandleUpload(std::shared_ptr<CFileServerSession> session, 
 			}
 
 			const std::string url = BuildPublicUrl(relativePath);
-			LOG_INFO(_T("CFileServerMain::HandleUpload: 저장 완료, 200 응답 전송 (%hs)"), url.c_str());
 			SendSimpleResponse(session, 200, "OK", "text/plain", url, keepAlive);
 		});
 }
@@ -311,8 +306,6 @@ void CFileServerMain::VerifyAndConsumeUploadToken(const std::string& tokenHex, s
 
 	const std::string redisKey = "UploadToken:" + tokenHex;
 	CRedisService* redisService = _redisService.get();
-
-	LOG_INFO(_T("CFileServerMain::VerifyAndConsumeUploadToken: Redis GET %hs"), redisKey.c_str());
 
 	CVector<std::string> getArgs;
 	getArgs.push_back("GET");

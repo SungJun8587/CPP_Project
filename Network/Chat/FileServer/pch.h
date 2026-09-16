@@ -78,6 +78,8 @@ using namespace std;
 
 #include <Redis/RedisCommon.h>
 
+#include <Image/ImageCommon.h>
+
 #include "FileServerConfig.h"
 #include "IImageStorage.h"
 #include "LocalFileImageStorage.h"

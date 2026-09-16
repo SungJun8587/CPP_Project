@@ -110,6 +110,10 @@ namespace ChatApp
         private string _currentNickname; // 화면에 별도로 표시하지 않고, 닉네임 변경 다이얼로그에 넘겨줄 용도로만 보관
         private string _myProfileImageUrl = string.Empty; // 서버에 현재 설정돼 있는(=다른 사람에게 보이는) 내 프로필 이미지 URL
         private string _pendingProfileImageUrlRequest; // SetMyProfileImageUrl()/ClearMyProfileImageUrl()이 요청한 값 — 응답(success/reason만 있음) 처리 시 참고용
+        // [추가] 낙관적 업데이트(서버 응답 전에 미리 화면에 반영)가 실패로
+        // 판명되면 되돌릴 "요청 직전 값". OnSetProfileImageUrlResultReceived()의
+        // 실패 분기에서만 쓴다.
+        private string _profileImageUrlBeforeRequest;
 
         // [추가] UploadMyProfileImage()가 await로 기다리는 업로드 토큰 발급 응답.
         // 업로드가 진행 중이 아닐 때(null)는 이벤트가 와도 조용히 무시된다.
@@ -306,6 +310,28 @@ namespace ChatApp
         // @param dangerOutline true면 아웃라인 글자색을 위험(빨강)으로 — 삭제/
         //        나가기 계열 버튼용.
         //***************************************************************************
+        //***************************************************************************
+        // @brief TextBox 등 일부 컨트롤은 Enabled 전환 시 테두리가 비클라이언트
+        //        (프레임) 영역에 그려져서, Control.Invalidate()/Refresh()(클라이언트
+        //        영역만 다시 그림)로는 갱신이 안 되는 경우가 있다 — 포커스가
+        //        있던 컨트롤에서 특히 두드러졌다(Focus() 이동만으로는 완전히
+        //        해결 안 됨). Win32 RedrawWindow()를 RDW_FRAME과 함께 호출하면
+        //        프레임(테두리)까지 확실히 강제로 다시 그린다.
+        //***************************************************************************
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
+
+        private const uint RDW_INVALIDATE = 0x0001;
+        private const uint RDW_FRAME = 0x0400;
+        private const uint RDW_UPDATENOW = 0x0100;
+        private const uint RDW_ALLCHILDREN = 0x0080;
+
+        private static void ForceFullRedraw(Control control)
+        {
+            if (control != null && control.IsHandleCreated)
+                RedrawWindow(control.Handle, IntPtr.Zero, IntPtr.Zero, RDW_INVALIDATE | RDW_FRAME | RDW_UPDATENOW | RDW_ALLCHILDREN);
+        }
+
         //***************************************************************************
         // @brief 말풍선 그리기용 캐시 브러시를 현재 테마(CurrentTheme) 색상으로
         //        (다시) 만든다. 초기화 시점과 스킨 전환 시점 둘 다에서 호출된다.
@@ -876,7 +902,7 @@ namespace ChatApp
         };
 
         //***************************************************************************
-        // @brief 발신자 아바타를 그린다. profileImageUrl로 받아온 실제 이미지가
+        // @brief 발신자 아바타를 그린다. profileImageUrl로 받아온 실제 이미지이
         //        캐시에 있으면 그것을 원형으로 잘라 그리고, 없으면(아직 못
         //        받아왔거나 URL 자체가 없거나 실패했으면) 닉네임 기반으로
         //        결정적으로 고른 색의 원 안에 첫 글자를 넣는 생성 아바타로
@@ -1010,7 +1036,7 @@ namespace ChatApp
                         g.FillPath(myBubbleColor, path);
                     }
 
-                    DrawMessageWithLinks(g, item.Message, msgFont, textColor, new RectangleF(bubbleX + 8, bubbleY + 5, maxBubbleWidth, textSize.Height), e.Index);
+                    DrawMessageWithLinks(g, item.Message, msgFont, textColor, new RectangleF(bubbleX + 8, bubbleY + 5, maxBubbleWidth, textSize.Height), e.Index, CurrentTheme.MyBubble);
 
                     SizeF timeSize = g.MeasureString(timeStr, _timeFont);
                     g.DrawString(timeStr, _timeFont, timeColor, bubbleX - timeSize.Width - 5, bubbleY + bubbleHeight - timeSize.Height);
@@ -1047,7 +1073,7 @@ namespace ChatApp
                         g.DrawPath(Pens.LightGray, path);
                     }
 
-                    DrawMessageWithLinks(g, item.Message, msgFont, textColor, new RectangleF(bubbleX + 8, bubbleY + 5, maxBubbleWidth, textSize.Height), e.Index);
+                    DrawMessageWithLinks(g, item.Message, msgFont, textColor, new RectangleF(bubbleX + 8, bubbleY + 5, maxBubbleWidth, textSize.Height), e.Index, Color.White);
 
                     SizeF timeSize = g.MeasureString(timeStr, _timeFont);
                     g.DrawString(timeStr, _timeFont, timeColor, bubbleX + bubbleWidth + 5, bubbleY + bubbleHeight - timeSize.Height);
@@ -1157,54 +1183,52 @@ namespace ChatApp
         //        파란 밑줄로 덧그린다. 각 URL의 실제 픽셀 좌표(bounds)를
         //        _chatItemUrlRegions에 기록해둬서, 나중에 클릭/호버 판정에 쓴다.
         //***************************************************************************
-        private void DrawMessageWithLinks(Graphics g, string message, Font font, Brush textColor, RectangleF layoutRect, int itemIndex)
+private void DrawMessageWithLinks(Graphics g, string message, Font font, Brush textColor, RectangleF layoutRect, int itemIndex, Color backgroundColor)
+{
+    // 1. 전체 메시지를 먼저 그립니다.
+    g.DrawString(message, font, textColor, layoutRect);
+
+    MatchCollection matches = UrlRegex.Matches(message);
+    if (matches.Count == 0)
+    {
+        _chatItemUrlRegions.Remove(itemIndex);
+        return;
+    }
+
+    var regions = new List<(string Url, RectangleF Bounds)>();
+
+    using (var format = new StringFormat(StringFormatFlags.NoClip))
+    using (var backBrush = new SolidBrush(backgroundColor))
+    using (var linkFont = new Font(font, FontStyle.Underline))
+    {
+        var ranges = new List<CharacterRange>();
+        foreach (Match m in matches)
         {
-            g.DrawString(message, font, textColor, layoutRect);
-
-            MatchCollection matches = UrlRegex.Matches(message);
-            if (matches.Count == 0)
-            {
-                _chatItemUrlRegions.Remove(itemIndex);
-                return;
-            }
-
-            var regions = new List<(string Url, RectangleF Bounds)>();
-
-            using (var format = new StringFormat())
-            {
-                // MeasureCharacterRanges()는 한 번에 최대 32개 범위까지만 지원한다
-                // — 메시지 한 줄에 URL이 그렇게 많이 섞일 일은 데모 범위에서
-                // 사실상 없어서 그냥 앞에서부터 32개만 처리한다.
-                var ranges = new List<CharacterRange>();
-                foreach (Match m in matches)
-                {
-                    if (ranges.Count >= 32)
-                        break;
-                    ranges.Add(new CharacterRange(m.Index, m.Length));
-                }
-                format.SetMeasurableCharacterRanges(ranges.ToArray());
-
-                Region[] measuredRegions = g.MeasureCharacterRanges(message, font, layoutRect, format);
-
-                using (var linkFont = new Font(font, FontStyle.Underline))
-                {
-                    for (int i = 0; i < measuredRegions.Length; i++)
-                    {
-                        RectangleF bounds = measuredRegions[i].GetBounds(g);
-                        string url = matches[i].Value;
-
-                        // 원래 텍스트 위에 정확히 겹쳐서 파란 밑줄로 덧그린다
-                        // (같은 폰트/같은 위치라 글자 폭이 일치해서 자연스럽게 대체됨).
-                        g.DrawString(url, linkFont, Brushes.Blue, bounds.Location);
-
-                        regions.Add((url, bounds));
-                    }
-                }
-            }
-
-            _chatItemUrlRegions[itemIndex] = regions;
+            if (ranges.Count >= 32) break;
+            ranges.Add(new CharacterRange(m.Index, m.Length));
         }
+        format.SetMeasurableCharacterRanges(ranges.ToArray());
 
+        Region[] measuredRegions = g.MeasureCharacterRanges(message, font, layoutRect, format);
+
+        for (int i = 0; i < measuredRegions.Length; i++)
+        {
+            RectangleF bounds = measuredRegions[i].GetBounds(g);
+            string url = matches[i].Value;
+
+            // 2. [수정] 아래에 깔린 검은 글자 잔상을 지우기 위해 배경색으로 덮어씁니다.
+            // (미세한 렌더링 오차를 덮기 위해 1px 정도 약간 확장하여 덮는 것이 좋습니다)
+            g.FillRectangle(backBrush, bounds);
+
+            // 3. 지워진 위치에 파란색 밑줄 텍스트를 덧그립니다.
+            g.DrawString(url, linkFont, Brushes.Blue, bounds.Location);
+
+            regions.Add((url, bounds));
+        }
+    }
+
+    _chatItemUrlRegions[itemIndex] = regions;
+}
         //***************************************************************************
         // @brief 채팅 로그에서 URL 위로 마우스를 올리면 손가락 커서로 바꾼다.
         //***************************************************************************
@@ -1262,10 +1286,6 @@ namespace ChatApp
             }
         }
 
-        //***************************************************************************
-        // @brief 채팅창 배경을 단색으로 설정한다. 기존에 이미지가 설정돼
-        //        있었다면 먼저 정리한다(GDI 리소스 누수 방지).
-        //***************************************************************************
         //***************************************************************************
         // @brief 프로필 이미지 파일을 골라 _picProfileImage에 표시하고, 프로필
         //        이름별로 경로를 로컬에 저장해둔다(다음 실행 때 다시 불러옴).
@@ -1390,6 +1410,17 @@ namespace ChatApp
                 return;
 
             _pendingProfileImageUrlRequest = url;
+
+            // [수정] 서버 응답(비동기 왕복)을 기다리지 않고 즉시 로컬에 먼저
+            // 반영한다 — 그렇지 않으면 변경 직후 보낸 첫 메시지가 아직 안
+            // 바뀐 옛 URL을 스냅샷으로 들고 가버려서(BtnSend_Click이 그
+            // 시점의 _myProfileImageUrl을 그대로 씀), "메시지를 하나 더
+            // 보내야 반영되는" 것처럼 보이는 문제가 있었다. 실패하면
+            // OnSetProfileImageUrlResultReceived()가 이 값(_profileImageUrlBeforeRequest)으로
+            // 되돌린다.
+            _profileImageUrlBeforeRequest = _myProfileImageUrl;
+            ApplyProfileImageUrl(url);
+
             _client.RequestSetProfileImageUrl(url);
         }
 
@@ -1405,6 +1436,11 @@ namespace ChatApp
             }
 
             _pendingProfileImageUrlRequest = string.Empty;
+
+            // [수정] SetMyProfileImageUrl()과 동일한 이유로 낙관적 업데이트.
+            _profileImageUrlBeforeRequest = _myProfileImageUrl;
+            ApplyProfileImageUrl(string.Empty);
+
             _client.RequestSetProfileImageUrl(string.Empty);
         }
 
@@ -1477,7 +1513,11 @@ namespace ChatApp
                     // SetMyProfileImageUrl()과 동일한 등록 경로(SetProfileImageUrlReq)를
                     // 그대로 재사용한다. 성공/실패 결과 처리는
                     // OnSetProfileImageUrlResultReceived()가 공통으로 담당한다.
+                    // [수정] 여기도 낙관적 업데이트 — 이유는 SetMyProfileImageUrl() 참고.
                     _pendingProfileImageUrlRequest = uploadedUrl;
+                    _profileImageUrlBeforeRequest = _myProfileImageUrl;
+                    ApplyProfileImageUrl(uploadedUrl);
+
                     _client.RequestSetProfileImageUrl(uploadedUrl);
                 }
                 finally
@@ -1716,11 +1756,17 @@ namespace ChatApp
 
         //***************************************************************************
         // @brief 비동기 fetch가 끝난 뒤, 그 항목만 다시 측정/그리도록 강제한다.
-        // @details WinForms ListBox(OwnerDrawVariable)는 "이 항목 하나만 다시
-        //          측정해라" 같은 공개 API가 없다. Items[index]에 같은 값을
-        //          다시 대입하면 내부적으로 "항목이 바뀌었다"고 인식해서
-        //          MeasureItem/DrawItem을 다시 태우는 부작용을 이용한 관용적인
-        //          트릭이다.
+        // @details [수정 — 실제 재현된 버그] 예전엔 Items[index]에 같은
+        //          참조를 그대로 재대입하는 트릭을 썼는데, WinForms가 참조가
+        //          그대로면 "이 항목은 안 바뀌었다"고 판단해서 MeasureItem이
+        //          다시 안 불리는 경우가 있었다 — 그러면 링크 미리보기 카드
+        //          공간(높이) 자체가 안 잡혀서 화면에 안 보이다가, 나중에
+        //          "다른" 메시지가 새로 추가되면서 리스트 전체가 다시
+        //          측정/그려질 때 우연히 같이 반영되는 것처럼 보였다(실제로
+        //          "메시지를 하나 더 보내야 반영된다"는 증상으로 재현됨).
+        //          Items[index]를 진짜로 제거했다가 다시 넣으면 WinForms가
+        //          확실히 새 항목으로 인식해서 MeasureItem/DrawItem을 항상
+        //          다시 태운다.
         //***************************************************************************
         private void RefreshChatItem(int itemIndex)
         {
@@ -1732,7 +1778,8 @@ namespace ChatApp
                 if (itemIndex >= 0 && itemIndex < _listBoxChat.Items.Count)
                 {
                     var existing = _listBoxChat.Items[itemIndex];
-                    _listBoxChat.Items[itemIndex] = existing;
+                    _listBoxChat.Items.RemoveAt(itemIndex);
+                    _listBoxChat.Items.Insert(itemIndex, existing);
                 }
             });
         }
@@ -1834,10 +1881,6 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief "접속" 버튼 — 로컬에 저장된 계정이 있으면 재접속, 없으면
-        //        입력한 프로필 이름을 원하는 닉네임으로 신규 가입을 시도합니다.
-        //***************************************************************************
-        //***************************************************************************
         // @brief 접속/끊기를 하나의 버튼으로 통합 — 현재 버튼 텍스트로 상태를
         //        판단한다("접속"이면 연결 시도, "끊기"면 연결 종료).
         //***************************************************************************
@@ -1916,27 +1959,28 @@ namespace ChatApp
             // [추가] 접속 시도 중/접속된 동안엔 이 값들을 바꿀 수 없게 잠근다 —
             // 이미 시작된(또는 진행 중인) 연결의 대상을 몰래 바꾸는 걸 막기 위함.
             // Disconnected 콜백에서 다시 풀어준다.
+
+            // [수정 — 포커스가 있던 컨트롤만 테두리가 안 바뀌는 문제] 포커스가
+            // 있는 컨트롤을 Enabled=false로 만들면 Windows가 포커스를 다른
+            // 곳으로 옮기는 처리를 같이 해야 하는데, 그 과정과 아래 강제
+            // 재도색이 꼬이지 않도록 먼저 포커스를 셋과 무관한 곳(접속
+            // 버튼)으로 옮겨둔다.
+            _btnConnect.Focus();
+
             _txtServerIp.Enabled = false;
             _txtServerPort.Enabled = false;
             _txtProfileName.Enabled = false;
 
-            ForceBorderRepaint(_txtServerIp);
-            ForceBorderRepaint(_txtServerPort);
-            ForceBorderRepaint(_txtProfileName);
-        }
-
-        //***************************************************************************
-        // @brief TextBox의 BorderStyle.Fixed3D 테두리는 논클라이언트 영역이라
-        //        Invalidate()/Refresh()로는 안 지워진다(특히 포커스가 있다가
-        //        Enabled=false가 된 컨트롤에서 두드러짐). BorderStyle을
-        //        순간적으로 바꿨다가 원래대로 되돌리면 Windows가 논클라이언트
-        //        영역까지 포함해서 강제로 다시 계산하게 만들 수 있다.
-        //***************************************************************************
-        private static void ForceBorderRepaint(TextBox txt)
-        {
-            BorderStyle original = txt.BorderStyle;
-            txt.BorderStyle = BorderStyle.None;
-            txt.BorderStyle = original;
+            // [수정 — 진짜 원인] TextBox의 BorderStyle.Fixed3D 테두리는
+            // WS_EX_CLIENTEDGE 확장 스타일로 그려지는 논클라이언트 영역이라
+            // Invalidate()/Refresh()로는 절대 갱신이 안 된다 — BorderStyle을
+            // 순간적으로 껐다 켜는 방법도 시도했지만 그것도 확실히 해결되지
+            // 않았다. Win32 RedrawWindow()를 RDW_FRAME과 함께 직접 호출해서
+            // 논클라이언트 영역(테두리)까지 OS 수준에서 강제로 다시 그리게
+            // 한다 — 이게 이 문제를 해결하는 가장 직접적인 방법이다.
+            ForceFullRedraw(_txtServerIp);
+            ForceFullRedraw(_txtServerPort);
+            ForceFullRedraw(_txtProfileName);
         }
 
         private void TxtMessage_KeyDown(object sender, KeyEventArgs e)
@@ -2172,6 +2216,10 @@ namespace ChatApp
         // @brief 프로필 이미지 URL 설정/해제 요청에 대한 서버 응답 처리.
         //        응답 패킷 자체엔 URL이 없어서, 요청 시점에 이 폼이 기억해둔
         //        _pendingProfileImageUrlRequest를 그대로 참고한다.
+        // @details [수정] 요청을 보낸 시점(SetMyProfileImageUrl() 등)에 이미
+        //          낙관적으로 화면에 반영해뒀으므로, 성공 시엔 다시 반영할
+        //          필요가 없다(이미 반영돼있음) — 실패했을 때만 요청 직전
+        //          값(_profileImageUrlBeforeRequest)으로 되돌린다.
         //***************************************************************************
         private void OnSetProfileImageUrlResultReceived(SetProfileImageUrlResPacketData data)
         {
@@ -2179,8 +2227,6 @@ namespace ChatApp
             {
                 if (data.Success)
                 {
-                    ApplyProfileImageUrl(_pendingProfileImageUrlRequest ?? string.Empty);
-
                     if (string.IsNullOrEmpty(_myProfileImageUrl))
                         AppendSystemLog("[시스템] 프로필 이미지가 해제되었습니다.", ColorSystemOk);
                     else
@@ -2188,6 +2234,7 @@ namespace ChatApp
                 }
                 else
                 {
+                    ApplyProfileImageUrl(_profileImageUrlBeforeRequest ?? string.Empty);
                     AppendSystemLog("[시스템] 프로필 이미지 설정 실패 - 서버 오류", ColorSystemError);
                 }
             });
@@ -2238,6 +2285,9 @@ namespace ChatApp
                 _txtServerIp.Enabled = true;
                 _txtServerPort.Enabled = true;
                 _txtProfileName.Enabled = true;
+                ForceFullRedraw(_txtServerIp);
+                ForceFullRedraw(_txtServerPort);
+                ForceFullRedraw(_txtProfileName);
 
                 _currentRoomId = -1;
                 _txtRoomUserCount.Text = "";

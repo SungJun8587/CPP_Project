@@ -95,6 +95,17 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\BmpCodec.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Checksum.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ColorSpace.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Deflate.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageFilters.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageIO.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageProcessor.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageTypes.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Inflate.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\JpegCodec.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\PngCodec.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\Job.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Job\JobQueue.cpp" />
@@ -134,6 +145,7 @@
     <ClCompile Include="FileServerConfig.cpp" />
     <ClCompile Include="FileServerMain.cpp" />
     <ClCompile Include="FileServerSession.cpp" />
+    <ClCompile Include="ImageResizeUtil.cpp" />
     <ClCompile Include="LocalFileImageStorage.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -149,6 +161,19 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\BmpCodec.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Checksum.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ColorSpace.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Deflate.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ICodec.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageCommon.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageFilters.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageIO.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageProcessor.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageTypes.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Inflate.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\JpegCodec.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\PngCodec.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\Job.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\JobCommon.h" />
@@ -210,6 +235,7 @@
     <ClInclude Include="FileServerMain.h" />
     <ClInclude Include="FileServerSession.h" />
     <ClInclude Include="IImageStorage.h" />
+    <ClInclude Include="ImageResizeUtil.h" />
     <ClInclude Include="LocalFileImageStorage.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>

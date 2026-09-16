@@ -48,9 +48,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
       <Filter>UtilCore\Thread</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
-      <Filter>UtilCore\Thread</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.cpp">
       <Filter>UtilCore\Network</Filter>
     </ClCompile>
@@ -121,6 +118,43 @@
     <ClCompile Include="FileServerMain.cpp" />
     <ClCompile Include="FileServerSession.cpp" />
     <ClCompile Include="LocalFileImageStorage.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\BmpCodec.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Checksum.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ColorSpace.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Deflate.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageFilters.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageIO.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageProcessor.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageTypes.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Inflate.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\JpegCodec.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\PngCodec.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="ImageResizeUtil.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -164,6 +198,9 @@
     </Filter>
     <Filter Include="UtilCore\Network\HTTP">
       <UniqueIdentifier>{279455c2-84d4-4dd6-baf1-73e1f02d1336}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Image">
+      <UniqueIdentifier>{c5eeee51-2e04-4065-8bf4-c2d85118092b}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -238,9 +275,6 @@
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
-      <Filter>UtilCore\Thread</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.h">
@@ -368,6 +402,49 @@
     <ClInclude Include="FileServerSession.h" />
     <ClInclude Include="IImageStorage.h" />
     <ClInclude Include="LocalFileImageStorage.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\BmpCodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Checksum.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ColorSpace.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Deflate.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ICodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageCommon.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageFilters.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageIO.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageProcessor.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageTypes.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Inflate.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\JpegCodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\PngCodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="ImageResizeUtil.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">

@@ -126,7 +126,8 @@ int main()
 		FILESERVER_CONFIG->GetMaxSessionCount(), FILESERVER_CONFIG->GetWorkerThreadCnt(),
 		FILESERVER_CONFIG->GetStorageDir(),
 		TCharToString(FILESERVER_CONFIG->GetPublicBaseUrl()),
-		FILESERVER_CONFIG->GetMaxUploadBytes()
+		FILESERVER_CONFIG->GetMaxUploadBytes(),
+		FILESERVER_CONFIG->GetMaxProfileImageDimension()
 	);
 
 	if( !started )
@@ -139,8 +140,32 @@ int main()
 	std::cout << "FileServer started. Press Ctrl+C to stop." << std::endl;
 
 	// 8. 메인 스레드 대기 루프
+	// [수정 — 근본 원인] CJobQueue::Push()는 "지금 이 스레드가 이미 다른
+	// 큐를 실행 중"이면(LCurrentJobQueue != nullptr) 직접 실행하지 않고
+	// gpGlobalQueue에 위임한다. 그런데 gpGlobalQueue는 그냥 큐 컨테이너일
+	// 뿐 스스로 도는 워커 스레드가 없고, 이 프로젝트 어디에도(채팅 서버
+	// 포함) gpThreadManager가 그 역할로 쓰이지 않는다 — 즉 위임된 작업을
+	// 퍼가서 실행해주는 존재가 없었다. 그래서 두 번째 업로드처럼 콜백
+	// 안에서 재귀적으로 또 다른 Redis 명령을 보내는 패턴이 이 위임 경로를
+	// 타면, onComplete가 영원히 안 불리고 조용히 멈춰버렸다(실제로 재현됨).
+	// 메인 스레드가 노는 동안 이 전역 큐를 직접 퍼가서 실행하게 해서
+	// 근본적으로 해결한다.
 	while( !g_bShouldExit.load() )
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+	{
+		bool didWork = false;
+		if( gpGlobalQueue != nullptr )
+		{
+			CJobQueueRef jobQueue = gpGlobalQueue->Pop();
+			if( jobQueue != nullptr )
+			{
+				jobQueue->Execute();
+				didWork = true;
+			}
+		}
+
+		if( !didWork )
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
 
 	// 9. 정상 종료 경로
 	MainClose();

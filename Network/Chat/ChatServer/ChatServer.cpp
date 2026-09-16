@@ -162,8 +162,32 @@ int main()
 	// Ctrl+C 등은 ConsoleCtrlHandler가 별도 스레드 컨텍스트에서
 	// GServer->Stop() + g_bShouldExit 세팅을 하므로, 이 루프는 그 플래그를
 	// 확인해 정상적으로 빠져나온다.
+	// [수정 — 파일 서버에서 실제로 재현된 버그를 여기도 동일하게 방지] CJobQueue::
+	// Push()는 호출 스레드가 이미 다른 큐를 실행 중이면(LCurrentJobQueue !=
+	// nullptr) 직접 실행하지 않고 gpGlobalQueue에 위임한다. gpGlobalQueue는
+	// 그냥 큐 컨테이너일 뿐 스스로 도는 워커 스레드가 없고, gpThreadManager도
+	// 이 역할로 쓰이지 않는다 — 즉 위임된 작업을 아무도 퍼가서 실행해주지
+	// 않는 상태였다. 파일 서버(같은 콜백 안에서 재귀적으로 Redis 명령을
+	// 또 보내는 패턴)에서 이 경로를 타 Redis 콜백이 영원히 안 불리는 문제가
+	// 실제로 재현됐다 — 채팅 서버도 구조적으로 동일한 위험을 안고 있어서
+	// (지금까지 우연히 안 드러났을 뿐) 메인 스레드가 노는 동안 이 전역
+	// 큐를 직접 퍼가서 실행하도록 근본적으로 막아둔다.
 	while( !g_bShouldExit.load() )
-		std::this_thread::sleep_for(std::chrono::seconds(1));
+	{
+		bool didWork = false;
+		if( gpGlobalQueue != nullptr )
+		{
+			CJobQueueRef jobQueue = gpGlobalQueue->Pop();
+			if( jobQueue != nullptr )
+			{
+				jobQueue->Execute();
+				didWork = true;
+			}
+		}
+
+		if( !didWork )
+			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
 
 	// 9. 정상 종료 경로 — g_bShouldExit이 세팅되어 루프를 빠져나온 뒤
 	// 실행된다. GServer->Stop()은 이미 ConsoleCtrlHandler에서 호출됐으므로

@@ -12,7 +12,7 @@
 //***************************************************************************
 CFileServerConfig::CFileServerConfig()
 	: _nServerGroupId(0), _nServerChannelId(0), _nServerPort(0), _nMaxSessionCount(0), _nWorkerThreadCnt(0)
-	, _nRedisPoolSize(0), _nMaxUploadBytes(0)
+	, _nRedisPoolSize(0), _nMaxUploadBytes(0), _nMaxProfileImageDimension(0)
 {
 	memset(_tszServiceName, 0, sizeof(_tszServiceName));
 	memset(_tszDisplayName, 0, sizeof(_tszDisplayName));
@@ -56,6 +56,7 @@ bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 	_tcsncpy_s(_tszStorageDir, _countof(_tszStorageDir), jsonUtil[_T("StorageDir")], _TRUNCATE);
 	_tcsncpy_s(_tszPublicBaseUrl, _countof(_tszPublicBaseUrl), jsonUtil[_T("PublicBaseUrl")], _TRUNCATE);
 	_nMaxUploadBytes = jsonUtil[_T("MaxUploadBytes")];
+	_nMaxProfileImageDimension = jsonUtil[_T("MaxProfileImageDimension")];
 
 	if( _nMaxUploadBytes <= 0 )
 	{
@@ -96,6 +97,7 @@ void CFileServerConfig::PrintServerSettingInfo()
 	LOG_INFO(_T("StorageDir : %s"), _tszStorageDir);
 	LOG_INFO(_T("PublicBaseUrl : %s"), _tszPublicBaseUrl);
 	LOG_INFO(_T("MaxUploadBytes : %d"), _nMaxUploadBytes);
+	LOG_INFO(_T("MaxProfileImageDimension : %d"), _nMaxProfileImageDimension);
 
 	LOG_INFO(_T("--------------- Connect RedisNode size : %d ---------------"), static_cast<int>(_redisNodeVec.size()));
 	for( uint32 i = 0; i < _redisNodeVec.size(); i++ )

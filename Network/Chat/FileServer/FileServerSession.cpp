@@ -124,7 +124,7 @@ void CFileServerSession::SendRaw(const std::string& data)
 	// Iocp::SEND_BUFFER_CHUNK_SIZE(IocpCommon.h)와 정확히 동일한 값 — 실제
 	// 헤더로 확인됨(8192바이트). CSendBufferChunk::Open()의 ASSERT_CRASH가
 	// "<="(이하)로 검사하므로 이 값과 정확히 같아도 안전하다.
-	constexpr size_t kSendChunkBytes = 8192;
+	constexpr size_t kSendChunkBytes = Iocp::SEND_BUFFER_CHUNK_SIZE;
 
 	if( data.empty() )
 	{

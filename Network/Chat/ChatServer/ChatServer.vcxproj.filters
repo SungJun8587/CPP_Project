@@ -48,9 +48,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
       <Filter>UtilCore\Thread</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
-      <Filter>UtilCore\Thread</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.cpp">
       <Filter>UtilCore\Network</Filter>
     </ClCompile>
@@ -182,6 +179,9 @@
     <ClCompile Include="PacketHandler\SelectProfileImageHandler.cpp">
       <Filter>PacketHandler</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -305,9 +305,6 @@
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
-      <Filter>UtilCore\Thread</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.h">
@@ -451,6 +448,9 @@
     <ClInclude Include="DBSelectProfileImageRequest.h" />
     <ClInclude Include="DBSetProfileImageUrlRequest.h" />
     <ClInclude Include="DBSignupRequest.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
