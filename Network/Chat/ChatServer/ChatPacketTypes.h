@@ -103,6 +103,9 @@ enum class EChatPacketType : uint16_t
 	SelectProfileImageRes = 23,				// Server -> Client, 대표 이미지 선택 결과 응답
 	DeleteProfileImageReq = 24,				// Client -> Server, 갤러리 내 특정 이미지 삭제 요청
 	DeleteProfileImageRes = 25,				// Server -> Client, 이미지 삭제 결과 응답
+	DeleteChatMessageReq = 26,				// Client -> Server, 특정 채팅 메시지 삭제 요청
+	DeleteChatMessageRes = 27,				// Server -> Client, 메시지 삭제 결과 응답
+	DeleteChatMessageNotify = 28,			// Server -> Client(Broadcast), 메시지 삭제 실시간 통보
 };
 
 //***************************************************************************

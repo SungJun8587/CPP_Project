@@ -146,6 +146,7 @@
     <ClCompile Include="PacketHandler\ChatLoginHandler.cpp" />
     <ClCompile Include="PacketHandler\ChatMessageHandler.cpp" />
     <ClCompile Include="PacketHandler\ChatNicknameHandler.cpp" />
+    <ClCompile Include="PacketHandler\DeleteChatMessageHandler.cpp" />
     <ClCompile Include="PacketHandler\DeleteProfileImageHandler.cpp" />
     <ClCompile Include="PacketHandler\ListProfileImagesHandler.cpp" />
     <ClCompile Include="PacketHandler\RequestUploadTokenHandler.cpp" />

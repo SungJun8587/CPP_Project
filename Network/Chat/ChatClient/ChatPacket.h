@@ -49,6 +49,13 @@ struct LoginResPacket : PacketHeader
 //***************************************************************************
 struct ChatPacket : PacketHeader
 {
+	// [추가] 메시지 삭제 기능을 위한 고유 ID. Client -> Server 방향에서는
+	// 클라이언트가 뭘 채워 보내든 서버가 무시하고(0으로 채워 보내는 게
+	// 관례) 새로 발급한다(CChatServerMain::RegisterNewMessage() 참고).
+	// Server -> Client 브로드캐스트에만 유효한 값이 채워진다 — 나중에
+	// DeleteChatMessageReqPacket으로 이 값을 그대로 실어 보내면 삭제를
+	// 요청할 수 있다.
+	int64	messageId;
 	char	nickname[kNicknameBytes];	            // 발신자 닉네임(서버 브로드캐스트 시 스냅샷)
 	char	profileImageUrl[kProfileImageUrlBytes];	// 발신자의 프로필 이미지 URL(UTF-8)
 	char	message[256];                           // 채팅 메시지 본문
@@ -262,6 +269,38 @@ struct DeleteProfileImageResPacket : PacketHeader
 {
 	uint8	success;    // 1: 성공, 0: 실패
 	uint8	reason;     // ELoginResult
+};
+
+//***************************************************************************
+// @brief [추가] 채팅 메시지 삭제 요청 구조체 (Client -> Server).
+// @details messageId로 대상 메시지를 지정한다. 서버가 소유권(요청자가
+//          실제 작성자인지)을 확인한 뒤 처리한다 —
+//          CChatServerMain::TryDeleteMessage() 참고.
+//***************************************************************************
+struct DeleteChatMessageReqPacket : PacketHeader
+{
+	int64	messageId;
+};
+
+//***************************************************************************
+// @brief [추가] 채팅 메시지 삭제 응답 구조체 (Server -> Client, 요청자에게만).
+// @details reason은 CChatServerMain::EDeleteMessageResult 값이다.
+//***************************************************************************
+struct DeleteChatMessageResPacket : PacketHeader
+{
+	uint8	success;	// 1: 성공, 0: 실패
+	uint8	reason;		// CChatServerMain::EDeleteMessageResult
+};
+
+//***************************************************************************
+// @brief [추가] 채팅 메시지 삭제 알림 (Server -> Client, 서버가 자발적으로 브로드캐스트).
+// @details 삭제가 성공했을 때만 보내지며, 그 메시지가 원래 브로드캐스트됐던
+//          방(로비 포함)의 멤버 전원(삭제를 요청한 사람 포함)에게 간다 —
+//          받는 쪽은 화면에서 messageId가 일치하는 항목을 찾아 제거하면 된다.
+//***************************************************************************
+struct DeleteChatMessageNotifyPacket : PacketHeader
+{
+	int64	messageId;
 };
 
 #pragma pack(pop)

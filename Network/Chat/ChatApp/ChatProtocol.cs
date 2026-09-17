@@ -51,6 +51,12 @@ namespace ChatApp
         SelectProfileImageRes = 23,
         DeleteProfileImageReq = 24,
         DeleteProfileImageRes = 25,
+
+        // [추가] 채팅 메시지 삭제 — 서버 쪽 ChatPacketTypes.h와 번호를
+        // 정확히 맞춰야 한다(DeleteChatMessageHandler.cpp 참고).
+        DeleteChatMessageReq = 26,      // Client -> Server
+        DeleteChatMessageRes = 27,      // Server -> Client, 요청자에게만
+        DeleteChatMessageNotify = 28,   // Server -> Client, 그 메시지가 원래 브로드캐스트된 방 전체에(요청자 포함)
     }
 
     // RoomEnterResPacket::reason
@@ -72,6 +78,17 @@ namespace ChatApp
     }
 
     //***************************************************************************
+    // @brief [추가] DeleteChatMessageResPacket::reason — 서버 CChatServerMain::
+    //        EDeleteMessageResult와 정확히 같은 값을 유지해야 한다.
+    //***************************************************************************
+    public enum DeleteMessageResult : byte
+    {
+        Ok = 0,
+        NotFound = 1,   // messageId가 서버의 추적 창(최근 N개)을 벗어났거나 애초에 존재한 적 없음
+        NotOwner = 2,   // 요청자가 이 메시지의 작성자가 아님
+    }
+
+    //***************************************************************************
     // @brief ChatPacket.h의 프로토콜 상수와 정확히 같은 값을 유지해야 한다.
     //***************************************************************************
     public static class ProtocolConstants
@@ -80,6 +97,7 @@ namespace ChatApp
         public const int TokenBytes = 32;           // kTokenBytes
         public const int PublicIdBytes = 16;        // kPublicIdBytes
         public const int NicknameBytes = 50;        // kNicknameBytes (LoginReqPacket::userId, ChangeNicknameReqPacket::newNickname)
+        public const int MessageIdBytes = 8;        // ChatPacket::messageId / DeleteChatMessage*Packet::messageId (int64)
         public const int ChatMessageBytes = 256;    // ChatPacket::message
         public const int GeneratedNicknameBytes = 32;   // NicknameGenerateResPacket::nickname — kNicknameBytes와 별개 상수라 혼동 주의
 
@@ -166,23 +184,24 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief 채팅 메시지 전송 패킷을 만든다. nickname 필드는 서버가 무시하므로
-        //        (세션의 실제 닉네임으로 채워 재브로드캐스트함) 0으로 채워 보낸다.
+        // @brief 채팅 메시지 전송 패킷을 만든다. nickname/messageId 필드는
+        //        서버가 무시하므로(세션의 실제 닉네임으로 채우고, ID는 새로
+        //        발급함) 0으로 채워 보낸다.
         //***************************************************************************
         public static byte[] BuildChat(string message)
         {
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms))
             {
-                // [수정] ChatPacket.h::ChatPacket에 profileImageUrl 필드가
-                // 추가됐는데 여기서 빠져있었다 — 서버가 기대하는 패킷 크기
-                // (헤더+nickname+profileImageUrl+message)보다 256바이트
-                // (ProfileImageUrlBytes) 작게 보내고 있어서, 서버의 크기
-                // 검증(SizeViolation)에 걸려 연결이 끊기는 원인이었다.
-                ushort size = (ushort)(ProtocolConstants.HeaderBytes + ProtocolConstants.NicknameBytes
+                // [수정] ChatPacket.h::ChatPacket에 messageId(int64) 필드가
+                // 맨 앞(nickname보다 먼저)에 추가됐다 — 메시지 삭제 기능을
+                // 위해 서버가 브로드캐스트마다 고유 ID를 부여한다. 클라이언트가
+                // 보내는 값은 서버가 무시하므로 0으로 채운다.
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + ProtocolConstants.MessageIdBytes + ProtocolConstants.NicknameBytes
                     + ProtocolConstants.ProfileImageUrlBytes + ProtocolConstants.ChatMessageBytes);
                 bw.Write(size);
                 bw.Write((ushort)PacketType.Chat);
+                bw.Write((long)0); // messageId — 서버가 무시하고 새로 부여
                 bw.Write(new byte[ProtocolConstants.NicknameBytes]); // 서버가 무시 — 0으로 채움
                 bw.Write(new byte[ProtocolConstants.ProfileImageUrlBytes]); // 서버가 무시 — 0으로 채움(nickname과 동일한 규칙)
                 bw.Write(FixedUtf8(message, ProtocolConstants.ChatMessageBytes));
@@ -231,9 +250,6 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief 업로드 시작 요청. fileExtension은 ".png" 등(점 포함).
-        //***************************************************************************
-        //***************************************************************************
         // @brief 파일 서버 업로드용 임시 토큰 발급 요청. 바디 없음.
         //***************************************************************************
         public static byte[] BuildRequestUploadTokenReq()
@@ -280,6 +296,24 @@ namespace ChatApp
                 bw.Write(size);
                 bw.Write((ushort)PacketType.DeleteProfileImageReq);
                 bw.Write(imageId);
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 채팅 메시지 삭제 요청. messageId는 서버가 그 메시지를
+        //        브로드캐스트할 때(ChatPacketData.MessageId) 실어 보낸 값을
+        //        그대로 되돌려주면 된다.
+        //***************************************************************************
+        public static byte[] BuildDeleteChatMessageReq(long messageId)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(long));
+                bw.Write(size);
+                bw.Write((ushort)PacketType.DeleteChatMessageReq);
+                bw.Write(messageId);
                 return ms.ToArray();
             }
         }
@@ -387,6 +421,10 @@ namespace ChatApp
 
     public class ChatPacketData
     {
+        // [추가] 서버가 부여한 고유 메시지 ID — Server -> Client 방향에서만
+        // 유효(브로드캐스트 시점에 채워짐). 이 메시지를 나중에 삭제하려면
+        // DeleteChatMessageReq에 그대로 실어 보낸다.
+        public long MessageId;
         public string SenderNickname;   // Server -> Client 방향에서만 의미 있음(브로드캐스트 시점의 발신자 닉네임)
         public string SenderProfileImageUrl;    // 위와 동일한 의미 — 미설정이면 빈 문자열
         public string Message;
@@ -417,6 +455,24 @@ namespace ChatApp
     {
         public int UserCount;
         public int LobbyUserCount;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 채팅 메시지 삭제 요청에 대한 응답(요청자에게만 옴).
+    //***************************************************************************
+    public class DeleteChatMessageResData
+    {
+        public bool Success;
+        public DeleteMessageResult Reason;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 채팅 메시지 삭제 알림 — messageId가 일치하는 메시지를
+    //        받는 쪽 화면에서 찾아 제거하면 된다. 요청자 본인에게도 온다.
+    //***************************************************************************
+    public class DeleteChatMessageNotifyData
+    {
+        public long MessageId;
     }
 
     //***************************************************************************
@@ -464,10 +520,17 @@ namespace ChatApp
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
+                long messageId = br.ReadInt64();
                 string senderNickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
                 string senderProfileImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
                 string message = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ChatMessageBytes));
-                return new ChatPacketData { SenderNickname = senderNickname, SenderProfileImageUrl = senderProfileImageUrl, Message = message };
+                return new ChatPacketData
+                {
+                    MessageId = messageId,
+                    SenderNickname = senderNickname,
+                    SenderProfileImageUrl = senderProfileImageUrl,
+                    Message = message,
+                };
             }
         }
 
@@ -581,6 +644,35 @@ namespace ChatApp
             }
         }
 
+        //***************************************************************************
+        // @brief [추가] 채팅 메시지 삭제 응답 파싱.
+        //***************************************************************************
+        public static DeleteChatMessageResData ParseDeleteChatMessageRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new DeleteChatMessageResData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (DeleteMessageResult)br.ReadByte(),
+                };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 채팅 메시지 삭제 알림 파싱.
+        //***************************************************************************
+        public static DeleteChatMessageNotifyData ParseDeleteChatMessageNotify(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new DeleteChatMessageNotifyData { MessageId = br.ReadInt64() };
+            }
+        }
 
         public static RoomEnterResPacketData ParseRoomEnterRes(byte[] buffer)
         {

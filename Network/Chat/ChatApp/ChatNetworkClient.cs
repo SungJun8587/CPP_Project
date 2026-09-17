@@ -38,6 +38,10 @@ namespace ChatApp
         public event Action<ListProfileImagesEndResData> ProfileImageListEndReceived;
         public event Action<SelectProfileImageResData> SelectProfileImageResultReceived;
         public event Action<DeleteProfileImageResData> DeleteProfileImageResultReceived;
+        // [추가] 채팅 파일 첨부 삭제 브로드캐스트 — 같은 방/로비의 누군가(나 포함)가
+        // 파일을 지우면 도착한다.
+        public event Action<DeleteChatMessageResData> DeleteChatMessageResultReceived;
+        public event Action<DeleteChatMessageNotifyData> DeleteChatMessageNotified;
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -97,6 +101,9 @@ namespace ChatApp
         public void RequestListProfileImages() => SendRaw(PacketBuilder.BuildListProfileImagesReq());
         public void RequestSelectProfileImage(long imageId) => SendRaw(PacketBuilder.BuildSelectProfileImageReq(imageId));
         public void RequestDeleteProfileImage(long imageId) => SendRaw(PacketBuilder.BuildDeleteProfileImageReq(imageId));
+        // [추가] 파일 서버에서 이미 삭제된 파일임을 채팅 서버에 알려서,
+        // 같은 방/로비의 다른 사람들 화면에서도 지워지도록 브로드캐스트를 유도한다.
+        public void RequestDeleteChatMessage(long messageId) => SendRaw(PacketBuilder.BuildDeleteChatMessageReq(messageId));
 
         private void SendRaw(byte[] packet)
         {
@@ -231,6 +238,14 @@ namespace ChatApp
 
                 case PacketType.DeleteProfileImageRes:
                     DeleteProfileImageResultReceived?.Invoke(PacketParser.ParseDeleteProfileImageRes(full));
+                    break;
+
+                case PacketType.DeleteChatMessageRes:
+                    DeleteChatMessageResultReceived?.Invoke(PacketParser.ParseDeleteChatMessageRes(full));
+                    break;
+
+                case PacketType.DeleteChatMessageNotify:
+                    DeleteChatMessageNotified?.Invoke(PacketParser.ParseDeleteChatMessageNotify(full));
                     break;
 
                 default:

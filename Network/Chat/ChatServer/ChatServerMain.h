@@ -13,8 +13,8 @@
 #include <Redis/RedisService.h>
 #include <Redis/RedisServerHeartbeat.h>
 #include <DB/OdbcAsyncSrv.h>
-#include "ChatPacket.h"		// kPublicIdBytes
-#include "DBListProfileImagesRequest.h"	// SProfileImageEntry
+#include "ChatPacket.h"
+#include "DBListProfileImagesRequest.h"
 
 #include <string>
 #include <memory>
@@ -22,6 +22,7 @@
 #include <array>
 #include <unordered_map>
 #include <vector>
+#include <deque>
 #include <mutex>
 #include <atomic>
 
@@ -238,6 +239,44 @@ public:
 	void ScheduleFileDeletionIfOwned(const std::string& deletedImageRef);
 
 	//***************************************************************************
+	// @brief [추가] 채팅 메시지 삭제 결과 사유.
+	//***************************************************************************
+	enum class EDeleteMessageResult : uint8
+	{
+		Ok = 0,
+		NotFound = 1,	// messageId가 추적 창(최근 N개)을 벗어났거나 애초에 존재한 적 없음
+		NotOwner = 2,	// 요청자가 이 메시지의 작성자가 아님
+	};
+
+	//***************************************************************************
+	// @brief [추가] 새로 브로드캐스트할 채팅 메시지에 부여할 다음 고유 ID를
+	//        발급하고 삭제 검증용 추적 목록에 등록합니다. ChatMessageHandler.cpp가
+	//        브로드캐스트 직전에 호출합니다.
+	// @details 등록된 개수가 kMaxTrackedMessages를 넘으면 가장 오래된
+	//          항목을 하나 제거합니다(메모리가 무한정 늘어나지 않도록) —
+	//          채팅 로그를 영구 보관하는 기능이 아니라 "방금 보낸 메시지
+	//          취소" 수준의 가벼운 기능으로 설계했다.
+	// @param senderPublicId 이 메시지를 보낸 계정의 안정 식별자(소유권 검증용)
+	// @param roomId 이 메시지가 브로드캐스트되는 방(나중에 삭제 알림도
+	//        같은 방으로 보내야 하므로 여기서 같이 기억해둔다)
+	// @return 새로 발급된 메시지 ID(1부터 시작하는 단조 증가값)
+	//***************************************************************************
+	int64 RegisterOutgoingMessage(const std::array<BYTE, kPublicIdBytes>& senderPublicId, int32 roomId);
+
+	//***************************************************************************
+	// @brief [추가] 메시지 삭제를 시도합니다 — 존재 여부와 소유권을 확인한
+	//        뒤, 성공하면 추적 목록에서 제거하고 원래 브로드캐스트됐던 방
+	//        번호를 돌려줍니다(호출부가 그 방으로 삭제 알림을 브로드캐스트
+	//        하기 위함).
+	// @param messageId 지울 메시지 ID
+	// @param requesterPublicId 요청자의 안정 식별자 — 메시지 소유자와
+	//        일치해야 삭제가 허용된다.
+	// @param outRoomId [out] 성공 시(Ok)만 유효 — 이 메시지가 원래 있던 방 번호.
+	// @return EDeleteMessageResult (성공은 Ok)
+	//***************************************************************************
+	EDeleteMessageResult TryDeleteMessage(int64 messageId, const std::array<BYTE, kPublicIdBytes>& requesterPublicId, int32& outRoomId);
+
+	//***************************************************************************
 	// @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
 	// @details 로그인 성공 직후 자동으로 로비(kLobbyRoomId)에 배정하는 데도
 	//          쓰이고, 클라이언트의 명시적 방 입장 요청(RoomEnterHandler.cpp)
@@ -323,6 +362,27 @@ private:
 	// LeaveCurrentRoom() 호출 시 청소된다).
 	mutable std::mutex	_roomMutex;
 	std::unordered_map<int32, std::vector<std::weak_ptr<CChatSession>>>	_roomMembers;
+
+	//***************************************************************************
+	// @brief [추가] 메시지 삭제 기능을 위한 최근 메시지 추적 항목.
+	//***************************************************************************
+	struct SMessageOwnerRecord
+	{
+		std::array<BYTE, kPublicIdBytes>	senderPublicId;
+		int32								roomId = -1;
+	};
+
+	// [추가] 최근 메시지 추적(삭제 기능용) — 서버 전체를 통틀어 최근
+	// kMaxTrackedMessages개까지만 기억한다(무한정 쌓이는 걸 방지). 그보다
+	// 오래된 메시지는 삭제 요청이 와도 NotFound로 처리된다 — 채팅 로그를
+	// DB 등에 영구 보관하는 기능이 필요하면 별도로 설계해야 하고, 이건
+	// 어디까지나 "방금 보낸 메시지 취소" 수준의 가벼운 기능이다.
+	static constexpr size_t kMaxTrackedMessages = 500;
+
+	mutable std::mutex							_messageOwnerMutex;
+	std::unordered_map<int64, SMessageOwnerRecord>	_messageOwners;
+	std::deque<int64>							_messageOwnerOrder;	// 삽입 순서 — 오래된 것부터 제거하기 위함
+	std::atomic<int64>							_nextMessageId{ 1 };
 
 	// [설계 변경] 프로필 이미지 저장을 별도 파일 서버로 분리하면서, 이
 	// 서버는 더 이상 이미지 파일 자체를 갖고 있지 않는다 — IImageStorage/

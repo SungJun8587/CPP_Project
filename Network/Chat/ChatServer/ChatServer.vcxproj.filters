@@ -182,6 +182,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
       <Filter>UtilCore\Thread</Filter>
     </ClCompile>
+    <ClCompile Include="PacketHandler\DeleteChatMessageHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

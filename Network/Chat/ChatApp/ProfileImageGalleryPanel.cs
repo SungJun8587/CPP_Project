@@ -228,7 +228,12 @@ namespace ChatApp
         private void InitializeComponents()
         {
             Dock = DockStyle.Fill;
-            BackColor = ChatTheme.Current.PageBack;
+            // [수정] 스킨과 무관하게 항상 고정된 밝은 배경 — ChatClientForm의
+            // PageBackColor(=ChatTheme.Blue.PageBack)와 동일한 규칙. 예전엔
+            // ChatTheme.Current.PageBack을 썼는데, 검정 스킨을 선택하면 이
+            // 값이 어두운 색이 되면서 갤러리 탭 전체가 새까매지는 문제가
+            // 있었다(채팅 탭은 이미 고정값을 써서 문제없었음).
+            BackColor = ChatTheme.Blue.PageBack;
 
             // ── 상단: 대표 이미지 크게 + 카메라 배지 ──────────────────────
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 190 };
@@ -312,7 +317,7 @@ namespace ChatApp
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
                 Padding = new Padding(8),
-                BackColor = ChatTheme.Current.PageBack,
+                BackColor = ChatTheme.Blue.PageBack,
             };
 
             Controls.Add(_flowThumbnails);
@@ -434,8 +439,11 @@ namespace ChatApp
         //***************************************************************************
         public void RefreshTheme()
         {
-            BackColor = ChatTheme.Current.PageBack;
-            _flowThumbnails.BackColor = ChatTheme.Current.PageBack;
+            // [수정] 배경은 스킨과 무관하게 항상 고정 — 위 InitializeComponents()와
+            // 동일한 이유. 여기서 다시 씌우는 이유는 예전 버전과의 일관성
+            // 유지 차원일 뿐, 실제로는 값이 안 바뀌므로 없어도 무방하다.
+            BackColor = ChatTheme.Blue.PageBack;
+            _flowThumbnails.BackColor = ChatTheme.Blue.PageBack;
 
             if (_picActive.Image == null)
                 _picActive.BackColor = ControlPaint.Light(ChatTheme.Current.Accent, 0.9f);

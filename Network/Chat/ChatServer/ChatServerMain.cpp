@@ -216,6 +216,63 @@ int32 CChatServerMain::GetServerUserCount() const
 }
 
 //***************************************************************************
+// @brief 새로 브로드캐스트할 채팅 메시지에 부여할 다음 고유 ID를 반환하고,
+//        그 발신자/방 정보를 삭제 검증용으로 기억해둔다(kMaxTrackedMessages개
+//        초과 시 가장 오래된 항목부터 자동으로 밀어낸다).
+//***************************************************************************
+int64 CChatServerMain::RegisterOutgoingMessage(const std::array<BYTE, kPublicIdBytes>& senderPublicId, int32 roomId)
+{
+	const int64 messageId = _nextMessageId.fetch_add(1);
+
+	std::lock_guard<std::mutex> lock(_messageOwnerMutex);
+
+	_messageOwners[messageId] = SMessageOwnerRecord{ senderPublicId, roomId };
+	_messageOwnerOrder.push_back(messageId);
+
+	while( _messageOwnerOrder.size() > kMaxTrackedMessages )
+	{
+		const int64 oldestId = _messageOwnerOrder.front();
+		_messageOwnerOrder.pop_front();
+		_messageOwners.erase(oldestId);
+	}
+
+	return messageId;
+}
+
+//***************************************************************************
+// @brief messageId 삭제를 시도한다 — 추적 저장소에 남아있고 발신자가
+//        일치할 때만 성공, 성공 시 저장소에서 제거하고 outRoomId를 채운다.
+// @details [수정 — 순서 큐 정리] 삭제에 성공한 messageId를 _messageOwners에서만
+//          지우고 _messageOwnerOrder(삽입 순서 큐)에 그대로 남겨두면,
+//          나중에 RegisterOutgoingMessage()의 밀어내기 루프가 이미 없는
+//          ID를 큐에서 뽑아 erase()를 또 호출하는 낭비(해는 없지만 불필요한
+//          작업)가 쌓인다 — std::deque에서 특정 원소 하나를 지우는 건
+//          O(n)이라 매 삭제마다 하기엔 아깝지만, 이 큐는 애초에
+//          kMaxTrackedMessages(500)로 크기가 짧게 묶여있어 실질적인
+//          비용은 무시할 수준이다.
+//***************************************************************************
+CChatServerMain::EDeleteMessageResult CChatServerMain::TryDeleteMessage(int64 messageId, const std::array<BYTE, kPublicIdBytes>& requesterPublicId, int32& outRoomId)
+{
+	std::lock_guard<std::mutex> lock(_messageOwnerMutex);
+
+	auto it = _messageOwners.find(messageId);
+	if( it == _messageOwners.end() )
+		return EDeleteMessageResult::NotFound;
+
+	if( it->second.senderPublicId != requesterPublicId )
+		return EDeleteMessageResult::NotOwner;
+
+	outRoomId = it->second.roomId;
+	_messageOwners.erase(it);
+
+	auto orderIt = std::find(_messageOwnerOrder.begin(), _messageOwnerOrder.end(), messageId);
+	if( orderIt != _messageOwnerOrder.end() )
+		_messageOwnerOrder.erase(orderIt);
+
+	return EDeleteMessageResult::Ok;
+}
+
+//***************************************************************************
 // @brief 회원가입/재접속 검증을 DB 비동기 워커에 요청합니다.
 // @details
 // [스레드 이관] AccountDBHandler.cpp의 핸들러는 DB 비동기 워커 스레드

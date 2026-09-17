@@ -43,6 +43,7 @@ namespace ChatApp
         public Color Border;
         public Color TextSecondary;
         public Color TextMuted;
+        public Color TextTime;
         public Color HeaderBack;
         public Color MyBubble;
         public Color MyText;
@@ -51,20 +52,21 @@ namespace ChatApp
         public static readonly ChatTheme Blue = new ChatTheme
         {
             Name = "블루 (기본)",
-            Accent = Color.FromArgb(61, 123, 247),
-            Success = Color.FromArgb(47, 184, 112),
-            Danger = Color.FromArgb(214, 69, 69),
-            PageBack = Color.FromArgb(247, 248, 250),
-            Border = Color.FromArgb(226, 228, 232),
-            TextSecondary = Color.FromArgb(138, 143, 152),
-            TextMuted = Color.FromArgb(176, 180, 186),
-            HeaderBack = Color.White,
-            MyBubble = Color.FromArgb(61, 123, 247),
-            MyText = Color.White,
-            OtherText = Color.FromArgb(26, 29, 33),
+            Accent = Color.FromArgb(61, 123, 247),              // 주요 버튼/포인트
+            Success = Color.FromArgb(47, 184, 112),             // 성공/확인
+            Danger = Color.FromArgb(214, 69, 69),               // 경고/삭제
+            PageBack = Color.FromArgb(247, 248, 250),           // 전체 배경
+            HeaderBack = Color.White,                           // 상단 헤더 배경
+            Border = Color.FromArgb(226, 228, 232),             // 테두리
+            TextSecondary = Color.FromArgb(138, 143, 152),      // 부텍스트
+            TextMuted = Color.FromArgb(176, 180, 186),          // 비활성 텍스트
+            TextTime = Color.Black,                             // 시간 텍스트
+            MyBubble = Color.FromArgb(61, 123, 247),            // 내 말풍선
+            MyText = Color.White,                               // 내 말풍선 텍스트
+            OtherText = Color.FromArgb(26, 29, 33),             // 상대방 텍스트
         };
 
-        public static readonly ChatTheme Dark = new ChatTheme
+        public static readonly ChatTheme Purple = new ChatTheme
         {
             Name = "퍼플 (보라)",
             Accent = Color.FromArgb(151, 111, 255),
@@ -72,13 +74,12 @@ namespace ChatApp
             Danger = Color.FromArgb(235, 100, 100),
             PageBack = Color.FromArgb(30, 32, 36),
             HeaderBack = Color.FromArgb(24, 26, 29),
-            MyBubble = Color.FromArgb(151, 111, 255),
-            MyText = Color.White,
-            // [수정] 카드/상대 말풍선이 항상 흰 배경이므로, 이 세 값은 다른
-            // 프리셋과 마찬가지로 어두운 계열이어야 한다.
             Border = Color.FromArgb(210, 213, 217),
             TextSecondary = Color.FromArgb(100, 104, 110),
             TextMuted = Color.FromArgb(150, 154, 160),
+            TextTime = Color.Black,
+            MyBubble = Color.FromArgb(151, 111, 255),
+            MyText = Color.White,
             OtherText = Color.FromArgb(26, 29, 33),
         };
 
@@ -89,10 +90,11 @@ namespace ChatApp
             Success = Color.FromArgb(47, 184, 112),
             Danger = Color.FromArgb(214, 69, 69),
             PageBack = Color.FromArgb(255, 246, 249),
+            HeaderBack = Color.White,
             Border = Color.FromArgb(245, 214, 226),
             TextSecondary = Color.FromArgb(150, 120, 130),
             TextMuted = Color.FromArgb(190, 160, 170),
-            HeaderBack = Color.White,
+            TextTime = Color.Black,
             MyBubble = Color.FromArgb(240, 98, 146),
             MyText = Color.White,
             OtherText = Color.FromArgb(60, 40, 46),
@@ -105,11 +107,29 @@ namespace ChatApp
             Success = Color.FromArgb(46, 160, 90),
             Danger = Color.FromArgb(214, 69, 69),
             PageBack = Color.FromArgb(246, 251, 247),
+            HeaderBack = Color.White,
             Border = Color.FromArgb(212, 232, 216),
             TextSecondary = Color.FromArgb(110, 130, 115),
             TextMuted = Color.FromArgb(160, 180, 165),
-            HeaderBack = Color.White,
+            TextTime = Color.Black,
             MyBubble = Color.FromArgb(46, 160, 90),
+            MyText = Color.White,
+            OtherText = Color.FromArgb(26, 29, 33),
+        };
+
+        public static readonly ChatTheme Black = new ChatTheme
+        {
+            Name = "블랙",
+            Accent = Color.FromArgb(45, 45, 48),
+            Success = Color.FromArgb(47, 184, 112),
+            Danger = Color.FromArgb(214, 69, 69),
+            PageBack = Color.FromArgb(18, 18, 18),
+            HeaderBack = Color.FromArgb(12, 12, 12),
+            Border = Color.FromArgb(210, 210, 212),
+            TextSecondary = Color.FromArgb(110, 110, 114),
+            TextMuted = Color.FromArgb(160, 160, 164),
+            TextTime = Color.Black,
+            MyBubble = Color.FromArgb(35, 35, 38),
             MyText = Color.White,
             OtherText = Color.FromArgb(26, 29, 33),
         };
@@ -117,7 +137,7 @@ namespace ChatApp
         //***************************************************************************
         // @brief 앱 전체가 지금 쓰고 있는 테마. 기본값은 Blue — ChatClientForm.
         //        ApplyTheme()가 스킨 선택 시 이 값을 바꾼다.
-        // @details [수정] 이 필드는 반드시 Blue/Dark/Pink/Green 프리셋들보다
+        // @details [수정] 이 필드는 반드시 Blue/Purple/Pink/Green/Black 프리셋들보다
         //          "뒤에" 선언돼야 한다 — C#의 정적 필드 초기화는 선언
         //          순서(위에서 아래로) 그대로 실행되므로, Current = Blue를
         //          Blue보다 먼저 선언하면 그 시점엔 Blue가 아직 null이라
@@ -126,6 +146,6 @@ namespace ChatApp
         //***************************************************************************
         public static ChatTheme Current = Blue;
 
-        public static readonly ChatTheme[] All = { Blue, Dark, Pink, Green };
+        public static readonly ChatTheme[] All = { Blue, Purple, Pink, Green, Black };
     }
 }

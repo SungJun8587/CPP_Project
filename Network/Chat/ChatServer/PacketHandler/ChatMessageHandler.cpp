@@ -46,7 +46,14 @@ namespace
 		::memcpy(outPacket.message, packet->message, sizeof(outPacket.message));
 
 		if( CChatServerMain* server = session.GetServer() )
+		{
+			// [추가] 나중에 DeleteChatMessageReq가 "이 메시지를 지워도 되는지"
+			// 검증할 수 있도록, 브로드캐스트 직전에 고유 ID를 부여하고
+			// 발신자/방 정보를 서버가 짧게 기억해둔다(영구 저장 아님 —
+			// ChatServerMain.h::kMaxTrackedMessages 참고).
+			outPacket.messageId = server->RegisterOutgoingMessage(session.GetPublicId(), session.GetRoomId());
 			server->BroadcastToRoom(session.GetRoomId(), &outPacket, outPacket.size);
+		}
 	}
 }
 
