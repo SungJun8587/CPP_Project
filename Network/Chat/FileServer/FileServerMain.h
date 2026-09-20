@@ -12,7 +12,9 @@
 #include <Redis/RedisService.h>
 #include <Network/HTTP/HttpRequestParser.h>
 
-#include "IImageStorage.h"
+#include "FileStorage.h"
+#include "FileMetadataRepository.h"
+#include "FileServerRouter.h"
 
 #include <memory>
 #include <string>
@@ -50,14 +52,14 @@ public:
 	// @param publicBaseUrl 클라이언트에게 돌려줄 URL의 기본 주소(예:
 	//        "http://192.168.0.10:8081") — 이 뒤에 "/images/{path}"를 붙인다.
 	// @param maxUploadBytes 업로드 가능한 최대 파일 크기(바이트).
-	// @param maxImageDimension 저장할 이미지의 가로/세로 허용 최댓값(픽셀) —
+	// @param maxProfileImageDimension 저장할 이미지의 가로/세로 허용 최댓값(픽셀) —
 	//        넘으면 비율 유지한 채 줄여서 저장(ImageResizeUtil 참고).
 	//***************************************************************************
 	bool Start(
 		const _tstring& bindIp, uint16 bindPort,
 		CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
 		int32 maxSessionCount, uint32 workerThreadCount,
-		_tstring storageDir, std::string publicBaseUrl, int32 maxUploadBytes, int32 maxImageDimension);
+		_tstring storageDir, std::string publicBaseUrl, int64 maxUploadBytes, int32 maxProfileImageDimension);
 
 	void Stop();
 
@@ -66,58 +68,16 @@ public:
 	//***************************************************************************
 	void HandleRequest(std::shared_ptr<CFileServerSession> session, const CHttpRequestParser& request);
 
+	//***************************************************************************
+	// @brief [추가] 설정된 업로드 크기 상한(바이트)을 반환합니다.
+	// @details CFileServerSession이 CHttpRequestParser::SetBodyStreamCallback()의
+	//          maxBodyLenOverride 인자로 이 값을 그대로 전달한다 — 스트리밍
+	//          모드의 상한이 실제 설정값(FileServerConfig의 MaxUploadBytes)과
+	//          항상 일치하도록 단일 진실 공급원을 유지하기 위함이다.
+	//***************************************************************************
+	int64 GetMaxUploadBytes() const { return _maxUploadBytes; }
+
 private:
-	//***************************************************************************
-	// @brief POST /upload 처리 — multipart/form-data에서 token/file 필드를
-	//        뽑아 Redis로 토큰을 검증하고, 성공하면 저장 후 URL을 응답한다.
-	//***************************************************************************
-	void HandleUpload(std::shared_ptr<CFileServerSession> session, const CHttpRequestParser& request, bool keepAlive);
-
-	//***************************************************************************
-	// @brief GET /images/{path} 처리 — 저장된 파일을 그대로 응답 본문에 실어 보낸다.
-	//***************************************************************************
-	void HandleGetImage(std::shared_ptr<CFileServerSession> session, const std::string& relativePath, bool keepAlive);
-
-	//***************************************************************************
-	// @brief DELETE /images/{path} 처리 — 저장된 파일을 지운다.
-	// @details [설계] 이 요청 자체엔 별도 인증이 없다 — 채팅 서버가
-	//          DeleteProfileImageHandler.cpp에서 DB 삭제에 성공한 뒤에만
-	//          내부적으로 호출하는 것을 전제로 한다(사용자가 직접 이
-	//          엔드포인트를 두드릴 경로가 없음 — 클라이언트 프로토콜엔
-	//          이 요청이 아예 없다). 인터넷에 노출되는 배포라면 두 서버
-	//          사이에서만 통하는 별도 인증(공유 비밀 헤더 등)을 추가하는
-	//          게 안전하다 — 지금은 데모 범위에서 생략.
-	//***************************************************************************
-	void HandleDeleteImage(std::shared_ptr<CFileServerSession> session, const std::string& relativePath, bool keepAlive);
-
-	//***************************************************************************
-	// @brief Redis에서 업로드 토큰을 조회/소모(1회용 — 검증 성공 시 삭제)합니다.
-	// @param onComplete success==true면 outOwnerPublicIdHex가 채워진다.
-	//***************************************************************************
-	void VerifyAndConsumeUploadToken(const std::string& tokenHex, std::function<void(bool success, const std::string& ownerPublicIdHex)> onComplete);
-
-	//***************************************************************************
-	// @brief relativePath로 접근 가능한 공개 URL을 만든다.
-	//***************************************************************************
-	std::string BuildPublicUrl(const std::string& relativePath) const;
-
-	//***************************************************************************
-	// @brief 확장자(".png" 등)로부터 Content-Type을 추정한다. 모르는
-	//        확장자면 "application/octet-stream".
-	//***************************************************************************
-	static std::string GuessContentType(const std::string& path);
-
-	//***************************************************************************
-	// @brief 텍스트 본문 HTTP 응답 하나를 조립해서 전송한다(상태줄+헤더+바디).
-	// @param keepAlive request.IsKeepAlive() 값을 그대로 전달 — 세션의
-	//        OnRecv()가 요청 기준으로 연결 유지/종료를 결정하므로, 응답의
-	//        Connection 헤더도 반드시 그 값과 일치시켜야 한다(안 그러면
-	//        클라이언트가 "keep-alive"라고 믿는 연결을 서버가 끊어버리는
-	//        불일치가 생김).
-	//***************************************************************************
-	static void SendSimpleResponse(std::shared_ptr<CFileServerSession> session, int statusCode, const std::string& statusText,
-		const std::string& contentType, const std::string& body, bool keepAlive);
-
 	//***************************************************************************
 	// @brief 채팅 서버가 Redis 큐("FileServer:PendingDeletions")에 남겨둔
 	//        "지울 파일" 목록을 주기적으로 소비하는 폴링을 시작합니다.
@@ -155,12 +115,14 @@ private:
 	CIocpCoreRef				_iocpCore;
 	CIocpServerServiceRef		_service;
 	CJobQueueRef				_jobQueue;
-	std::unique_ptr<CRedisService>	_redisService;
-	std::unique_ptr<IImageStorage>	_imageStorage;
+	std::unique_ptr<CRedisService>			_redisService;
+	std::unique_ptr<IFileStorage>			_fileStorage;
+	std::unique_ptr<CFileMetadataRepository>	_metadataRepo;
+	std::unique_ptr<CFileServerRouter>		_router;
 
 	std::string					_publicBaseUrl;
-	int32						_maxUploadBytes = 0;
-	int32						_maxImageDimension = 0;
+	int64						_maxUploadBytes = 0;
+	int32						_maxProfileImageDimension = 0;
 };
 
 #endif // ndef UC_FILESERVERMAIN_H

@@ -7,15 +7,6 @@
 #include "pch.h"
 #include "ImageResizeUtil.h"
 
-bool ImageResizeUtil::Startup()
-{
-	return true;
-}
-
-void ImageResizeUtil::Shutdown()
-{
-}
-
 bool ImageResizeUtil::ResizeIfLarger(const std::vector<BYTE>& imageData, const std::string& fileExtension, int maxDimension, std::vector<BYTE>& outData)
 {
 	if( imageData.empty() || maxDimension <= 0 )

@@ -1,0 +1,743 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using Font = System.Drawing.Font;
+using Image = System.Drawing.Image;
+
+namespace ChatApp
+{
+    // ChatClientForm.Display.cs : 채팅 목록 OwnerDraw 렌더링(말풍선/아바타/링크·파일 카드)과 마우스 처리, 그리고 채팅/시스템 로그를 화면에 추가하는 공통 헬퍼.
+    public partial class ChatClientForm
+    {
+
+        //***************************************************************************
+        // @brief listBoxMsg(시스템 로그) 전용 OwnerDraw 핸들러. Items에는
+        //        ColoredEntry만 들어간다는 전제.
+        //***************************************************************************
+        private void ColoredListBox_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0)
+                return;
+
+            var listBox = (ListBox)sender;
+            var entry = (ColoredEntry)listBox.Items[e.Index];
+
+            e.DrawBackground();
+
+            string timePrefix = entry.Timestamp.ToString("HH:mm:ss") + "  ";
+            SizeF timeSize = e.Graphics.MeasureString(timePrefix, listBox.Font);
+
+            using (var timeBrush = new SolidBrush(TextMutedColor))
+                e.Graphics.DrawString(timePrefix, listBox.Font, timeBrush, e.Bounds);
+
+            var textRect = new RectangleF(e.Bounds.X + timeSize.Width, e.Bounds.Y, e.Bounds.Width - timeSize.Width, e.Bounds.Height);
+            using (var brush = new SolidBrush(entry.Color))
+            {
+                e.Graphics.DrawString(entry.Text, listBox.Font, brush, textRect);
+            }
+            e.DrawFocusRectangle();
+        }
+
+        //***************************************************************************
+        // @brief listBoxChat(채팅 로그) 전용 — 말풍선 높이를 텍스트 길이에 맞춰
+        //        동적으로 계산한다. OwnerDrawVariable에서는 이 이벤트가 없으면
+        //        모든 줄이 같은 높이로 찌그러진다.
+        //***************************************************************************
+        private void ChatListBox_MeasureItem(object sender, MeasureItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= _listBoxChat.Items.Count)
+                return;
+
+            if (!(_listBoxChat.Items[e.Index] is ChatBubbleItem item))
+            {
+                e.ItemHeight = 24;
+                return;
+            }
+
+            int maxBubbleWidth = (int)(_listBoxChat.ClientSize.Width * 0.65);
+
+            // [추가] 파일 첨부 메시지("[FILE:이름:크기]url")는 원문 텍스트를
+            // 그대로 보여주지 않고 고정 크기 카드로만 그린다 — 텍스트 길이에
+            // 따라 줄바꿈되는 일반 메시지와 달리 높이가 항상 같다.
+            if (FileAttachmentRegex.IsMatch(item.Message))
+            {
+                int fileBaseHeight = item.IsMyMessage ? 15 : 25; // 일반 메시지의 baseHeight에서 텍스트 한 줄분(약 10px)을 뺀 값
+                e.ItemHeight = kFileCardHeight + fileBaseHeight;
+                return;
+            }
+
+            using (Graphics g = _listBoxChat.CreateGraphics())
+            {
+                SizeF textSize = g.MeasureString(item.Message, _listBoxChat.Font, maxBubbleWidth);
+
+                // [수정 — 첫 줄(시간) 텍스트 잘림] 내 메시지와 상대 메시지는
+                // DrawItem에서 쓰는 세로 오프셋이 다르다:
+                //   - 내 메시지: 말풍선이 bounds.Top+5부터 시작, 시간은 말풍선
+                //     하단에 딱 맞춰 그려짐 → 필요 높이 ≈ 5(상단 여백) + 10(말풍선
+                //     상하 패딩) + 여유
+                //   - 상대 메시지: 닉네임 영역(15) + 여백(5) + 말풍선(bounds.Top+20부터
+                //     시작) + 말풍선 하단에 걸쳐 그려지는 시간 텍스트까지 고려하면
+                //     내 메시지보다 훨씬 더 큰 여유가 필요하다.
+                // 예전엔 이 둘을 구분하지 않고 kBaseHeight=25 하나만 썼는데,
+                // 상대 메시지 쪽 실제 필요 높이(약 35)보다 작아서 시간 텍스트
+                // 아래쪽이 다음 줄에 가려 잘려 보였다.
+                int baseHeight = item.IsMyMessage ? 25 : 35;
+
+                // 이 메시지에 URL이 있고, 그 URL의 미리보기 카드가 이미
+                // 로딩 완료됐으면 카드 높이만큼 더 확보한다. 아직 로딩
+                // 중이거나 실패했으면 추가 공간을 안 잡는다 — 로딩 완료
+                // 시점에 RefreshChatItem()이 다시 측정을 트리거해준다.
+                int previewHeight = 0;
+                Match urlMatch = UrlRegex.Match(item.Message);
+                if (urlMatch.Success
+                    && _linkPreviewCache.TryGetValue(urlMatch.Value, out var preview)
+                    && !preview.IsLoading && !preview.Failed)
+                {
+                    previewHeight = kLinkPreviewCardHeight + 8;
+                }
+
+                e.ItemHeight = (int)textSize.Height + baseHeight + previewHeight;
+            }
+        }
+
+        //***************************************************************************
+        // @brief 실제 프로필 사진이 없는 발신자를 위한 대체 아바타를 그린다
+        //        — 닉네임 기반으로 결정적으로 고른 색의 원 안에 첫 글자를
+        //        넣는다(디스코드/슬랙 방식). 같은 닉네임은 항상 같은 색이
+        //        나오므로, 실제 사진은 아니어도 "누가 누군지" 시각적으로
+        //        구분하는 데는 도움이 된다.
+        //***************************************************************************
+        private static readonly Color[] AvatarPalette =
+        {
+            Color.FromArgb(230, 126, 34), Color.FromArgb(41, 128, 185), Color.FromArgb(39, 174, 96),
+            Color.FromArgb(155, 89, 182), Color.FromArgb(231, 76, 60), Color.FromArgb(26, 188, 156),
+            Color.FromArgb(243, 156, 18), Color.FromArgb(52, 73, 94),
+        };
+
+        //***************************************************************************
+        // @brief 발신자 아바타를 그린다. profileImageUrl로 받아온 실제 이미지이
+        //        캐시에 있으면 그것을 원형으로 잘라 그리고, 없으면(아직 못
+        //        받아왔거나 URL 자체가 없거나 실패했으면) 닉네임 기반으로
+        //        결정적으로 고른 색의 원 안에 첫 글자를 넣는 생성 아바타로
+        //        대체한다(디스코드/슬랙 방식). 같은 닉네임은 항상 같은 색이
+        //        나오므로, 실제 사진이 없어도 "누가 누군지" 시각적으로
+        //        구분하는 데는 도움이 된다.
+        //***************************************************************************
+        private void DrawAvatar(Graphics g, string senderName, string profileImageUrl, Rectangle rect, int itemIndex)
+        {
+            Image avatarImage = null;
+            if (!string.IsNullOrEmpty(profileImageUrl))
+            {
+                lock (_avatarImageCache)
+                {
+                    _avatarImageCache.TryGetValue(profileImageUrl, out avatarImage);
+                }
+
+                if (avatarImage == null)
+                    RequestAvatarImage(profileImageUrl, itemIndex);
+            }
+
+            if (avatarImage != null)
+            {
+                using (var clipPath = new GraphicsPath())
+                {
+                    clipPath.AddEllipse(rect);
+                    Region previousClip = g.Clip;
+                    g.SetClip(clipPath, CombineMode.Intersect);
+                    g.DrawImage(avatarImage, rect);
+                    g.Clip = previousClip;
+                }
+                return;
+            }
+
+            string name = string.IsNullOrEmpty(senderName) ? "?" : senderName;
+            Color color = AvatarPalette[(uint)name.GetHashCode() % (uint)AvatarPalette.Length];
+
+            using (var brush = new SolidBrush(color))
+            {
+                g.FillEllipse(brush, rect);
+            }
+
+            string initial = name.Substring(0, 1).ToUpperInvariant();
+            using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            using (var avatarFont = new Font(_listBoxChat.Font.FontFamily, 10f, FontStyle.Bold))
+            {
+                g.DrawString(initial, avatarFont, Brushes.White, rect, format);
+            }
+        }
+
+        //***************************************************************************
+        // @brief 둥근 사각형 GraphicsPath를 만든다 — 말풍선 모서리를 둥글게
+        //        그리기 위한 헬퍼. radius가 bounds의 절반보다 크면 안전하게 줄인다.
+        //***************************************************************************
+        private static GraphicsPath GetRoundedRectPath(Rectangle bounds, int radius)
+        {
+            int diameter = Math.Min(radius * 2, Math.Min(bounds.Width, bounds.Height));
+            var arc = new Rectangle(bounds.Location, new Size(diameter, diameter));
+            var path = new GraphicsPath();
+
+            path.AddArc(arc, 180, 90);                                   // 좌상단
+            arc.X = bounds.Right - diameter;
+            path.AddArc(arc, 270, 90);                                   // 우상단
+            arc.Y = bounds.Bottom - diameter;
+            path.AddArc(arc, 0, 90);                                     // 우하단
+            arc.X = bounds.Left;
+            path.AddArc(arc, 90, 90);                                    // 좌하단
+            path.CloseFigure();
+
+            return path;
+        }
+
+        //***************************************************************************
+        // @brief listBoxChat(채팅 로그) 전용 — 카카오톡 스타일 말풍선을 직접 그린다.
+        //        내가 보낸 메시지는 우측(노란 계열), 상대는 좌측(흰색)에 배치하고,
+        //        GetRoundedRectPath()로 모서리를 둥글게 그린다.
+        //***************************************************************************
+        private void ChatListBox_DrawItem(object sender, DrawItemEventArgs e)
+        {
+            if (e.Index < 0 || e.Index >= _listBoxChat.Items.Count)
+                return;
+
+            // [수정] 배경을 사용자가 직접 색상/이미지로 고르는 기능은 제거하고
+            // 스킨(ChatTheme.ChatBackground)에 포함시켰다 — e.DrawBackground()가
+            // _listBoxChat.BackColor(스킨이 정해준 값)를 그대로 반영한다.
+            e.DrawBackground();
+
+            Graphics g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+
+            Rectangle bounds = e.Bounds;
+
+            if (_listBoxChat.Items[e.Index] is ChatBubbleItem item)
+            {
+                const int kBubbleCornerRadius = 10;
+
+                Font msgFont = _listBoxChat.Font;
+
+                Brush myBubbleColor = _myBubbleBrush;
+                Brush otherBubbleColor = Brushes.White;
+                Brush textColor = item.IsMyMessage ? _myTextBrush : _otherTextBrush;
+                Brush nameColor = _bubbleNameBrush;
+                Brush timeColor = _bubbleTimeBrush;
+
+                int maxBubbleWidth = (int)(bounds.Width * 0.65);
+                SizeF textSize = g.MeasureString(item.Message, msgFont, maxBubbleWidth);
+
+                // [추가] 파일 첨부 메시지는 원문("[FILE:이름:크기]url")을 그대로
+                // 그리지 않고 고정 크기 카드로 대체한다 — 말풍선 크기도
+                // 텍스트 길이가 아니라 카드 크기에 맞춘다.
+                Match fileMatch = FileAttachmentRegex.Match(item.Message);
+                bool isFileAttachment = fileMatch.Success;
+
+                int bubbleWidth = isFileAttachment ? Math.Min(maxBubbleWidth, 220) : (int)textSize.Width + 16;
+                int bubbleHeight = isFileAttachment ? kFileCardHeight : (int)textSize.Height + 10;
+
+                string timeStr = item.Timestamp.ToString("tt h:mm");
+
+                if (item.IsMyMessage)
+                {
+                    // ── 내가 보낸 메시지 — 우측 배치 ──────────────────────
+                    // [추가] 상대 메시지와 대칭으로, 말풍선 오른쪽에 내
+                    // 아바타를 그린다. 말풍선 X 위치도 그만큼 왼쪽으로 밀어서
+                    // 아바타와 안 겹치게 한다.
+                    const int kAvatarSize = 28;
+                    const int kAvatarGap = 6;
+
+                    int bubbleX = bounds.Right - bubbleWidth - kAvatarSize - kAvatarGap - 10;
+                    int bubbleY = bounds.Top + 5;
+                    Rectangle bubbleRect = new Rectangle(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+
+                    DrawAvatar(g, item.SenderName, item.SenderProfileImageUrl,
+                        new Rectangle(bounds.Right - kAvatarSize - 10, bounds.Top + 2, kAvatarSize, kAvatarSize), e.Index);
+
+                    if (isFileAttachment)
+                    {
+                        // 파일 첨부는 색깔 말풍선이 아니라 파일 카드 그 자체로 표현한다.
+                        DrawFileAttachmentCard(g, fileMatch, bubbleRect, e.Index, isMyMessage: true);
+                    }
+                    else
+                    {
+                        using (var path = GetRoundedRectPath(bubbleRect, kBubbleCornerRadius))
+                        {
+                            g.FillPath(myBubbleColor, path);
+                        }
+
+                        DrawMessageWithLinks(g, item.Message, msgFont, textColor, myBubbleColor, new RectangleF(bubbleX + 8, bubbleY + 5, maxBubbleWidth, textSize.Height), e.Index);
+
+                        // 내 메시지는 우측 정렬이라, 미리보기 카드도 말풍선과 같은
+                        // 오른쪽 기준선에 맞춘다(아바타 폭만큼 같이 밀어줌).
+                        DrawLinkPreviewCardIfAny(g, item.Message, bounds.Right - Math.Min(maxBubbleWidth, 220) - kAvatarSize - kAvatarGap - 10,
+                            bubbleY + bubbleHeight + 4, Math.Min(maxBubbleWidth, 220), e.Index);
+                    }
+
+                    SizeF timeSize = g.MeasureString(timeStr, _timeFont);
+                    g.DrawString(timeStr, _timeFont, timeColor, bubbleX - timeSize.Width - 5, bubbleY + bubbleHeight - timeSize.Height);
+                }
+                else
+                {
+                    // ── 상대가 보낸 메시지 — 좌측 배치 ────────────────────
+                    // [추가] 왼쪽에 발신자 아바타(색깔 원형 + 이니셜)를 그리고,
+                    // 닉네임/말풍선은 그만큼 오른쪽으로 밀어서 배치한다. 실제
+                    // 프로필 사진은 네트워크로 전송되지 않으므로, 닉네임을
+                    // 기반으로 결정적으로 생성한 아바타를 대신 쓴다.
+                    const int kAvatarSize = 28;
+                    const int kAvatarGap = 6;
+                    const int kNameHeight = 15;
+
+                    DrawAvatar(g, item.SenderName, item.SenderProfileImageUrl, new Rectangle(bounds.Left + 10, bounds.Top + 2, kAvatarSize, kAvatarSize), e.Index);
+
+                    int contentLeft = bounds.Left + 10 + kAvatarSize + kAvatarGap;
+                    int bubbleX = contentLeft;
+                    int bubbleY = bounds.Top + kNameHeight + 5;
+
+                    g.DrawString(item.SenderName, _nameFont, nameColor, contentLeft, bounds.Top + 2);
+
+                    Rectangle bubbleRect = new Rectangle(bubbleX, bubbleY, bubbleWidth, bubbleHeight);
+
+                    if (isFileAttachment)
+                    {
+                        DrawFileAttachmentCard(g, fileMatch, bubbleRect, e.Index, isMyMessage: false);
+                    }
+                    else
+                    {
+                        using (var path = GetRoundedRectPath(bubbleRect, kBubbleCornerRadius))
+                        {
+                            g.FillPath(otherBubbleColor, path);
+                            g.DrawPath(Pens.LightGray, path);
+                        }
+
+                        DrawMessageWithLinks(g, item.Message, msgFont, textColor, otherBubbleColor, new RectangleF(bubbleX + 8, bubbleY + 5, maxBubbleWidth, textSize.Height), e.Index);
+
+                        // 상대 메시지는 좌측 정렬이라, 미리보기 카드도 말풍선과 같은
+                        // 왼쪽 기준선에 맞춘다.
+                        DrawLinkPreviewCardIfAny(g, item.Message, bubbleX, bubbleY + bubbleHeight + 4,
+                            Math.Min(maxBubbleWidth, 220), e.Index);
+                    }
+
+                    SizeF timeSize = g.MeasureString(timeStr, _timeFont);
+                    g.DrawString(timeStr, _timeFont, timeColor, bubbleX + bubbleWidth + 5, bubbleY + bubbleHeight - timeSize.Height);
+                }
+            }
+            else
+            {
+                // 시스템 안내성 문자열이 섞여 들어온 경우(현재는 안 쓰지만 방어적으로)
+                string text = _listBoxChat.Items[e.Index].ToString();
+                TextRenderer.DrawText(g, text, _listBoxChat.Font, bounds, Color.Gray, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            }
+
+            e.DrawFocusRectangle();
+        }
+
+        //***************************************************************************
+        // @brief 메시지 텍스트를 그대로 그린 뒤, 그 안에 포함된 URL만 찾아서
+        //        파란 밑줄로 덧그린다. 각 URL의 실제 픽셀 좌표(bounds)를
+        //        _chatItemUrlRegions에 기록해둬서, 나중에 클릭/호버 판정에 쓴다.
+        // @details MeasureCharacterRanges()로 원본 텍스트와 완전히 같은
+        //          레이아웃(줄바꿈 포함)에서 URL 부분의 실제 그려진 위치를
+        //          구한다 — 그래야 여러 줄로 줄바꿈된 메시지에서도 URL 위치가
+        //          어긋나지 않는다.
+        // @details [알려진 한계] URL 자체가 줄 중간에서 두 줄로 쪼개지는
+        //          경우(긴 URL이 말풍선 너비를 넘어갈 때)는 완벽히 처리하지
+        //          않는다 — Region.GetBounds()가 그 경우 두 줄을 합친 사각형을
+        //          돌려주는데, 그 사각형 위에 URL 전체를 한 줄로 덧그려서
+        //          시각적으로 어긋날 수 있다. 데모 범위에서는 드문 경우라
+        //          감수했다.
+        //***************************************************************************
+        //***************************************************************************
+        // @brief message에 URL이 있고 그 미리보기가 로딩 완료 상태면 카드를
+        //        그린다. 로딩 중/실패/URL 없음이면 아무것도 안 그린다
+        //        (MeasureItem이 그 경우엔 애초에 카드 공간을 안 잡아뒀음).
+        //        카드 영역도 _chatItemUrlRegions에 추가해서, 카드를 클릭해도
+        //        링크가 열리게 한다(카카오톡처럼).
+        //***************************************************************************
+        private void DrawLinkPreviewCardIfAny(Graphics g, string message, int x, int y, int width, int itemIndex)
+        {
+            Match urlMatch = UrlRegex.Match(message);
+            if (!urlMatch.Success)
+                return;
+
+            string url = urlMatch.Value;
+            if (!_linkPreviewCache.TryGetValue(url, out var preview) || preview.IsLoading || preview.Failed)
+                return;
+
+            Rectangle cardRect = DrawLinkPreviewCard(g, preview, x, y, width);
+
+            if (!_chatItemUrlRegions.TryGetValue(itemIndex, out var regions))
+            {
+                regions = new List<(string Url, RectangleF Bounds)>();
+                _chatItemUrlRegions[itemIndex] = regions;
+            }
+            regions.Add((url, cardRect));
+        }
+
+        //***************************************************************************
+        // @brief [추가] 파일 첨부 메시지("[FILE:이름:크기]url")를 아이콘+파일명+
+        //        용량으로 구성된 카드로 그린다. 클릭 히트테스트를 위해 카드
+        //        영역도 _chatItemUrlRegions에 등록한다(링크 카드와 동일한
+        //        메커니즘 재사용 — ChatListBox_MouseClick이 그대로 처리해줌).
+        //        내가 보낸 파일이면(isMyMessage) 우측 상단에 × 삭제 버튼도
+        //        그리고, 그 클릭 영역은 _chatItemDeleteButtonRegions에 별도
+        //        등록한다(파일 열기와 구분해서 판정해야 하므로).
+        //***************************************************************************
+        private void DrawFileAttachmentCard(Graphics g, Match fileMatch, Rectangle rect, int itemIndex, bool isMyMessage)
+        {
+            string fileName = fileMatch.Groups["name"].Value;
+            string url = fileMatch.Groups["url"].Value;
+            long sizeBytes = long.TryParse(fileMatch.Groups["size"].Value, out long parsed) ? parsed : 0;
+
+            using (var path = GetRoundedRectPath(rect, 8))
+            {
+                g.FillPath(Brushes.WhiteSmoke, path);
+                g.DrawPath(Pens.LightGray, path);
+            }
+
+            // 아이콘 자리 — 확장자 텍스트만 보여주는 단순한 사각 배지로
+            // 대체한다(실제 파일 종류별 아이콘 세트는 없음).
+            const int kIconSize = 36;
+            var iconRect = new Rectangle(rect.Left + 7, rect.Top + (rect.Height - kIconSize) / 2, kIconSize, kIconSize);
+            string ext = Path.GetExtension(fileName).TrimStart('.').ToUpperInvariant();
+            if (ext.Length > 4) ext = ext.Substring(0, 4);
+
+            using (var iconPath = GetRoundedRectPath(iconRect, 4))
+            using (var iconBrush = new SolidBrush(AccentColor))
+                g.FillPath(iconBrush, iconPath);
+
+            using (var extFont = new Font(_listBoxChat.Font.FontFamily, 7.5f, FontStyle.Bold))
+            using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                g.DrawString(ext, extFont, Brushes.White, iconRect, fmt);
+
+            // 내가 보낸 파일이면 오른쪽에 × 버튼 자리를 비워서 파일명/용량
+            // 텍스트가 거기 겹치지 않게 한다.
+            const int kDeleteButtonSize = 16;
+            int textRightMargin = isMyMessage ? (kDeleteButtonSize + 8) : 6;
+
+            int textX = iconRect.Right + 8;
+            int textWidth = Math.Max(0, rect.Right - textRightMargin - textX);
+
+            using (var nameFont = new Font(_listBoxChat.Font, FontStyle.Bold))
+            using (var clipFormat = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.LineLimit })
+            {
+                var nameRect = new RectangleF(textX, rect.Top + 8, textWidth, 18);
+                g.DrawString(fileName, nameFont, Brushes.Black, nameRect, clipFormat);
+
+                var sizeRect = new RectangleF(textX, rect.Top + 28, textWidth, 16);
+                g.DrawString(FormatFileSize(sizeBytes), _timeFont, Brushes.Gray, sizeRect, clipFormat);
+            }
+
+            if (isMyMessage)
+            {
+                var deleteRect = new RectangleF(rect.Right - kDeleteButtonSize - 4, rect.Top + 4, kDeleteButtonSize, kDeleteButtonSize);
+
+                using (var circleBrush = new SolidBrush(Color.FromArgb(60, 0, 0, 0)))
+                    g.FillEllipse(circleBrush, deleteRect);
+
+                using (var xPen = new Pen(Color.White, 1.5f))
+                {
+                    float pad = 4f;
+                    g.DrawLine(xPen, deleteRect.Left + pad, deleteRect.Top + pad, deleteRect.Right - pad, deleteRect.Bottom - pad);
+                    g.DrawLine(xPen, deleteRect.Right - pad, deleteRect.Top + pad, deleteRect.Left + pad, deleteRect.Bottom - pad);
+                }
+
+                _chatItemDeleteButtonRegions[itemIndex] = deleteRect;
+            }
+
+            if (!_chatItemUrlRegions.TryGetValue(itemIndex, out var regions))
+            {
+                regions = new List<(string Url, RectangleF Bounds)>();
+                _chatItemUrlRegions[itemIndex] = regions;
+            }
+            regions.Add((url, rect));
+        }
+
+        //***************************************************************************
+        // @brief 바이트 수를 "1.2MB"/"340KB"/"512B" 형태의 읽기 쉬운 문자열로 바꾼다.
+        //***************************************************************************
+        private static string FormatFileSize(long bytes)
+        {
+            if (bytes >= 1024 * 1024)
+                return (bytes / (1024.0 * 1024.0)).ToString("0.#") + "MB";
+            if (bytes >= 1024)
+                return (bytes / 1024.0).ToString("0.#") + "KB";
+            return bytes + "B";
+        }
+
+        //***************************************************************************
+        // @brief 썸네일 + 제목 + 설명으로 구성된 미리보기 카드를 그린다.
+        // @return 그려진 카드의 사각형(클릭 히트테스트용).
+        //***************************************************************************
+        private Rectangle DrawLinkPreviewCard(Graphics g, LinkPreviewData preview, int x, int y, int width)
+        {
+            var cardRect = new Rectangle(x, y, width, kLinkPreviewCardHeight);
+
+            using (var path = GetRoundedRectPath(cardRect, 6))
+            {
+                g.FillPath(Brushes.WhiteSmoke, path);
+                g.DrawPath(Pens.LightGray, path);
+            }
+
+            const int kPadding = 5;
+            int textX = x + kPadding;
+
+            if (preview.Thumbnail != null)
+            {
+                var thumbRect = new Rectangle(x + kPadding, y + kPadding, kLinkPreviewThumbnailSize, kLinkPreviewThumbnailSize);
+                g.DrawImage(preview.Thumbnail, thumbRect);
+                textX = thumbRect.Right + kPadding;
+            }
+
+            int textWidth = Math.Max(0, cardRect.Right - kPadding - textX);
+
+            using (var titleFont = new Font(_listBoxChat.Font, FontStyle.Bold))
+            using (var clipFormat = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.LineLimit })
+            {
+                var titleRect = new RectangleF(textX, y + kPadding, textWidth, 18);
+                g.DrawString(preview.Title ?? string.Empty, titleFont, Brushes.Black, titleRect, clipFormat);
+
+                if (!string.IsNullOrEmpty(preview.Description))
+                {
+                    var descRect = new RectangleF(textX, y + kPadding + 20, textWidth, kLinkPreviewCardHeight - kPadding - 20 - kPadding);
+                    g.DrawString(preview.Description, _timeFont, Brushes.Gray, descRect, clipFormat);
+                }
+            }
+
+            return cardRect;
+        }
+
+        //***************************************************************************
+        // @brief 메시지 텍스트를 그대로 그린 뒤, 그 안에 포함된 URL만 찾아서
+        //        파란 밑줄로 덧그린다. 각 URL의 실제 픽셀 좌표(bounds)를
+        //        _chatItemUrlRegions에 기록해둬서, 나중에 클릭/호버 판정에 쓴다.
+        //***************************************************************************
+        private void DrawMessageWithLinks(Graphics g, string message, Font font, Brush textColor, Brush bubbleBackgroundColor, RectangleF layoutRect, int itemIndex)
+        {
+            g.DrawString(message, font, textColor, layoutRect);
+
+            MatchCollection matches = UrlRegex.Matches(message);
+            if (matches.Count == 0)
+            {
+                _chatItemUrlRegions.Remove(itemIndex);
+                return;
+            }
+
+            var regions = new List<(string Url, RectangleF Bounds)>();
+
+            using (var format = new StringFormat())
+            {
+                // MeasureCharacterRanges()는 한 번에 최대 32개 범위까지만 지원한다
+                // — 메시지 한 줄에 URL이 그렇게 많이 섞일 일은 데모 범위에서
+                // 사실상 없어서 그냥 앞에서부터 32개만 처리한다.
+                var ranges = new List<CharacterRange>();
+                foreach (Match m in matches)
+                {
+                    if (ranges.Count >= 32)
+                        break;
+                    ranges.Add(new CharacterRange(m.Index, m.Length));
+                }
+                format.SetMeasurableCharacterRanges(ranges.ToArray());
+
+                Region[] measuredRegions = g.MeasureCharacterRanges(message, font, layoutRect, format);
+
+                using (var linkFont = new Font(font, FontStyle.Underline))
+                {
+                    for (int i = 0; i < measuredRegions.Length; i++)
+                    {
+                        RectangleF bounds = measuredRegions[i].GetBounds(g);
+                        string url = matches[i].Value;
+
+                        // [수정 — 글자 깨짐] 검정 텍스트 위에 파란 텍스트를
+                        // 그냥 덧그리면, 두 번의 DrawString 호출 사이의 미세한
+                        // 안티앨리어싱/서브픽셀 렌더링 차이 때문에 두 텍스트가
+                        // 살짝 어긋난 채 겹쳐 보여서 글자가 깨진 것처럼
+                        // 보였다(실제로 재현됨). 먼저 그 자리를 말풍선
+                        // 배경색으로 채워 검정 텍스트를 깨끗이 지운 뒤에
+                        // 파란 밑줄 텍스트를 그린다.
+                        g.FillRectangle(bubbleBackgroundColor, bounds);
+                        g.DrawString(url, linkFont, Brushes.Blue, bounds.Location);
+
+                        regions.Add((url, bounds));
+                    }
+                }
+            }
+
+            _chatItemUrlRegions[itemIndex] = regions;
+        }
+
+        //***************************************************************************
+        // @brief 채팅 로그에서 URL 위로 마우스를 올리면 손가락 커서로 바꾼다.
+        //***************************************************************************
+        private void ChatListBox_MouseMove(object sender, MouseEventArgs e)
+        {
+            int index = _listBoxChat.IndexFromPoint(e.Location);
+            bool overLink = false;
+
+            if (index >= 0 && _chatItemUrlRegions.TryGetValue(index, out var regions))
+            {
+                foreach (var region in regions)
+                {
+                    if (region.Bounds.Contains(e.Location))
+                    {
+                        overLink = true;
+                        break;
+                    }
+                }
+            }
+
+            _listBoxChat.Cursor = overLink ? Cursors.Hand : Cursors.Default;
+        }
+
+        //***************************************************************************
+        // @brief 채팅 로그에서 URL을 클릭하면 기본 브라우저로 연다.
+        //***************************************************************************
+        private void ChatListBox_MouseClick(object sender, MouseEventArgs e)
+        {
+            int index = _listBoxChat.IndexFromPoint(e.Location);
+            if (index < 0)
+                return;
+
+            // [추가] × 삭제 버튼 판정을 "카드 클릭(파일 열기)"보다 먼저 한다 —
+            // 삭제 버튼이 카드 영역 안쪽 구석에 있어서, 먼저 확인 안 하면
+            // 항상 "파일 열기"로만 처리돼버린다.
+            if (_chatItemDeleteButtonRegions.TryGetValue(index, out var deleteRect) && deleteRect.Contains(e.Location))
+            {
+                DeleteFileAttachment(index);
+                return;
+            }
+
+            if (!_chatItemUrlRegions.TryGetValue(index, out var regions))
+                return;
+
+            foreach (var region in regions)
+            {
+                if (region.Bounds.Contains(e.Location))
+                {
+                    OpenUrl(region.Url);
+                    return;
+                }
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 채팅 목록 위로 파일을 끌고 왔을 때 — 실제 파일
+        //        드롭(DataFormats.FileDrop)일 때만 Copy 커서로 "여기 놓을 수
+        //        있다"를 보여준다. 그 외(텍스트를 끌고 온 경우 등)는 None으로
+        //        거부 표시.
+        //***************************************************************************
+        private void ChatListBox_DragEnter(object sender, DragEventArgs e)
+        {
+            e.Effect = (_client != null && e.Data.GetDataPresent(DataFormats.FileDrop))
+                ? DragDropEffects.Copy
+                : DragDropEffects.None;
+        }
+
+        //***************************************************************************
+        // @brief [추가] 채팅 목록에 파일을 놓으면 파일 선택 대화상자를 거친
+        //        것과 동일하게 업로드+전송한다. 여러 파일을 한꺼번에 끌어다
+        //        놓으면 순서대로 하나씩 처리한다 — 업로드 토큰 발급
+        //        (_uploadTokenTcs)이 한 번에 하나만 진행되는 구조라, 동시에
+        //        여러 개를 병렬로 올리면 서로의 토큰 응답을 가로챌 수
+        //        있어서 의도적으로 직렬화했다.
+        //***************************************************************************
+        private async void ChatListBox_DragDrop(object sender, DragEventArgs e)
+        {
+            if (_client == null || !e.Data.GetDataPresent(DataFormats.FileDrop))
+                return;
+
+            string[] filePaths = (string[])e.Data.GetData(DataFormats.FileDrop);
+            if (filePaths == null)
+                return;
+
+            foreach (string filePath in filePaths)
+            {
+                if (File.Exists(filePath)) // 디렉터리가 끌려온 경우는 조용히 건너뜀
+                    await SendFileAttachmentAsync(filePath);
+            }
+        }
+
+        //***************************************************************************
+        // @brief 기본 브라우저로 URL을 연다. 실패해도(브라우저 실행 오류 등)
+        //        데모 범위에서는 조용히 무시한다.
+        //***************************************************************************
+        private static void OpenUrl(string url)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            }
+            catch
+            {
+            }
+        }
+
+        private void AppendChat(string senderName, string senderProfileImageUrl, string message, bool isMyMessage, long messageId = 0)
+        {
+            // [추가] 마지막 메시지와 날짜(일 단위)가 다르면(또는 첫 메시지면)
+            // 구분선을 먼저 끼워 넣는다 — 카카오톡 등에서 흔히 보이는 패턴.
+            DateTime now = DateTime.Now;
+            DateTime? lastDate = null;
+            for (int i = _listBoxChat.Items.Count - 1; i >= 0; i--)
+            {
+                if (_listBoxChat.Items[i] is ChatBubbleItem prevItem)
+                {
+                    lastDate = prevItem.Timestamp.Date;
+                    break;
+                }
+            }
+            if (lastDate == null || lastDate.Value != now.Date)
+                _listBoxChat.Items.Add(new DateSeparatorItem { Date = now });
+
+            _listBoxChat.Items.Add(new ChatBubbleItem(senderName, senderProfileImageUrl, message, isMyMessage, messageId));
+            int newIndex = _listBoxChat.Items.Count - 1;
+            _listBoxChat.TopIndex = newIndex;
+
+            // 방금 추가한 메시지에 URL이 있으면 미리보기 카드용 데이터를
+            // 비동기로 요청한다 — 완료되면 이 특정 항목만 다시 그려지도록
+            // RefreshChatItem()이 트리거된다. [수정] 파일 첨부 메시지는
+            // "[FILE:...]url" 자체가 URL을 포함하고 있어서 이 검사에 걸리지만,
+            // 그건 웹페이지가 아니라 파일 서버가 준 파일 URL이라 링크
+            // 미리보기(HTML 메타 태그 파싱)를 시도하는 건 의미가 없고
+            // 불필요한 요청만 낭비한다 — 건너뛴다(파일 카드는 DrawItem이
+            // FileAttachmentRegex로 별도 처리).
+            if (FileAttachmentRegex.IsMatch(message))
+                return;
+
+            Match urlMatch = UrlRegex.Match(message);
+            if (urlMatch.Success)
+                RequestLinkPreview(urlMatch.Value, newIndex);
+        }
+
+        private void AppendSystemLog(string text, Color color)
+        {
+            _listBoxMsg.Items.Add(new ColoredEntry { Text = text, Color = color, Timestamp = DateTime.Now });
+            _listBoxMsg.TopIndex = _listBoxMsg.Items.Count - 1;
+        }
+
+        //***************************************************************************
+        // @brief 현재 위치(로비/방 번호) 표시와 방 입장/나가기 버튼의
+        //        활성화 상태를 한 번에 갱신한다.
+        //***************************************************************************
+        private void UpdateRoomStatusUI()
+        {
+            if (_currentRoomId < 0)
+            {
+                _lblCurrentRoom.Text = "위치: (로그인 전)";
+                _btnRoomEnter.Enabled = false;
+                _btnRoomLeave.Enabled = false;
+                return;
+            }
+
+            bool inLobby = (_currentRoomId == ProtocolConstants.LobbyRoomId);
+            _lblCurrentRoom.Text = inLobby ? "위치: 로비" : $"위치: {_currentRoomId}번 방";
+            _btnRoomEnter.Enabled = true;
+            _btnRoomLeave.Enabled = !inLobby;
+        }
+    }
+}

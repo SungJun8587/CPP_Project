@@ -42,6 +42,7 @@ using namespace std;
 #include <Util/Log.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
+#include <Util/FileStream.h>
 
 #include <Memory/RawAllocator.h>
 #include <Memory/Allocator.h>
@@ -73,6 +74,7 @@ using namespace std;
 #include <Network/HTTP/HttpParseUtil.h>
 #include <Network/HTTP/HttpRequestParser.h>
 #include <Network/HTTP/MultipartFormParser.h>
+#include <Network/HTTP/MultipartStreamParser.h>
 
 #include <ServerConfig.h>
 
@@ -81,9 +83,17 @@ using namespace std;
 #include <Image/ImageCommon.h>
 
 #include "FileServerConfig.h"
-#include "IImageStorage.h"
-#include "LocalFileImageStorage.h"
+#include "FileStorage.h"
+#include "LocalFileStorage.h"
+#include "FileSendBufferPool.h"
+#include "ImageResizeUtil.h"
+#include "FileMetadata.h"
+#include "FileMetadataRepository.h"
 #include "FileServerSession.h"
+#include "FileUploadHandler.h"
+#include "FileDownloadHandler.h"
+#include "FileDeleteHandler.h"
+#include "FileServerRouter.h"
 #include "FileServerMain.h"
 
 #endif // ndef PCH_H

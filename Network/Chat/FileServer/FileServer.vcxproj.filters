@@ -117,7 +117,7 @@
     <ClCompile Include="FileServerConfig.cpp" />
     <ClCompile Include="FileServerMain.cpp" />
     <ClCompile Include="FileServerSession.cpp" />
-    <ClCompile Include="LocalFileImageStorage.cpp" />
+    <ClCompile Include="LocalFileStorage.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
@@ -155,6 +155,15 @@
       <Filter>UtilCore\Image</Filter>
     </ClCompile>
     <ClCompile Include="ImageResizeUtil.cpp" />
+    <ClCompile Include="FileServerRouter.cpp" />
+    <ClCompile Include="FileMetadataRepository.cpp" />
+    <ClCompile Include="FileSendBufferPool.cpp" />
+    <ClCompile Include="FileDeleteHandler.cpp" />
+    <ClCompile Include="FileDownloadHandler.cpp" />
+    <ClCompile Include="FileUploadHandler.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\FileStream.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -400,8 +409,8 @@
     <ClInclude Include="FileServerConfig.h" />
     <ClInclude Include="FileServerMain.h" />
     <ClInclude Include="FileServerSession.h" />
-    <ClInclude Include="IImageStorage.h" />
-    <ClInclude Include="LocalFileImageStorage.h" />
+    <ClInclude Include="FileStorage.h" />
+    <ClInclude Include="LocalFileStorage.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
@@ -445,6 +454,19 @@
       <Filter>UtilCore\Image</Filter>
     </ClInclude>
     <ClInclude Include="ImageResizeUtil.h" />
+    <ClInclude Include="FileServerRouter.h" />
+    <ClInclude Include="FileMetadata.h" />
+    <ClInclude Include="FileMetadataRepository.h" />
+    <ClInclude Include="FileSendBufferPool.h" />
+    <ClInclude Include="FileDeleteHandler.h" />
+    <ClInclude Include="FileDownloadHandler.h" />
+    <ClInclude Include="FileUploadHandler.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FileStream.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\MultipartStreamParser.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">

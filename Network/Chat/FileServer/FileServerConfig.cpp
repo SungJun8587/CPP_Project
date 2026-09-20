@@ -11,11 +11,9 @@
 // @brief CFileServerConfig 클래스의 생성자
 //***************************************************************************
 CFileServerConfig::CFileServerConfig()
-	: _nServerGroupId(0), _nServerChannelId(0), _nServerPort(0), _nMaxSessionCount(0), _nWorkerThreadCnt(0)
+	: _nServerPort(0), _nMaxSessionCount(0), _nWorkerThreadCnt(0)
 	, _nRedisPoolSize(0), _nMaxUploadBytes(0), _nMaxProfileImageDimension(0)
 {
-	memset(_tszServiceName, 0, sizeof(_tszServiceName));
-	memset(_tszDisplayName, 0, sizeof(_tszDisplayName));
 	memset(_tszServerName, 0, sizeof(_tszServerName));
 	memset(_tszIP, 0, sizeof(_tszIP));
 	memset(_tszStorageDir, 0, sizeof(_tszStorageDir));
@@ -40,12 +38,7 @@ bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 	CRapidJSONUtil jsonUtil;
 	jsonUtil.LoadFromFile(tszServerInfo);
 
-	_tcsncpy_s(_tszServiceName, _countof(_tszServiceName), jsonUtil[_T("ServiceName")], _TRUNCATE);
-	_tcsncpy_s(_tszDisplayName, _countof(_tszDisplayName), jsonUtil[_T("DisplayName")], _TRUNCATE);
 	_tcsncpy_s(_tszServerName, _countof(_tszServerName), jsonUtil[_T("Name")], _TRUNCATE);
-	_nServerGroupId = jsonUtil[_T("GroupId")];
-	_nServerChannelId = jsonUtil[_T("ChannelId")];
-
 	_tcsncpy_s(_tszIP, _countof(_tszIP), jsonUtil[_T("IP")], _TRUNCATE);
 	_nServerPort = jsonUtil[_T("Port")];
 	_nMaxSessionCount = jsonUtil[_T("MaxSessionCount")];
@@ -55,12 +48,28 @@ bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 
 	_tcsncpy_s(_tszStorageDir, _countof(_tszStorageDir), jsonUtil[_T("StorageDir")], _TRUNCATE);
 	_tcsncpy_s(_tszPublicBaseUrl, _countof(_tszPublicBaseUrl), jsonUtil[_T("PublicBaseUrl")], _TRUNCATE);
+	// [수정] _nMaxUploadBytes가 int64로 넓어졌다 — jsonUtil[...]의 프록시가
+	// 템플릿 기반 변환 연산자를 제공한다는 가정 하에(다른 필드들과 동일한
+	// 패턴) int64로도 그대로 대입이 될 것으로 예상하지만, 실제
+	// CRapidJSONUtil 구현을 못 봐서 100% 확신은 못한다 — 컴파일 에러가
+	// 나면 이 줄만 value[_T("MaxUploadBytes")].GetInt64()처럼 명시적으로
+	// 바꾸면 된다.
 	_nMaxUploadBytes = jsonUtil[_T("MaxUploadBytes")];
-	_nMaxProfileImageDimension = jsonUtil[_T("MaxProfileImageDimension")];
 
 	if( _nMaxUploadBytes <= 0 )
 	{
-		LOG_ERROR(_T("CFileServerConfig::Init: invalid MaxUploadBytes(%d) — must be > 0"), _nMaxUploadBytes);
+		LOG_ERROR(_T("CFileServerConfig::Init: invalid MaxUploadBytes(%lld) — must be > 0"), static_cast<long long>(_nMaxUploadBytes));
+		return false;
+	}
+
+	// [주의] CRapidJSONUtil::operator[]가 키 누락 시 어떻게 동작하는지(예외/
+	// 기본값 등) 확인 못했다 — 다른 필수 키들과 마찬가지로 이 키도 설정
+	// 파일에 반드시 있어야 한다고 가정한다(예전 설정 파일에 이 키가 없다면
+	// 추가해줘야 함).
+	_nMaxProfileImageDimension = jsonUtil[_T("MaxProfileImageDimension")];
+	if( _nMaxProfileImageDimension <= 0 )
+	{
+		LOG_ERROR(_T("CFileServerConfig::Init: invalid MaxProfileImageDimension(%d) — must be > 0"), _nMaxProfileImageDimension);
 		return false;
 	}
 
@@ -84,11 +93,7 @@ void CFileServerConfig::PrintServerSettingInfo()
 {
 	LOG_INFO(_T("###################################################################"));
 	LOG_INFO(_T("--------------- [Start Print : File Server Setting Info] ---------------"));
-	LOG_INFO(_T("ServiceName : %s"), _tszServiceName);
-	LOG_INFO(_T("DisplayName : %s"), _tszDisplayName);
 	LOG_INFO(_T("ServerName : %s"), _tszServerName);
-	LOG_INFO(_T("ServerGroupId : %d"), _nServerGroupId);
-	LOG_INFO(_T("ServerChannelId : %d"), _nServerChannelId);
 	LOG_INFO(_T("IP : %s"), _tszIP);
 	LOG_INFO(_T("Port : %d"), _nServerPort);
 	LOG_INFO(_T("MaxSessionCount : %d"), _nMaxSessionCount);
@@ -96,7 +101,7 @@ void CFileServerConfig::PrintServerSettingInfo()
 	LOG_INFO(_T("RedisPoolSize : %d"), _nRedisPoolSize);
 	LOG_INFO(_T("StorageDir : %s"), _tszStorageDir);
 	LOG_INFO(_T("PublicBaseUrl : %s"), _tszPublicBaseUrl);
-	LOG_INFO(_T("MaxUploadBytes : %d"), _nMaxUploadBytes);
+	LOG_INFO(_T("MaxUploadBytes : %lld"), static_cast<long long>(_nMaxUploadBytes));
 	LOG_INFO(_T("MaxProfileImageDimension : %d"), _nMaxProfileImageDimension);
 
 	LOG_INFO(_T("--------------- Connect RedisNode size : %d ---------------"), static_cast<int>(_redisNodeVec.size()));
