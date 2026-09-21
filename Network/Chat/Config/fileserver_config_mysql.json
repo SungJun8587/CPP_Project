@@ -12,7 +12,6 @@
     "StorageDir": "ProfileImages",
     "PublicBaseUrl": "http://127.0.0.1:8081",
     "MaxUploadBytes": 5368709120,
-    "MaxProfileImageDimension": 1024,
     "RedisNode": [
         {
             "ID": 1,

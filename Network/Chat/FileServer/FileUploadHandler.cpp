@@ -2,24 +2,12 @@
 //***************************************************************************
 // FileUploadHandler.cpp: implementation of the CFileUploadHandler class.
 //
-// [설계 변경 — 대용량 업로드 스트리밍] 예전엔 request.GetBody()(멀티파트
-// 본문 전체가 메모리에 있다는 전제) + HTTP::ParseMultipartFormData()로
-// "token"/"file" 필드를 한 번에 뽑아냈다 — 1GB급 파일이면 그 본문 전체가
-// 서버 메모리에 올라가야 했다.
-//
-// 이제는 CFileServerSession이 본문을 받는 시점에 이미 스트리밍으로
-// 처리해뒀다(FileServerSession.cpp의 SetupUploadStreamingIfNeeded()/
-// CMultipartStreamParser 참고) — "file" 파트는 임시 파일에 바로 쓰여있고,
-// "token" 값만 작은 문자열로 메모리에 있다. 이 핸들러는 request.GetBody()를
-// 더 이상 쓰지 않고 session->GetPendingUploadResult()가 돌려주는 이 결과를
-// 그대로 받아 처리한다 — 실제로 큰 파일 바이트를 만지는 부분은
-// IFileStorage::SaveFileFromPath()(이미 디스크에 있는 임시 파일을 최종
-// 위치로 rename/copy)뿐이라, 이 핸들러 자체는 여전히 파일 크기와 무관하게
-// 가벼운 코드로 남는다.
 //***************************************************************************
 
 #include "pch.h"
 #include "FileUploadHandler.h"
+
+#include <filesystem>
 
 namespace fs = std::filesystem;
 
@@ -56,18 +44,6 @@ namespace
 		// 경로에 존재하지 않음)에서는 삭제를 시도할 필요가 없다는 걸 표시.
 		void Release() { released = true; }
 	};
-
-	//***************************************************************************
-	// @brief maxBytes보다 작은 이미지 파일만 리사이즈를 시도한다.
-	// @details 대용량 업로드(동영상 등)에까지 ImageResizeUtil을 태우면
-	//          그 자체가 파일 전체를 메모리에 올리는 부담을 재도입하게
-	//          된다 — 원래 문제로 돌아가는 것을 막기 위한 안전장치. 이
-	//          상한을 넘는 파일은 확장자가 이미지여도 리사이즈 없이 원본
-	//          그대로 저장한다(프로필 사진이 이 정도로 클 일은 실질적으로
-	//          없고, 있다 해도 리사이즈를 건너뛰는 것뿐 업로드 자체는
-	//          정상 처리된다).
-	//***************************************************************************
-	constexpr int64 kMaxBytesForResize = 50LL * 1024 * 1024; // 50MB
 }
 
 CFileUploadHandler::CFileUploadHandler(
@@ -75,14 +51,12 @@ CFileUploadHandler::CFileUploadHandler(
 	CRedisService* redisService,
 	CFileMetadataRepository* metadataRepo,
 	std::string publicBaseUrl,
-	int64 maxUploadBytes,
-	int32 maxProfileImageDimension)
+	int64 maxUploadBytes)
 	: _storage(storage)
 	, _redisService(redisService)
 	, _metadataRepo(metadataRepo)
 	, _publicBaseUrl(std::move(publicBaseUrl))
 	, _maxUploadBytes(maxUploadBytes)
-	, _maxProfileImageDimension(maxProfileImageDimension)
 {
 }
 
@@ -139,36 +113,13 @@ void CFileUploadHandler::Handle(std::shared_ptr<CFileServerSession> session, con
 	if( fileExtension.empty() )
 		fileExtension = ".bin";
 
-	// [추가] 작은 이미지 파일이면 리사이즈를 시도한다 — 임시 파일을 통째로
-	// 읽어서 처리한 뒤, 결과를 같은 임시 파일 경로에 다시 덮어쓴다(이후
-	// SaveFileFromPath()가 그 최신 내용을 최종 위치로 옮기게).
-	if( upload.fileSizeBytes <= kMaxBytesForResize )
-	{
-		std::vector<BYTE> original;
-		{
-			std::ifstream ifs(upload.tempFilePath, std::ios::binary | std::ios::ate);
-			if( ifs.is_open() )
-			{
-				const std::streamsize size = ifs.tellg();
-				if( size > 0 )
-				{
-					original.resize(static_cast<size_t>(size));
-					ifs.seekg(0, std::ios::beg);
-					ifs.read(reinterpret_cast<char*>(original.data()), size);
-				}
-			}
-		}
-
-		std::vector<BYTE> resized;
-		if( !original.empty() && ImageResizeUtil::ResizeIfLarger(original, fileExtension, _maxProfileImageDimension, resized) )
-		{
-			std::ofstream ofs(upload.tempFilePath, std::ios::binary | std::ios::trunc);
-			if( ofs.is_open() )
-				ofs.write(reinterpret_cast<const char*>(resized.data()), static_cast<std::streamsize>(resized.size()));
-		}
-	}
-	// upload.fileSizeBytes > kMaxBytesForResize면 리사이즈를 건너뛰고
-	// 원본을 그대로 저장한다 — 위 네임스페이스의 주석 참고.
+	// [수정 — ImageResizeUtil 사용 제거] 예전엔 여기서 작은 이미지 파일을
+	// 서버가 자동으로 리사이즈했다 — 프로필 이미지든 채팅 첨부 이미지든
+	// 구분 없이 전부 대상이었다. 이제는 이 핸들러가 용도를 구분할 방법이
+	// 없으므로(둘 다 같은 /upload 엔드포인트/토큰 발급 경로를 공유),
+	// 서버는 리사이즈를 아예 하지 않고 받은 그대로 저장한다 — 프로필
+	// 이미지 크기 제한은 클라이언트가 업로드 전에 직접 검사해서 차단한다
+	// (ChatClientForm.Media.cs의 kMaxProfileImageBytes 참고).
 
 	const std::string tempFilePath = upload.tempFilePath;
 	const std::string tokenHex = upload.tokenValue;

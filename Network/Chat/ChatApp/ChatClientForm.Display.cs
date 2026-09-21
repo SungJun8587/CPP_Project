@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -68,7 +69,7 @@ namespace ChatApp
             // [추가] 파일 첨부 메시지("[FILE:이름:크기]url")는 원문 텍스트를
             // 그대로 보여주지 않고 고정 크기 카드로만 그린다 — 텍스트 길이에
             // 따라 줄바꿈되는 일반 메시지와 달리 높이가 항상 같다.
-            if (FileAttachmentRegex.IsMatch(item.Message))
+            if (FileAttachmentRegex.IsMatch(item.Message) || item.IsUploading)
             {
                 int fileBaseHeight = item.IsMyMessage ? 15 : 25; // 일반 메시지의 baseHeight에서 텍스트 한 줄분(약 10px)을 뺀 값
                 e.ItemHeight = kFileCardHeight + fileBaseHeight;
@@ -207,10 +208,14 @@ namespace ChatApp
             if (e.Index < 0 || e.Index >= _listBoxChat.Items.Count)
                 return;
 
-            // [수정] 배경을 사용자가 직접 색상/이미지로 고르는 기능은 제거하고
-            // 스킨(ChatTheme.ChatBackground)에 포함시켰다 — e.DrawBackground()가
-            // _listBoxChat.BackColor(스킨이 정해준 값)를 그대로 반영한다.
-            e.DrawBackground();
+            // [수정] e.DrawBackground()는 내부적으로 e.State에 Selected가
+            // 있으면 SystemColors.Highlight(파란색)로 칠한다 — SelectionMode.None을
+            // 설정해뒀지만(InitializeComponents 참고) 그래도 파란 배경이
+            // 재현된다는 신고가 있어서, e.State를 아예 보지 않고 리스트박스의
+            // BackColor로 직접 채우도록 바꿨다. 이러면 어떤 상태 플래그가
+            // 서 있든 결과가 항상 동일해서 더 확실하다.
+            using (var backBrush = new SolidBrush(_listBoxChat.BackColor))
+                e.Graphics.FillRectangle(backBrush, e.Bounds);
 
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
@@ -236,7 +241,7 @@ namespace ChatApp
                 // 그리지 않고 고정 크기 카드로 대체한다 — 말풍선 크기도
                 // 텍스트 길이가 아니라 카드 크기에 맞춘다.
                 Match fileMatch = FileAttachmentRegex.Match(item.Message);
-                bool isFileAttachment = fileMatch.Success;
+                bool isFileAttachment = fileMatch.Success || item.IsUploading;
 
                 int bubbleWidth = isFileAttachment ? Math.Min(maxBubbleWidth, 220) : (int)textSize.Width + 16;
                 int bubbleHeight = isFileAttachment ? kFileCardHeight : (int)textSize.Height + 10;
@@ -262,7 +267,7 @@ namespace ChatApp
                     if (isFileAttachment)
                     {
                         // 파일 첨부는 색깔 말풍선이 아니라 파일 카드 그 자체로 표현한다.
-                        DrawFileAttachmentCard(g, fileMatch, bubbleRect, e.Index, isMyMessage: true);
+                        DrawFileAttachmentCard(g, item, fileMatch, bubbleRect, e.Index, isMyMessage: true);
                     }
                     else
                     {
@@ -305,7 +310,7 @@ namespace ChatApp
 
                     if (isFileAttachment)
                     {
-                        DrawFileAttachmentCard(g, fileMatch, bubbleRect, e.Index, isMyMessage: false);
+                        DrawFileAttachmentCard(g, item, fileMatch, bubbleRect, e.Index, isMyMessage: false);
                     }
                     else
                     {
@@ -334,7 +339,10 @@ namespace ChatApp
                 TextRenderer.DrawText(g, text, _listBoxChat.Font, bounds, Color.Gray, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
             }
 
-            e.DrawFocusRectangle();
+            // [수정] SelectionMode.None이라 "선택된/포커스된 항목" 개념
+            // 자체가 없다 — 예전에 있던 e.DrawFocusRectangle() 호출은
+            // 클릭한 항목 주변에 점선 테두리를 남길 뿐 아무 의미가 없어서
+            // 제거했다.
         }
 
         //***************************************************************************
@@ -387,12 +395,36 @@ namespace ChatApp
         //        내가 보낸 파일이면(isMyMessage) 우측 상단에 × 삭제 버튼도
         //        그리고, 그 클릭 영역은 _chatItemDeleteButtonRegions에 별도
         //        등록한다(파일 열기와 구분해서 판정해야 하므로).
+        // @details [추가] item.IsUploading/IsDownloading 중이면 파일명/용량
+        //          아래에 진행률 바를 그린다. 업로드 중에는 아직 서버 URL이
+        //          없으므로(item.PendingFileName/PendingFileSize를 대신
+        //          쓴다) fileMatch가 실패한 상태로 넘어올 수 있다 — 그 경우
+        //          fileMatch 쪽 정보는 아예 안 쓴다. 전송 중에는 × 삭제
+        //          버튼과 클릭(파일 열기/다운로드)을 비활성화한다 — 진행
+        //          중인 전송을 취소하는 기능은 없어서, 어중간하게 누를 수
+        //          있게 두는 것보다는 아예 막는 게 낫다고 판단했다.
         //***************************************************************************
-        private void DrawFileAttachmentCard(Graphics g, Match fileMatch, Rectangle rect, int itemIndex, bool isMyMessage)
+        private void DrawFileAttachmentCard(Graphics g, ChatBubbleItem item, Match fileMatch, Rectangle rect, int itemIndex, bool isMyMessage)
         {
-            string fileName = fileMatch.Groups["name"].Value;
-            string url = fileMatch.Groups["url"].Value;
-            long sizeBytes = long.TryParse(fileMatch.Groups["size"].Value, out long parsed) ? parsed : 0;
+            bool isTransferring = item.IsUploading || item.IsDownloading;
+            int transferPercent = item.IsUploading ? item.UploadPercent : item.DownloadPercent;
+
+            string fileName;
+            long sizeBytes;
+            string url;
+
+            if (item.IsUploading)
+            {
+                fileName = item.PendingFileName ?? string.Empty;
+                sizeBytes = item.PendingFileSize;
+                url = string.Empty;
+            }
+            else
+            {
+                fileName = fileMatch.Groups["name"].Value;
+                url = fileMatch.Groups["url"].Value;
+                sizeBytes = long.TryParse(fileMatch.Groups["size"].Value, out long parsed) ? parsed : 0;
+            }
 
             using (var path = GetRoundedRectPath(rect, 8))
             {
@@ -416,24 +448,49 @@ namespace ChatApp
                 g.DrawString(ext, extFont, Brushes.White, iconRect, fmt);
 
             // 내가 보낸 파일이면 오른쪽에 × 버튼 자리를 비워서 파일명/용량
-            // 텍스트가 거기 겹치지 않게 한다.
+            // 텍스트가 거기 겹치지 않게 한다(전송 중에는 × 버튼 자체를 안
+            // 그리지만, 자리 계산 방식은 그대로 둬서 전송 완료 후 레이아웃이
+            // 안 흔들리게 한다).
             const int kDeleteButtonSize = 16;
             int textRightMargin = isMyMessage ? (kDeleteButtonSize + 8) : 6;
 
             int textX = iconRect.Right + 8;
             int textWidth = Math.Max(0, rect.Right - textRightMargin - textX);
 
+            // [추가] 전송 중이면 파일명/용량을 위쪽으로 살짝 올리고, 그
+            // 아래에 진행률 바 + 퍼센트 텍스트를 그린다.
+            int nameTop = isTransferring ? rect.Top + 4 : rect.Top + 8;
+
             using (var nameFont = new Font(_listBoxChat.Font, FontStyle.Bold))
             using (var clipFormat = new StringFormat { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.LineLimit })
             {
-                var nameRect = new RectangleF(textX, rect.Top + 8, textWidth, 18);
+                var nameRect = new RectangleF(textX, nameTop, textWidth, 16);
                 g.DrawString(fileName, nameFont, Brushes.Black, nameRect, clipFormat);
 
-                var sizeRect = new RectangleF(textX, rect.Top + 28, textWidth, 16);
-                g.DrawString(FormatFileSize(sizeBytes), _timeFont, Brushes.Gray, sizeRect, clipFormat);
+                if (!isTransferring)
+                {
+                    var sizeRect = new RectangleF(textX, rect.Top + 28, textWidth, 16);
+                    g.DrawString(FormatFileSize(sizeBytes), _timeFont, Brushes.Gray, sizeRect, clipFormat);
+                }
             }
 
-            if (isMyMessage)
+            if (isTransferring)
+            {
+                const int kBarHeight = 6;
+                var barBackRect = new RectangleF(textX, rect.Top + 26, textWidth, kBarHeight);
+                var barFillRect = new RectangleF(textX, rect.Top + 26, textWidth * Math.Max(0, Math.Min(100, transferPercent)) / 100f, kBarHeight);
+
+                using (var backBrush = new SolidBrush(Color.FromArgb(230, 230, 230)))
+                    g.FillRectangle(backBrush, barBackRect);
+                using (var fillBrush = new SolidBrush(AccentColor))
+                    g.FillRectangle(fillBrush, barFillRect);
+
+                string label = (item.IsUploading ? "업로드 중 " : "다운로드 중 ") + transferPercent + "%";
+                using (var labelFmt = new StringFormat { Trimming = StringTrimming.EllipsisCharacter })
+                    g.DrawString(label, _timeFont, Brushes.Gray, new RectangleF(textX, rect.Top + 34, textWidth, 14), labelFmt);
+            }
+
+            if (isMyMessage && !isTransferring)
             {
                 var deleteRect = new RectangleF(rect.Right - kDeleteButtonSize - 4, rect.Top + 4, kDeleteButtonSize, kDeleteButtonSize);
 
@@ -449,13 +506,28 @@ namespace ChatApp
 
                 _chatItemDeleteButtonRegions[itemIndex] = deleteRect;
             }
-
-            if (!_chatItemUrlRegions.TryGetValue(itemIndex, out var regions))
+            else
             {
-                regions = new List<(string Url, RectangleF Bounds)>();
-                _chatItemUrlRegions[itemIndex] = regions;
+                // 전송 중으로 바뀌면서 이전에 등록됐던 × 버튼 영역이 남아있으면
+                // 안 된다(전송 중엔 안 그리므로 클릭 판정도 없어야 함).
+                _chatItemDeleteButtonRegions.Remove(itemIndex);
             }
-            regions.Add((url, rect));
+
+            if (!isTransferring)
+            {
+                if (!_chatItemUrlRegions.TryGetValue(itemIndex, out var regions))
+                {
+                    regions = new List<(string Url, RectangleF Bounds)>();
+                    _chatItemUrlRegions[itemIndex] = regions;
+                }
+                regions.Add((url, rect));
+            }
+            else
+            {
+                // 업로드 중(URL 미확정)이거나 다운로드 중(중복 클릭 방지)이면
+                // 클릭 영역 자체를 등록하지 않는다.
+                _chatItemUrlRegions.Remove(itemIndex);
+            }
         }
 
         //***************************************************************************
@@ -617,11 +689,26 @@ namespace ChatApp
 
             foreach (var region in regions)
             {
-                if (region.Bounds.Contains(e.Location))
+                if (!region.Bounds.Contains(e.Location))
+                    continue;
+
+                // [수정] 파일 첨부 카드는 일반 링크 미리보기와 달리 브라우저로
+                // 안 넘기고 앱 안에서 직접 받는다(저장 위치를 고르고 진행률을
+                // 그 카드에 그려주기 위함) — item.Message가 FileAttachmentRegex에
+                // 맞으면 파일 카드로 판단한다. DrawFileAttachmentCard()가
+                // 전송 중(IsUploading/IsDownloading)에는 애초에 이 영역을
+                // 등록하지 않으므로, 여기 도달했다는 건 지금 전송 중이
+                // 아니라는 뜻이라 중복 다운로드 걱정은 없다.
+                if (_listBoxChat.Items[index] is ChatBubbleItem item && FileAttachmentRegex.IsMatch(item.Message))
+                {
+                    Match fileMatch = FileAttachmentRegex.Match(item.Message);
+                    DownloadFileAttachment(item, fileMatch.Groups["url"].Value, fileMatch.Groups["name"].Value);
+                }
+                else
                 {
                     OpenUrl(region.Url);
-                    return;
                 }
+                return;
             }
         }
 
@@ -721,23 +808,59 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief 현재 위치(로비/방 번호) 표시와 방 입장/나가기 버튼의
-        //        활성화 상태를 한 번에 갱신한다.
+        // @brief 현재 위치(로비/방 이름+방장) 표시와 관련 버튼들의 활성화/
+        //        표시 상태를 한 번에 갱신한다.
+        // @details [수정] 방이 번호가 아니라 이름을 갖게 되면서 표시 문구가
+        //          바뀌었고, 방장 전용 버튼(이름변경/삭제)의 표시 여부도
+        //          여기서 같이 판단한다 — _currentRoomOwnerNickname이 내
+        //          닉네임과 같으면(로비가 아닐 때만) 내가 방장이라는 뜻이다.
         //***************************************************************************
         private void UpdateRoomStatusUI()
         {
             if (_currentRoomId < 0)
             {
-                _lblCurrentRoom.Text = "위치: (로그인 전)";
-                _btnRoomEnter.Enabled = false;
+                SetCurrentRoomLabel("위치: (로그인 전)");
+                _btnRoomList.Enabled = false;
+                _btnCreateRoom.Enabled = false;
                 _btnRoomLeave.Enabled = false;
+                _btnRenameRoom.Visible = false;
+                _btnDeleteRoom.Visible = false;
                 return;
             }
 
             bool inLobby = (_currentRoomId == ProtocolConstants.LobbyRoomId);
-            _lblCurrentRoom.Text = inLobby ? "위치: 로비" : $"위치: {_currentRoomId}번 방";
-            _btnRoomEnter.Enabled = true;
+
+            if (inLobby)
+            {
+                SetCurrentRoomLabel("위치: 로비");
+            }
+            else
+            {
+                string roomLabel = string.IsNullOrEmpty(_currentRoomName) ? $"{_currentRoomId}번 방" : _currentRoomName;
+                string ownerLabel = string.IsNullOrEmpty(_currentRoomOwnerNickname) ? "" : $" (방장: {_currentRoomOwnerNickname})";
+                SetCurrentRoomLabel($"위치: {roomLabel}{ownerLabel}");
+            }
+
+            _btnRoomList.Enabled = true;
+            _btnCreateRoom.Enabled = true;
             _btnRoomLeave.Enabled = !inLobby;
+
+            bool isOwner = !inLobby && _currentRoomOwnerNickname != null && _currentRoomOwnerNickname == _currentNickname;
+            _btnRenameRoom.Visible = isOwner;
+            _btnDeleteRoom.Visible = isOwner;
+        }
+
+        //***************************************************************************
+        // @brief [추가] _lblCurrentRoom의 텍스트와 툴팁을 함께 갱신한다.
+        //        라벨 자체는 AutoEllipsis라 폭을 넘는 부분이 "..."으로
+        //        잘려 보이므로(폭을 더 넓힐 여유가 없어서 — InitializeComponents()
+        //        참고), 전체 문구는 마우스를 올렸을 때 툴팁으로 확인할 수
+        //        있게 한다.
+        //***************************************************************************
+        private void SetCurrentRoomLabel(string fullText)
+        {
+            _lblCurrentRoom.Text = fullText;
+            _roomStatusToolTip.SetToolTip(_lblCurrentRoom, fullText);
         }
     }
 }

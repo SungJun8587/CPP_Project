@@ -6,10 +6,6 @@
 
 #include "pch.h"
 #include "FileServerMain.h"
-#include "FileServerSession.h"
-#include "LocalFileStorage.h"
-#include "ImageResizeUtil.h"
-#include <Redis/RedisResultSet.h>
 
 #include <algorithm>
 #include <cstring>
@@ -32,11 +28,15 @@ bool CFileServerMain::Start(
 	const _tstring& bindIp, uint16 bindPort,
 	CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
 	int32 maxSessionCount, uint32 workerThreadCount,
-	_tstring storageDir, std::string publicBaseUrl, int64 maxUploadBytes, int32 maxProfileImageDimension)
+	_tstring storageDir, std::string publicBaseUrl, int64 maxUploadBytes)
 {
 	_publicBaseUrl = std::move(publicBaseUrl);
 	_maxUploadBytes = maxUploadBytes;
-	_maxProfileImageDimension = maxProfileImageDimension;
+
+	// [수정 — ImageResizeUtil 사용 제거] 예전엔 여기서 GDI+를 초기화했다
+	// (업로드 이미지 리사이즈용). 이제 서버는 리사이즈를 하지 않으므로
+	// (FileUploadHandler.cpp 참고 — 받은 그대로 저장) GDI+ 초기화 자체가
+	// 필요 없어졌다.
 
 	// 1. IOCP 코어 + JobQueue(Redis 콜백을 안전한 스레드로 넘기는 용도)
 	_iocpCore = MakeShared<CIocpCore>();
@@ -57,7 +57,7 @@ bool CFileServerMain::Start(
 	// 이 라우터가 소유한 세 핸들러에 위임한다(FileServerRouter.h 참고).
 	_router = std::make_unique<CFileServerRouter>(
 		_fileStorage.get(), _redisService.get(), _metadataRepo.get(),
-		_publicBaseUrl, _maxUploadBytes, _maxProfileImageDimension);
+		_publicBaseUrl, _maxUploadBytes);
 
 	// 4. IOCP 서버 서비스 시작 — 세션 팩토리가 CFileServerSession을 생성.
 	SessionFactory factory = [this]() -> CSessionRef

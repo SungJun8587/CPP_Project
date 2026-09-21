@@ -42,6 +42,16 @@ namespace ChatApp
         // 파일을 지우면 도착한다.
         public event Action<DeleteChatMessageResData> DeleteChatMessageResultReceived;
         public event Action<DeleteChatMessageNotifyData> DeleteChatMessageNotified;
+
+        // [추가] 방 생성/삭제/이름변경/목록조회 + 방장 자동 이양 알림.
+        public event Action<CreateRoomResData> CreateRoomResultReceived;
+        public event Action<DeleteRoomResData> DeleteRoomResultReceived;
+        public event Action<DeleteRoomNotifyData> DeleteRoomNotified;
+        public event Action<RenameRoomResData> RenameRoomResultReceived;
+        public event Action<RenameRoomNotifyData> RenameRoomNotified;
+        public event Action<RoomListItemData> RoomListItemReceived;
+        public event Action<ListRoomsEndResData> RoomListEndReceived;
+        public event Action<RoomOwnerChangedNotifyData> RoomOwnerChangedNotified;
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -93,6 +103,12 @@ namespace ChatApp
         public void RequestChangeNickname(string newNickname) => SendRaw(PacketBuilder.BuildChangeNicknameReq(newNickname));
         public void RequestSetProfileImageUrl(string url) => SendRaw(PacketBuilder.BuildSetProfileImageUrlReq(url));
         public void RequestRoomEnter(int roomId) => SendRaw(PacketBuilder.BuildRoomEnterReq(roomId));
+
+        // [추가] 방 생성/삭제/이름변경/목록조회 요청.
+        public void RequestCreateRoom(string roomName) => SendRaw(PacketBuilder.BuildCreateRoomReq(roomName));
+        public void RequestDeleteRoom(int roomId) => SendRaw(PacketBuilder.BuildDeleteRoomReq(roomId));
+        public void RequestRenameRoom(int roomId, string newName) => SendRaw(PacketBuilder.BuildRenameRoomReq(roomId, newName));
+        public void RequestListRooms() => SendRaw(PacketBuilder.BuildListRoomsReq());
         public void RequestRoomLeave() => SendRaw(PacketBuilder.BuildRoomLeaveReq());
         public void RequestServerUserCount() => SendRaw(PacketBuilder.BuildServerUserCountReq());
 
@@ -246,6 +262,38 @@ namespace ChatApp
 
                 case PacketType.DeleteChatMessageNotify:
                     DeleteChatMessageNotified?.Invoke(PacketParser.ParseDeleteChatMessageNotify(full));
+                    break;
+
+                case PacketType.CreateRoomRes:
+                    CreateRoomResultReceived?.Invoke(PacketParser.ParseCreateRoomRes(full));
+                    break;
+
+                case PacketType.DeleteRoomRes:
+                    DeleteRoomResultReceived?.Invoke(PacketParser.ParseDeleteRoomRes(full));
+                    break;
+
+                case PacketType.DeleteRoomNotify:
+                    DeleteRoomNotified?.Invoke(PacketParser.ParseDeleteRoomNotify(full));
+                    break;
+
+                case PacketType.RenameRoomRes:
+                    RenameRoomResultReceived?.Invoke(PacketParser.ParseRenameRoomRes(full));
+                    break;
+
+                case PacketType.RenameRoomNotify:
+                    RenameRoomNotified?.Invoke(PacketParser.ParseRenameRoomNotify(full));
+                    break;
+
+                case PacketType.ListRoomsItemRes:
+                    RoomListItemReceived?.Invoke(PacketParser.ParseListRoomsItemRes(full));
+                    break;
+
+                case PacketType.ListRoomsEndRes:
+                    RoomListEndReceived?.Invoke(PacketParser.ParseListRoomsEndRes(full));
+                    break;
+
+                case PacketType.RoomOwnerChangedNotify:
+                    RoomOwnerChangedNotified?.Invoke(PacketParser.ParseRoomOwnerChangedNotify(full));
                     break;
 
                 default:

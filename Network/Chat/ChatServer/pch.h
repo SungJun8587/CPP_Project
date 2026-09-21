@@ -97,6 +97,11 @@ using namespace std;
 #include "DBListProfileImagesRequest.h"
 #include "DBSetProfileImageUrlRequest.h"
 #include "DBDeleteProfileImageRequest.h"
+#include "DBCreateRoomRequest.h"
+#include "DBDeleteRoomRequest.h"
+#include "DBRenameRoomRequest.h"
+#include "DBListRoomsRequest.h"
+#include "DBTransferRoomOwnerRequest.h"
 #include "ChatSession.h"
 #include "ChatServerMain.h"
 

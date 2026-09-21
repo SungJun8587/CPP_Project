@@ -181,6 +181,7 @@
     <ClInclude Include="ChatClientPacketDispatcher.h" />
     <ClInclude Include="ChatClientSession.h" />
     <ClInclude Include="ChatPacket.h" />
+    <ClInclude Include="ChatPacketTypes.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

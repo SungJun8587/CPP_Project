@@ -17,14 +17,11 @@
 #include "FileStorage.h"
 #include "FileMetadataRepository.h"
 #include "FileServerSession.h"
-#include "ImageResizeUtil.h"
 #include <Network/HTTP/HttpPacketBuilder.h>
 #include <Network/HTTP/HttpRequestParser.h>
 #include <Redis/RedisService.h>
 #include <Redis/RedisResultSet.h>
 
-#include <filesystem>
-#include <fstream>
 #include <memory>
 #include <string>
 #include <functional>
@@ -47,8 +44,7 @@ public:
 		CRedisService* redisService,
 		CFileMetadataRepository* metadataRepo,
 		std::string publicBaseUrl,
-		int64 maxUploadBytes,
-		int32 maxProfileImageDimension);
+		int64 maxUploadBytes);
 
 	//***************************************************************************
 	// @brief POST /upload 요청 하나를 처리한다.
@@ -80,7 +76,6 @@ private:
 
 	std::string	_publicBaseUrl;
 	int64		_maxUploadBytes;
-	int32		_maxProfileImageDimension;
 };
 
 #endif // ndef UC_FILEUPLOADHANDLER_H

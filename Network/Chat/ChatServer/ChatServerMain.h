@@ -15,6 +15,7 @@
 #include <DB/OdbcAsyncSrv.h>
 #include "ChatPacket.h"
 #include "DBListProfileImagesRequest.h"
+#include "DBListRoomsRequest.h"
 
 #include <string>
 #include <memory>
@@ -239,6 +240,28 @@ public:
 	void ScheduleFileDeletionIfOwned(const std::string& deletedImageRef);
 
 	//***************************************************************************
+	// @brief [추가] DB(user_profile_images.image_ref)에 저장하기 직전에
+	//        호출 — "{fileServerUrl}/images/{경로}" 형태(우리 파일 서버가
+	//        만든 URL)면 앞부분을 잘라내고 "/images/{경로}"만 남긴다.
+	//        DB 용량을 줄이고, 나중에 _fileServerUrl 자체가 바뀌어도(도메인
+	//        이전 등) 이미 저장된 값들을 일괄 갱신할 필요가 없게 한다.
+	//        외부 URL(사용자가 "URL로 설정"으로 직접 등록한 값)이거나 형식이
+	//        안 맞으면 원본 그대로 돌려준다 — ScheduleFileDeletionIfOwned()의
+	//        접두사 판별 로직과 대칭이다.
+	//***************************************************************************
+	std::string ToStorableImageRef(const std::string& url) const;
+
+	//***************************************************************************
+	// @brief [추가] DB에서 읽은 image_ref를 클라이언트에게 보내기 직전에
+	//        호출 — ToStorableImageRef()의 역방향. "/"로 시작하는 상대
+	//        경로면 _fileServerUrl을 앞에 다시 붙여 완전한 URL로 복원한다.
+	//        이미 완전한 URL이면(외부 URL이거나, 이 기능 적용 전에 저장된
+	//        예전 값) 그대로 돌려준다 — 그래서 기존 행을 마이그레이션하지
+	//        않아도 안전하게 계속 동작한다.
+	//***************************************************************************
+	std::string ToDisplayImageUrl(const std::string& imageRef) const;
+
+	//***************************************************************************
 	// @brief [추가] 채팅 메시지 삭제 결과 사유.
 	//***************************************************************************
 	enum class EDeleteMessageResult : uint8
@@ -333,6 +356,83 @@ public:
 	//***************************************************************************
 	int32 GetServerUserCount() const;
 
+	//***************************************************************************
+	// @brief [추가] 방을 새로 만듭니다. 성공하면 요청자가 방장이 되고,
+	//        서버의 인메모리 방 레지스트리에도 즉시 반영됩니다(다음 DB
+	//        조회 없이 바로 RoomEnterReq를 받을 수 있도록).
+	// @details [설계 — 3단계 예정] 구현은 ChatServerMain.cpp의 실제
+	//          MoveToRoom()/_roomMembers 관리 로직을 확인한 뒤 채운다 —
+	//          여기서는 다른 Request*() 메서드들과 시그니처 패턴만 맞춰
+	//          선언해뒀다(RequestSetProfileImageUrl() 참고).
+	// @param onComplete DB 워커 스레드 완료 콜백(JobQueue로 이관됨).
+	//        newRoomId는 성공(ERoomResult::Ok) 시에만 유효.
+	//***************************************************************************
+	void RequestCreateRoom(
+		std::shared_ptr<CChatSession> session,
+		const std::array<BYTE, kPublicIdBytes>& ownerPublicId,
+		const std::string& roomName,
+		std::function<void(ERoomResult result, int32 newRoomId)> onComplete);
+
+	//***************************************************************************
+	// @brief [추가] 방을 삭제합니다. requesterPublicId가 그 방의 현재
+	//        방장이어야 합니다(아니면 ERoomResult::NotOwner).
+	// @details [설계] 성공하면 이 함수 내부에서 그 방에 있던 멤버 전원에게
+	//          DeleteRoomNotifyPacket을 브로드캐스트하고 로비로 옮긴 뒤,
+	//          방 레지스트리에서도 제거한다 — onComplete는 "요청자에게
+	//          보낼 직접 응답"용으로만 쓰면 된다(패킷 핸들러가 멤버 목록에
+	//          접근할 방법이 없으므로 이 브로드캐스트/이동은 여기서
+	//          전담한다).
+	//***************************************************************************
+	void RequestDeleteRoom(
+		std::shared_ptr<CChatSession> session,
+		int32 roomId,
+		const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+		std::function<void(ERoomResult result)> onComplete);
+
+	//***************************************************************************
+	// @brief [추가] 방 이름을 바꿉니다. requesterPublicId가 그 방의 현재
+	//        방장이어야 합니다.
+	// @details [설계] RequestDeleteRoom()과 동일하게, 성공 시 그 방의
+	//          멤버 전원에게 RenameRoomNotifyPacket을 이 함수 내부에서
+	//          브로드캐스트한다.
+	//***************************************************************************
+	void RequestRenameRoom(
+		std::shared_ptr<CChatSession> session,
+		int32 roomId,
+		const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+		const std::string& newName,
+		std::function<void(ERoomResult result)> onComplete);
+
+	//***************************************************************************
+	// @brief [추가] 존재하는 모든 방을 조회합니다(로그인한 사용자면 누구나).
+	//***************************************************************************
+	void RequestListRooms(
+		std::shared_ptr<CChatSession> session,
+		std::function<void(ELoginResult result, const std::vector<SRoomListEntry>& rooms)> onComplete);
+
+	//***************************************************************************
+	// @brief [추가] 1인당 생성 가능한 방 개수 상한(설정 파일의
+	//        MaxRoomsPerOwner)을 반환합니다. RequestCreateRoom() 내부가
+	//        DB 요청(ST_CREATE_ROOM_REQ::maxRoomsPerOwner)에 그대로 실어
+	//        보냅니다.
+	//***************************************************************************
+	int32 GetMaxRoomsPerOwner() const { return _maxRoomsPerOwner; }
+
+	//***************************************************************************
+	// @brief [추가] 1인당 생성 가능한 방 개수 상한을 설정합니다(서버 설정
+	//        파일 로딩 시 한 번 호출 — SetFileServerUrl()과 동일한 패턴).
+	//        0 이하면 개수 제한을 적용하지 않는다(ST_CREATE_ROOM_REQ 참고).
+	//***************************************************************************
+	void SetMaxRoomsPerOwner(int32 maxRoomsPerOwner) { _maxRoomsPerOwner = maxRoomsPerOwner; }
+
+	//***************************************************************************
+	// @brief [추가] roomId가 실제로 존재하는 방인지(로비 포함) 확인합니다.
+	// @details RoomEnterHandler.cpp가 기존의 "1~kMaxRoomId 범위 검사"
+	//          대신 이 함수로 검증하도록 바뀔 예정(3단계) — 방이 이제
+	//          고정 슬롯이 아니라 동적으로 생성/삭제되기 때문이다.
+	//***************************************************************************
+	bool RoomExists(int32 roomId) const;
+
 private:
 	std::string BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const;
 
@@ -342,6 +442,33 @@ private:
 	//          호출한다 — 직접 호출할 일 없음.
 	//***************************************************************************
 	void NotifyRoomUserCount(int32 roomId, int32 userCount);
+
+	//***************************************************************************
+	// @brief [추가] roomId를 떠난 사람이 그 방의 방장이었는지 확인하고,
+	//        맞으면 후속 처리(방장 이양 또는 빈 방 삭제)를 한다.
+	// @details MoveToRoom()/LeaveCurrentRoom()이 "이미 멤버 목록에서 제거를
+	//          마친 뒤"(=remainingMembers가 제거 후 남은 멤버) 호출한다 —
+	//          _roomMutex를 이미 해제한 상태에서 불러야 한다(이 함수
+	//          내부의 BroadcastToRoom()/MoveToRoom() 재귀 호출이 다시
+	//          _roomMutex를 잠그므로, 안 그러면 데드락이 난다).
+	//          - 남은 멤버가 있으면: 벡터의 맨 앞(가장 오래 있었던 사람 —
+	//            _roomMembers가 erase-remove로 삽입 순서를 유지하므로)에게
+	//            이양하고 RoomOwnerChangedNotifyPacket을 브로드캐스트한다.
+	//          - 아무도 안 남았으면: 방 자체를 레지스트리+DB에서 삭제한다
+	//            (방장 없는 빈 방을 남겨두지 않음).
+	//          로비(kLobbyRoomId)처럼 애초에 레지스트리에 없는 위치면
+	//          즉시 반환한다(방장 개념이 없으므로).
+	//***************************************************************************
+	void HandleRoomOwnershipOnLeave(int32 roomId, const std::array<BYTE, kPublicIdBytes>& leavingPublicId,
+		const std::vector<std::shared_ptr<CChatSession>>& remainingMembers);
+
+	//***************************************************************************
+	// @brief [추가] 서버 시작 시 DB에 저장된 모든 방을 인메모리 레지스트리로
+	//        읽어들인다(비동기 — 완료 전까지의 짧은 창에서는 RoomEnterReq가
+	//        아직 그 방들을 "존재하지 않음"으로 볼 수 있다). Start()가
+	//        MEMBER_DB_ASYNC.StartService() 성공 직후 호출한다.
+	//***************************************************************************
+	void LoadRoomRegistryFromDb();
 
 private:
 	CIocpCoreRef							_iocpCore;
@@ -362,6 +489,24 @@ private:
 	// LeaveCurrentRoom() 호출 시 청소된다).
 	mutable std::mutex	_roomMutex;
 	std::unordered_map<int32, std::vector<std::weak_ptr<CChatSession>>>	_roomMembers;
+
+	//***************************************************************************
+	// @brief [추가] 동적으로 생성/삭제되는 방의 메타데이터(이름/방장) —
+	//        DB(rooms 테이블)가 진실의 원천이고, 이건 그 인메모리 캐시다.
+	//        RoomEnterReq 검증, 방장 확인, 방장 이양 판단 등 매 요청마다
+	//        DB를 왕복하면 느린 경로들이 이 캐시만 보고 즉시 판단한다.
+	//        서버 시작 시 LoadRoomRegistryFromDb()로 채워지고, 이후
+	//        RequestCreateRoom()/RequestDeleteRoom()/RequestRenameRoom()/
+	//        HandleRoomOwnershipOnLeave()가 해당 DB 쓰기 성공 시 함께 갱신한다.
+	//***************************************************************************
+	struct SRoomInfo
+	{
+		std::string							name;
+		std::array<BYTE, kPublicIdBytes>	ownerPublicId;
+	};
+
+	mutable std::mutex						_roomRegistryMutex;
+	std::unordered_map<int32, SRoomInfo>	_roomRegistry;
 
 	//***************************************************************************
 	// @brief [추가] 메시지 삭제 기능을 위한 최근 메시지 추적 항목.
@@ -389,6 +534,9 @@ private:
 	// 업로드 세션 상태(SUploadSession 등)를 전부 제거했다. 대신 클라이언트가
 	// 파일 서버에 접속할 때 쓸 주소만 들고 있는다(SetFileServerUrl() 참고).
 	std::string	_fileServerUrl;
+
+	// [추가] 1인당 생성 가능한 방 개수 상한 — SetMaxRoomsPerOwner() 참고.
+	int32		_maxRoomsPerOwner = 0;
 };
 
 #endif // ndef UC_CHATSERVERMAIN_H

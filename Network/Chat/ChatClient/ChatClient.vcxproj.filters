@@ -275,6 +275,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
+    <ClInclude Include="ChatPacketTypes.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

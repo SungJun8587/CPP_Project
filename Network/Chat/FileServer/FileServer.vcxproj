@@ -152,7 +152,6 @@
     <ClCompile Include="FileServerRouter.cpp" />
     <ClCompile Include="FileServerSession.cpp" />
     <ClCompile Include="FileUploadHandler.cpp" />
-    <ClCompile Include="ImageResizeUtil.cpp" />
     <ClCompile Include="LocalFileStorage.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -251,7 +250,6 @@
     <ClInclude Include="FileServerSession.h" />
     <ClInclude Include="FileStorage.h" />
     <ClInclude Include="FileUploadHandler.h" />
-    <ClInclude Include="ImageResizeUtil.h" />
     <ClInclude Include="LocalFileStorage.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>

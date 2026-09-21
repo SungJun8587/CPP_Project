@@ -77,12 +77,6 @@ public:
 	int64 GetMaxUploadBytes() { return _nMaxUploadBytes; }
 
 	//***************************************************************************
-	// @brief 저장할 이미지의 가로/세로 허용 최댓값(픽셀)을 반환합니다. 이보다
-	//        크면 비율을 유지한 채 줄여서 저장합니다(ImageResizeUtil 참고).
-	//***************************************************************************
-	int32 GetMaxProfileImageDimension() { return _nMaxProfileImageDimension; }
-
-	//***************************************************************************
 	// @brief Redis 노드 목록을 반환합니다.
 	//***************************************************************************
 	CVector<CRedisNode>& GetRedisNodeVec() { return _redisNodeVec; }
@@ -106,7 +100,6 @@ public:
 		value.AddMember(_T("StorageDir"), _tValue(_tszStorageDir, allocator), allocator);
 		value.AddMember(_T("PublicBaseUrl"), _tValue(_tszPublicBaseUrl, allocator), allocator);
 		value.AddMember(_T("MaxUploadBytes"), static_cast<int64>(_nMaxUploadBytes), allocator);
-		value.AddMember(_T("MaxProfileImageDimension"), _nMaxProfileImageDimension, allocator);
 	}
 
 	void FromJSON(const _tValue& value)
@@ -120,7 +113,6 @@ public:
 		_tcsncpy_s(_tszStorageDir, _countof(_tszStorageDir), value[_T("StorageDir")].GetString(), _TRUNCATE);
 		_tcsncpy_s(_tszPublicBaseUrl, _countof(_tszPublicBaseUrl), value[_T("PublicBaseUrl")].GetString(), _TRUNCATE);
 		_nMaxUploadBytes = value[_T("MaxUploadBytes")].GetInt64();
-		_nMaxProfileImageDimension = value[_T("MaxProfileImageDimension")].GetInt();
 	}
 
 protected:
@@ -140,7 +132,6 @@ private:
 	TCHAR					_tszStorageDir[MAX_BUFFER_SIZE];		// 로컬 저장 경로
 	TCHAR					_tszPublicBaseUrl[MAX_BUFFER_SIZE];		// 클라이언트에게 돌려줄 URL의 기본 주소
 	int64					_nMaxUploadBytes;						// 업로드 최대 크기(바이트) — int64(2GB를 넘는 대용량 업로드 지원 목적)
-	int32					_nMaxProfileImageDimension;				// 저장 이미지 가로/세로 허용 최댓값(픽셀)
 
 	CVector<CRedisNode>		_redisNodeVec;							// Redis 노드 목록
 };

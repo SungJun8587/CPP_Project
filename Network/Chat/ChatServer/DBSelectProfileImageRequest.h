@@ -13,8 +13,6 @@
 #include <functional>
 #include <string>
 
-constexpr BYTE kDbCallIdent_SelectProfileImage = 204;
-
 //***************************************************************************
 // @struct ST_SELECT_PROFILE_IMAGE_REQ
 // @brief 갤러리에 이미 있는 이미지 중 하나(imageId)를 대표(status=1)로 지정.

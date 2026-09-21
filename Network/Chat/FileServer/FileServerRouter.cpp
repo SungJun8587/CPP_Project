@@ -6,17 +6,14 @@
 
 #include "pch.h"
 #include "FileServerRouter.h"
-#include "FileServerSession.h"
-#include <Network/HTTP/HttpPacketBuilder.h>
 
 CFileServerRouter::CFileServerRouter(
 	IFileStorage* storage,
 	CRedisService* redisService,
 	CFileMetadataRepository* metadataRepo,
 	std::string publicBaseUrl,
-	int64 maxUploadBytes,
-	int32 maxProfileImageDimension)
-	: _uploadHandler(storage, redisService, metadataRepo, publicBaseUrl, maxUploadBytes, maxProfileImageDimension)
+	int64 maxUploadBytes)
+	: _uploadHandler(storage, redisService, metadataRepo, publicBaseUrl, maxUploadBytes)
 	, _downloadHandler(storage)
 	, _deleteHandler(storage, metadataRepo)
 {

@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -106,6 +107,90 @@ namespace ChatApp
         //        (UploadToFileServerAsync)에서 FileStream을 열어 그 자리에서
         //        바로 네트워크로 흘려보낸다.
         //***************************************************************************
+        //***************************************************************************
+        // @brief [추가] 파일 첨부 카드를 클릭했을 때 — 저장 위치를 물어보고,
+        //        앱 안에서 직접 GET으로 받아 그 카드에 진행률을 그린다.
+        //        예전엔 OpenUrl()로 브라우저에 넘겨서 다운로드 자체를
+        //        브라우저에 위임했는데, 그러면 우리 채팅창에 진행률을 표시할
+        //        방법이 없어서 이렇게 바꿨다.
+        // @details HttpCompletionOption.ResponseHeadersRead로 요청해서,
+        //          응답 본문 전체가 도착하기 전에 헤더(Content-Length 포함)만
+        //          받은 시점에 바로 스트림을 열고 청크 단위로 읽으면서 파일에
+        //          쓴다 — 응답 전체를 메모리에 올리는 GetByteArrayAsync류와
+        //          달리 대용량 파일도 메모리 사용량이 늘 일정하다. 진행률
+        //          갱신은 이 메서드가 UI 스레드(클릭 이벤트)에서 시작한
+        //          async 흐름 그대로 이어지므로(ConfigureAwait(false)를
+        //          안 씀), await 뒤에서 곧바로 UI를 건드려도 안전하다 —
+        //          업로드 쪽(ProgressFileStream)처럼 BeginInvoke로 따로
+        //          넘길 필요가 없다.
+        //***************************************************************************
+        private async void DownloadFileAttachment(ChatBubbleItem item, string url, string suggestedFileName)
+        {
+            if (item.IsDownloading)
+                return; // 이미 받는 중이면 중복 요청 무시
+
+            using (var dlg = new SaveFileDialog { FileName = suggestedFileName })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                item.IsDownloading = true;
+                item.DownloadPercent = 0;
+                InvalidateChatItem(item);
+
+                try
+                {
+                    using (HttpResponseMessage response = await _downloadHttpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead))
+                    {
+                        response.EnsureSuccessStatusCode();
+                        long? totalBytes = response.Content.Headers.ContentLength;
+
+                        using (Stream httpStream = await response.Content.ReadAsStreamAsync())
+                        using (var fileStream = new FileStream(dlg.FileName, FileMode.Create, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+                        {
+                            byte[] buffer = new byte[81920];
+                            long totalRead = 0;
+                            int lastReportedDecile = -1;
+                            int bytesRead;
+
+                            while ((bytesRead = await httpStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                            {
+                                await fileStream.WriteAsync(buffer, 0, bytesRead);
+                                totalRead += bytesRead;
+
+                                if (totalBytes.HasValue && totalBytes.Value > 0)
+                                {
+                                    int decile = (int)(totalRead * 10 / totalBytes.Value);
+                                    if (decile != lastReportedDecile)
+                                    {
+                                        lastReportedDecile = decile;
+                                        item.DownloadPercent = Math.Min(decile * 10, 100);
+                                        InvalidateChatItem(item);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    AppendSystemLog("[시스템] 다운로드 완료: " + dlg.FileName, ColorSystemOk);
+                    item.DownloadPercent = 100;
+                    InvalidateChatItem(item);
+                }
+                catch (Exception ex)
+                {
+                    AppendSystemLog("[시스템] 다운로드 실패: " + ex.Message, ColorSystemError);
+
+                    // 실패했으면 다 쓰다 만 파일이 남아있을 수 있으니 정리한다.
+                    try { if (File.Exists(dlg.FileName)) File.Delete(dlg.FileName); } catch { /* 정리 실패는 무시 */ }
+                }
+                finally
+                {
+                    item.IsDownloading = false;
+                    InvalidateChatItem(item);
+                }
+            }
+        }
+
         private void AttachAndSendFile()
         {
             if (_client == null)
@@ -130,6 +215,15 @@ namespace ChatApp
         //        공유하는 실제 업로드+전송 로직. 예전엔 AttachAndSendFile()
         //        안에 이 내용이 그대로 있었는데, 드래그 앤 드롭도 똑같은
         //        일을 해야 해서 재사용 가능하게 뽑아냈다.
+        // @details [수정 — 진행률 표시] 시스템 로그에 퍼센트를 찍는 대신,
+        //          업로드 시작과 동시에 "전송 중" 말풍선을 채팅 목록에 바로
+        //          추가하고(아직 서버 URL이 없으므로 messageId=0, 일반
+        //          메시지처럼 미확정 상태) 그 카드에 진행률 바를 직접
+        //          그린다. 성공하면 그 말풍선의 내용을 최종
+        //          "[FILE:이름:크기]url"로 바꿔치기한 뒤 기존과 동일하게
+        //          에코 대기열에 넣고 전송한다 — 그래야 서버 에코가 왔을 때
+        //          ApplyServerMessageId()가 이 말풍선을 정확히 찾아 messageId를
+        //          채워준다. 실패하면 이 말풍선 자체를 목록에서 제거한다.
         //***************************************************************************
         private async Task SendFileAttachmentAsync(string filePath)
         {
@@ -152,7 +246,7 @@ namespace ChatApp
             // 미리 밑줄로 치환해둔다.
             string safeName = Path.GetFileName(filePath).Replace(":", "_").Replace("]", "_");
 
-            AppendSystemLog("[시스템] 업로드 토큰 발급 중...", ColorSystemInfo);
+            ChatBubbleItem placeholder = AppendUploadingFileBubble(safeName, fileLength);
 
             try
             {
@@ -163,42 +257,91 @@ namespace ChatApp
                 if (tokenResult == null || !tokenResult.Success || string.IsNullOrEmpty(tokenResult.FileServerUrl))
                 {
                     AppendSystemLog("[시스템] 업로드 토큰 발급 실패 — 파일 서버가 설정돼 있지 않을 수 있습니다.", ColorSystemError);
+                    _listBoxChat.Items.Remove(placeholder);
                     return;
                 }
-
-                AppendSystemLog($"[시스템] 파일 서버에 업로드 중... (0%, {FormatFileSize(fileLength)})", ColorSystemInfo);
 
                 string uploadedUrl;
                 try
                 {
-                    uploadedUrl = await UploadToFileServerAsync(tokenResult.FileServerUrl, tokenResult.UploadToken, filePath);
+                    uploadedUrl = await UploadToFileServerAsync(tokenResult.FileServerUrl, tokenResult.UploadToken, filePath, percent =>
+                    {
+                        placeholder.UploadPercent = percent;
+                        InvalidateChatItem(placeholder);
+                    });
                 }
                 catch (Exception ex)
                 {
                     AppendSystemLog("[시스템] 파일 서버 업로드 실패: " + ex.Message, ColorSystemError);
+                    _listBoxChat.Items.Remove(placeholder);
                     return;
                 }
 
                 if (string.IsNullOrEmpty(uploadedUrl))
                 {
                     AppendSystemLog("[시스템] 파일 서버가 URL을 돌려주지 않았습니다.", ColorSystemError);
+                    _listBoxChat.Items.Remove(placeholder);
                     return;
                 }
 
                 string fileMessage = $"[FILE:{safeName}:{fileLength}]{uploadedUrl}";
+
+                // 전송 중 상태를 끄고 최종 메시지로 바꿔치기 — 카드는 그대로
+                // 유지한 채(같은 ChatBubbleItem 객체) 내용만 갱신된다.
+                placeholder.IsUploading = false;
+                placeholder.Message = fileMessage;
+                InvalidateChatItem(placeholder);
 
                 lock (_pendingSentEchoesLock)
                 {
                     _pendingSentEchoes.Enqueue(fileMessage);
                 }
 
-                AppendChat(_currentNickname ?? "나", _myProfileImageUrl, fileMessage, isMyMessage: true);
                 _client?.SendChat(fileMessage);
             }
             finally
             {
                 _uploadTokenTcs = null;
             }
+        }
+
+        //***************************************************************************
+        // @brief [추가] "전송 중" 상태의 파일 말풍선을 채팅 목록에 바로
+        //        추가한다. AppendChat()의 날짜 구분선 삽입 로직을 그대로
+        //        따르되, Message는 아직 없고(서버 URL 미확정) 대신
+        //        PendingFileName/PendingFileSize + IsUploading=true로
+        //        표시한다.
+        // @return 방금 추가한 ChatBubbleItem — 호출부가 진행률/완료 상태를
+        //         갱신할 때 이 참조를 그대로 쓴다(인덱스는 다른 메시지가
+        //         쌓이면서 계속 바뀔 수 있어 참조로 들고 있는 게 안전하다).
+        //***************************************************************************
+        private ChatBubbleItem AppendUploadingFileBubble(string fileName, long fileSize)
+        {
+            DateTime now = DateTime.Now;
+            DateTime? lastDate = null;
+            for (int i = _listBoxChat.Items.Count - 1; i >= 0; i--)
+            {
+                if (_listBoxChat.Items[i] is ChatBubbleItem prevItem)
+                {
+                    lastDate = prevItem.Timestamp.Date;
+                    break;
+                }
+            }
+            if (lastDate == null || lastDate.Value != now.Date)
+                _listBoxChat.Items.Add(new DateSeparatorItem { Date = now });
+
+            var item = new ChatBubbleItem(_currentNickname ?? "나", _myProfileImageUrl, string.Empty, isMyMessage: true)
+            {
+                IsUploading = true,
+                UploadPercent = 0,
+                PendingFileName = fileName,
+                PendingFileSize = fileSize,
+            };
+
+            _listBoxChat.Items.Add(item);
+            _listBoxChat.TopIndex = _listBoxChat.Items.Count - 1;
+
+            return item;
         }
 
         //***************************************************************************
@@ -209,6 +352,17 @@ namespace ChatApp
         //          이벤트로 오는데, TaskCompletionSource로 감싸서 이 메서드
         //          안에서 await로 순서대로 기다리는 형태로 만들었다.
         //***************************************************************************
+        //***************************************************************************
+        // @brief [추가] 프로필 이미지 업로드 시 클라이언트가 미리 걸러내는
+        //        최대 크기. 서버(FileServer)는 이제 프로필 이미지든 채팅
+        //        첨부든 구분하지 않고 받은 그대로 저장하므로(ImageResizeUtil
+        //        제거 — FileUploadHandler.cpp 참고), 프로필 이미지에 한해
+        //        "너무 크면 아예 업로드 안 함"을 이 클라이언트가 담당한다.
+        //        채팅 파일 첨부(AttachAndSendFile 등)에는 이 제한이 적용되지
+        //        않는다 — 그쪽은 서버의 MaxUploadBytes(현재 5GB)만 따른다.
+        //***************************************************************************
+        private const long kMaxProfileImageBytes = 5 * 1024 * 1024; // 5MB
+
         private async void UploadMyProfileImage()
         {
             if (_client == null)
@@ -225,6 +379,25 @@ namespace ChatApp
                 if (!File.Exists(dlg.FileName))
                 {
                     MessageBox.Show(this, "파일을 찾을 수 없습니다.", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                long fileLength;
+                try
+                {
+                    fileLength = new FileInfo(dlg.FileName).Length;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "파일 정보를 읽지 못했습니다: " + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (fileLength > kMaxProfileImageBytes)
+                {
+                    MessageBox.Show(this,
+                        $"프로필 이미지는 {FormatFileSize(kMaxProfileImageBytes)} 이하만 가능합니다.\n선택한 파일: {FormatFileSize(fileLength)}",
+                        "파일이 너무 큽니다", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
@@ -247,7 +420,7 @@ namespace ChatApp
                     string uploadedUrl;
                     try
                     {
-                        uploadedUrl = await UploadToFileServerAsync(tokenResult.FileServerUrl, tokenResult.UploadToken, dlg.FileName);
+                        uploadedUrl = await UploadToFileServerAsync(tokenResult.FileServerUrl, tokenResult.UploadToken, dlg.FileName, onProgress: null);
                     }
                     catch (Exception ex)
                     {
@@ -310,7 +483,27 @@ namespace ChatApp
         //          알려주는 방식으로 표시한다 — 10%p 단위로만 로그를 찍어서
         //          큰 파일이어도 시스템 로그가 도배되지 않게 했다.
         //***************************************************************************
-        private async Task<string> UploadToFileServerAsync(string fileServerUrl, string uploadToken, string localFilePath)
+        //***************************************************************************
+        // @brief 파일 서버에 파일을 업로드하고, 결과로 접근 가능한 URL을 돌려받는다.
+        // @details [파일 서버 API 계약] multipart/form-data POST
+        //          {fileServerUrl}/upload — 폼 필드 "file"에 파일 바이트,
+        //          "token"에 채팅 서버가 발급한 업로드 토큰. 성공하면 본문에
+        //          평문(text/plain)으로 접근 가능한 URL을 돌려준다.
+        // @details [수정 — 대용량 파일 스트리밍] ByteArrayContent(파일 전체를
+        //          메모리에 들고 있어야 함) 대신 StreamContent + FileStream을
+        //          쓴다 — HttpClient가 이 스트림에서 내부 버퍼 크기만큼씩
+        //          읽어 그때그때 네트워크로 흘려보내므로, 클라이언트 메모리에는
+        //          파일 전체가 절대 안 올라간다. FileStream이 seek 가능하므로
+        //          StreamContent가 자동으로 Content-Length를 계산해 붙여준다
+        //          (서버가 chunked가 아니라 Content-Length 기반으로 파싱하므로
+        //          이 부분이 중요하다).
+        // @param onProgress [추가] 0~100 퍼센트가 바뀔 때마다 호출된다 —
+        //        호출부(SendFileAttachmentAsync)가 채팅 목록의 파일 카드
+        //        진행률 바를 갱신하는 데 쓴다. 콜백은 BeginInvoke로 이미
+        //        UI 스레드로 넘겨서 호출하므로, 넘겨받는 쪽은 곧바로 UI를
+        //        건드려도 안전하다.
+        //***************************************************************************
+        private async Task<string> UploadToFileServerAsync(string fileServerUrl, string uploadToken, string localFilePath, Action<int> onProgress)
         {
             int lastReportedDecile = -1;
 
@@ -325,7 +518,7 @@ namespace ChatApp
                     // 백그라운드(HttpClient 내부 읽기) 스레드에서 호출되므로 UI 스레드로 넘긴다.
                     BeginInvoke((MethodInvoker)delegate
                     {
-                        AppendSystemLog($"[시스템] 파일 서버에 업로드 중... ({percent}%)", ColorSystemInfo);
+                        onProgress?.Invoke(percent);
                     });
                 }
             }))
@@ -559,7 +752,7 @@ namespace ChatApp
                 return;
             }
 
-            _tabControl.SelectedIndex = 1; // 0=대화, 1=갤러리
+            _tabControl.SelectedIndex = 2; // 0=대화, 1=채팅방, 2=갤러리
         }
 
         //***************************************************************************
@@ -755,6 +948,30 @@ namespace ChatApp
                     _listBoxChat.Items.Insert(itemIndex, existing);
                 }
             });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 업로드/다운로드 진행률처럼 아주 자주(초당 여러 번)
+        //        갱신되는 상태를 다시 그릴 때 쓴다. RefreshChatItem()의
+        //        RemoveAt+Insert 트릭은 "높이가 바뀌었을 수도 있는" 갱신에
+        //        맞는 무거운 방법이라, 진행률처럼 카드 높이는 그대로고
+        //        내용만 바뀌는 경우엔 해당 항목 영역만 Invalidate하는 게
+        //        훨씬 가볍고 스크롤 위치/선택 상태도 안 건드린다. 항목을
+        //        인덱스가 아니라 객체 참조로 받는 이유: 진행률 콜백이
+        //        시작될 때 캡처해둔 인덱스가 그 사이 다른 메시지가 추가되며
+        //        밀렸을 수 있어서, 매번 현재 위치를 다시 찾는다.
+        //***************************************************************************
+        private void InvalidateChatItem(ChatBubbleItem item)
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            int index = _listBoxChat.Items.IndexOf(item);
+            if (index < 0)
+                return;
+
+            Rectangle rect = _listBoxChat.GetItemRectangle(index);
+            _listBoxChat.Invalidate(rect);
         }
 
         //***************************************************************************

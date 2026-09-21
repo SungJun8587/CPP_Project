@@ -44,6 +44,9 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+// [수정 — 컴파일 오류] 이 프로젝트 설정(암시적 using 등)에서 System.Net.Mime.MediaTypeNames에도
+// Font/Image라는 이름의 클래스가 있어서, System.Drawing.Font/Image와 이름이 겹쳐 모호한
+// 참조 오류가 났다. 타입 별칭으로 System.Drawing 쪽을 명시적으로 고정한다.
 using Font = System.Drawing.Font;
 using Image = System.Drawing.Image;
 
@@ -58,6 +61,34 @@ namespace ChatApp
         //***************************************************************************
         // @brief listBoxMsg(시스템 로그)에 OwnerDraw로 색깔 있는 한 줄을 넣기 위한 항목.
         //***************************************************************************
+        //***************************************************************************
+        // @brief [추가] 더블 버퍼링이 켜진 ListBox.
+        // @details 일반 ListBox의 DoubleBuffered 프로퍼티는 protected라
+        //          바깥에서 그냥 못 켠다 — OwnerDraw로 자주 다시 그리는
+        //          상황(업로드/다운로드 진행률 갱신으로 인한 InvalidateChatItem(),
+        //          RefreshChatItem()의 재삽입 등)에서 이게 꺼져 있으면
+        //          화면이 깜박이는 증상이 생긴다.
+        // @details [수정 — 항목이 안 보였다가 마우스오버해야 보이던 버그]
+        //          처음엔 DoubleBuffered와 함께 ControlStyles.UserPaint/
+        //          AllPaintingInWmPaint도 SetStyle()로 강제 켰었는데, 이게
+        //          바로 그 버그의 원인이었다 — ListBox는 순수 .NET 컨트롤이
+        //          아니라 네이티브 Win32 리스트박스를 감싼 래퍼라, OwnerDraw
+        //          그리기는 .NET의 OnPaint가 아니라 네이티브 컨트롤이 보내는
+        //          WM_DRAWITEM 메시지로 이뤄진다. UserPaint/AllPaintingInWmPaint를
+        //          강제하면 이 메시지 흐름이 깨져서 최초 그리기가 누락되고,
+        //          마우스 이동 등 다른 이벤트가 우연히 다시 그리게 만들
+        //          때만 보이는 증상으로 나타난다. DoubleBuffered 프로퍼티만
+        //          켜는 것으로 충분하고, 이건 네이티브 그리기 흐름을 건드리지
+        //          않는다(ListBox/ListView에서 흔히 쓰는 표준적인 방법).
+        //***************************************************************************
+        private class DoubleBufferedListBox : ListBox
+        {
+            public DoubleBufferedListBox()
+            {
+                DoubleBuffered = true;
+            }
+        }
+
         private class ColoredEntry
         {
             public string Text;
@@ -81,6 +112,20 @@ namespace ChatApp
             // 그대로 실어 보낸다. 내가 방금 보낸 메시지는 서버 에코가
             // 오기 전까지 0(미확정) 상태다(ApplyServerMessageId() 참고).
             public long MessageId;
+
+            // [추가] 파일 첨부 전송 진행률 표시용. 업로드는 서버에 아직
+            // URL이 없는 "전송 중" 상태를 이 필드들로 나타낸다(Message
+            // 자체는 아직 FileAttachmentRegex에 안 맞는 placeholder이거나
+            // 아예 비어있음) — 완료되면 IsUploading=false로 바꾸고 Message를
+            // 최종 "[FILE:이름:크기]url"로 교체한다. 다운로드는 이미 완성된
+            // 메시지에 대해 진행 중 여부만 얹는 것뿐이라 Message는 안 바뀐다.
+            public bool IsUploading;
+            public int UploadPercent;      // 0~100
+            public string PendingFileName; // 업로드 중일 때만 유효(아직 최종 메시지가 없으므로)
+            public long PendingFileSize;   // 위와 동일
+
+            public bool IsDownloading;
+            public int DownloadPercent;    // 0~100
 
             public ChatBubbleItem(string senderName, string senderProfileImageUrl, string message, bool isMyMessage, long messageId = 0)
             {
@@ -133,23 +178,42 @@ namespace ChatApp
         private Panel _chatPagePanel;
         private Panel _galleryPagePanel;
         private ProfileImageGalleryPanel _galleryPanel;
+        private RoomListPanel _roomListPanel;
 
         // [추가] 프로필 이미지 — 로컬 전용(네트워크로 다른 사람에게 전송되지
         // 않음). 프로필 이름별로 이미지 파일 경로를 저장해뒀다가 다음 실행 때
         // 다시 불러온다.
         private PictureBox _picProfileImage;
 
-        private ComboBox _cbChatRoomId;
-        private Button _btnRoomEnter;
+        // [수정] 방이 동적 생성/삭제되므로 고정 콤보박스+입장 버튼 대신
+        // 방 목록 탭(RoomListPanel)으로 대체. 방장 전용 버튼(이름
+        // 변경/삭제) 추가.
+        private Button _btnRoomList;
+        private Button _btnCreateRoom;
         private Button _btnRoomLeave;
+        private Button _btnRenameRoom;
+        private Button _btnDeleteRoom;
+
+        // [추가] 현재 있는 방(로비가 아닐 때)의 이름/방장 닉네임 —
+        // RoomEnterResPacket 자체엔 이 정보가 없어서(roomId만 옴), 방
+        // 목록 조회/생성/RenameRoomNotify/RoomOwnerChangedNotify 시점에
+        // 클라이언트가 직접 채워 유지한다. 로비에 있으면 둘 다 null.
+        private string _currentRoomName;
+        private string _currentRoomOwnerNickname;
+
+        // [추가] "방 만들기" 지름길 버튼(채팅 탭)이 CreateRoomReq를 보낸
+        // 직후부터 응답이 올 때까지 잠깐 기억해두는 방 이름 — 자세한 이유는
+        // BtnCreateRoom_Click()/OnCreateRoomResultReceived() 참고.
+        private string _pendingCreatedRoomName;
         private Label _txtLobbyUserCount;
         private Label _txtRoomUserCount;
         private Label _lblCurrentRoom;
+        private ToolTip _roomStatusToolTip; // [추가] _lblCurrentRoom이 말줄임표로 잘릴 때 전체 텍스트를 마우스오버로 보여줌
 
         private TextBox _txtMessage;
         private Button _btnAttachFile;
         private Button _btnSend;
-        private ListBox _listBoxChat;
+        private DoubleBufferedListBox _listBoxChat;
         // [추가] 참고 코드는 DrawItem마다 Font를 새로 만들고 버렸는데, 매 프레임
         // GDI 리소스를 할당/해제하는 건 낭비라 필드로 캐시해서 재사용한다.
         // Dispose()에서 함께 정리한다.
@@ -226,6 +290,11 @@ namespace ChatApp
         // 넉넉히 잡았다(그래도 무한정은 아니게 — 정말로 응답이 영영 안
         // 오는 상황까지 무한 대기하진 않도록).
         private static readonly HttpClient _uploadHttpClient = new HttpClient { Timeout = TimeSpan.FromHours(2) };
+
+        // [추가] 대용량 파일 다운로드용 — 기본 _httpClient는 링크 미리보기/아바타
+        // 조회처럼 항상 작고 빠른 요청 전용이라 타임아웃이 5초로 짧다(그래서
+        // 이것과 분리했다). _uploadHttpClient와 동일한 이유로 긴 타임아웃을 준다.
+        private static readonly HttpClient _downloadHttpClient = new HttpClient { Timeout = TimeSpan.FromHours(2) };
         private readonly Dictionary<string, LinkPreviewData> _linkPreviewCache = new Dictionary<string, LinkPreviewData>();
 
         // [추가] 프로필 이미지 — 채팅 메시지에 실려오는 발신자의 profileImageUrl로
@@ -413,8 +482,11 @@ namespace ChatApp
             // 버튼들 — 처음 만들 때와 같은 filled/outline/danger 조합으로 재적용.
             StyleButton(_btnConnect, filled: true);
             StyleButton(_btnOpenNicknameDialog, filled: false);
-            RefreshDynamicButtonColors(_btnRoomEnter);
+            RefreshDynamicButtonColors(_btnRoomList);
+            RefreshDynamicButtonColors(_btnCreateRoom);
             RefreshDynamicButtonColors(_btnRoomLeave);
+            RefreshDynamicButtonColors(_btnRenameRoom);
+            RefreshDynamicButtonColors(_btnDeleteRoom);
             RefreshDynamicButtonColors(_btnSend);
             RefreshDynamicButtonColors(_btnAttachFile);
             if (_btnSkin != null) RefreshDynamicButtonColors(_btnSkin);
@@ -427,6 +499,7 @@ namespace ChatApp
             // 직접 갱신해줘야 한다 — 같은 ChatTheme.Current를 참조하지만
             // 버튼/라벨의 BackColor/ForeColor는 생성 시점에 굳어있으므로.
             _galleryPanel?.RefreshTheme();
+            _roomListPanel?.RefreshTheme();
 
             Invalidate(true);
         }
@@ -604,19 +677,33 @@ namespace ChatApp
                 Font = new Font(Font.FontFamily, 8f, FontStyle.Bold),
             };
 
-            _cbChatRoomId = new ComboBox { Left = 11, Top = 23, Width = 71, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = false };
-            for (int roomId = 1; roomId <= ProtocolConstants.MaxRoomId; roomId++)
-                _cbChatRoomId.Items.Add(roomId);
-            if (_cbChatRoomId.Items.Count > 0)
-                _cbChatRoomId.SelectedIndex = 0;
+            // [수정] 방이 이제 1~10 고정 슬롯이 아니라 동적으로 생성/삭제되므로,
+            // 번호를 직접 고르는 콤보박스 대신 "방 목록" 버튼으로 채팅방 탭(RoomListPanel)을
+            // 띄운다(방 조회/생성/입장을 그 안에서 전부 처리). "방 만들기"는
+            // 편의상 메인 화면에도 바로 노출해뒀다(다이얼로그 안에도 있음).
+            _btnRoomList = new Button { Text = "방 목록", Left = 11, Top = 22, Width = 70, Height = 25, Enabled = false };
+            _btnRoomList.Click += BtnRoomList_Click;
+            StyleDynamicButton(_btnRoomList);
 
-            _btnRoomEnter = new Button { Text = "방 입장", Left = 88, Top = 22, Width = 70, Height = 25, Enabled = false };
-            _btnRoomEnter.Click += BtnRoomEnter_Click;
-            StyleDynamicButton(_btnRoomEnter);
+            _btnCreateRoom = new Button { Text = "방 만들기", Left = 88, Top = 22, Width = 70, Height = 25, Enabled = false };
+            _btnCreateRoom.Click += BtnCreateRoom_Click;
+            StyleDynamicButton(_btnCreateRoom);
 
             _btnRoomLeave = new Button { Text = "방 나가기", Left = 163, Top = 22, Width = 70, Height = 25, Enabled = false };
             _btnRoomLeave.Click += BtnRoomLeave_Click;
             StyleDynamicButton(_btnRoomLeave);
+
+            // [추가] 방장 전용 버튼 — 로비에 있거나 방장이 아니면 항상 숨김
+            // (UpdateRoomStatusUI() 참고). 자리는 방 나가기 버튼 바로
+            // 오른쪽인데, 로비/방 유저수 표시 줄(Top=58)과 겹치지 않도록
+            // 같은 Top=22 줄에 둔다.
+            _btnRenameRoom = new Button { Text = "이름변경", Left = 238, Top = 22, Width = 70, Height = 25, Visible = false };
+            _btnRenameRoom.Click += BtnRenameRoom_Click;
+            StyleDynamicButton(_btnRenameRoom);
+
+            _btnDeleteRoom = new Button { Text = "방 삭제", Left = 313, Top = 22, Width = 70, Height = 25, Visible = false };
+            _btnDeleteRoom.Click += BtnDeleteRoom_Click;
+            StyleDynamicButton(_btnDeleteRoom);
 
             // [수정] 서버 동접자수를 로비 유저수 왼쪽에 배치 — 프로필 이름과
             // 같은 형태(정적 라벨 + 읽기전용 텍스트박스)로 통일했다. 그룹박스1이
@@ -632,7 +719,17 @@ namespace ChatApp
             var lblRoomUserCount = new Label { Text = "방 유저수 : ", Left = 286, Top = 58, Width = 68, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
             _txtRoomUserCount = new Label { Left = 354, Top = 58, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
 
-            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 58, Width = 153, ForeColor = TextMutedColor };
+            // [수정 — 버그] 방 이름+방장 닉네임을 합친 문구("위치: OOO방
+            // (방장: OOO)")를 담기엔 Width=153이 너무 좁아서, 방장 이름
+            // 부분이 시야 밖으로 잘려 아예 안 보이는 문제가 있었다. 이
+            // 줄은 그룹박스 오른쪽 끝(Left=404+Width=153=557, 그룹박스
+            // 폭 562)에 거의 딱 맞게 배치돼 있고 바로 아래는 채팅
+            // 리스트박스라 가로/세로 어느 쪽으로도 더 넓힐 여유가 없다 —
+            // 그래서 라벨 자체를 넓히는 대신, 말줄임표(...)로 우아하게
+            // 잘라내고 전체 텍스트는 마우스를 올리면 툴팁으로 보이게
+            // 했다(아래 UpdateRoomStatusUI()에서 ToolTip.SetToolTip() 호출).
+            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 58, Width = 153, ForeColor = TextMutedColor, AutoEllipsis = true };
+            _roomStatusToolTip = new ToolTip();
 
             // [추가] 파일 첨부 — 입력창 왼쪽에 작은 버튼으로 배치. 클릭하면
             // 파일 선택 창이 뜨고, 업로드가 끝나면 자동으로 채팅 메시지로 전송된다.
@@ -647,7 +744,7 @@ namespace ChatApp
             _btnSend.Click += BtnSend_Click;
             StyleDynamicButton(_btnSend);
 
-            _listBoxChat = new ListBox
+            _listBoxChat = new DoubleBufferedListBox
             {
                 Left = 10,
                 Top = 88,
@@ -657,6 +754,16 @@ namespace ChatApp
                 HorizontalScrollbar = false, // 말풍선 너비를 자동으로 줄바꿈하려면 가로 스크롤은 꺼둬야 함
                 ScrollAlwaysVisible = true,
                 BackColor = ChatTheme.FixedChatBackground,
+                // [수정] 기본값(SelectionMode.One)이면 클릭한 항목이 "선택"되면서
+                // ChatListBox_DrawItem()의 e.DrawBackground()가 행 전체를
+                // 시스템 하이라이트 색(파란색)으로 칠한다 — 그 위에 말풍선만
+                // 다시 그려지니, 말풍선 바깥 여백(아바타 자리 등)은 파란색이
+                // 그대로 남아 보이는 버그였다. 이 리스트박스에서 클릭은
+                // "항목 선택"이 아니라 링크 열기/파일 다운로드 트리거 용도로만
+                // 쓰이므로(ChatListBox_MouseClick 참고), 선택 기능 자체를 꺼서
+                // 하이라이트가 생길 일이 없게 한다 — MouseClick 이벤트는
+                // SelectionMode와 무관하게 그대로 발생하므로 기능엔 영향 없다.
+                SelectionMode = SelectionMode.None,
             };
             _listBoxChat.MeasureItem += ChatListBox_MeasureItem;
             _listBoxChat.DrawItem += ChatListBox_DrawItem;
@@ -681,7 +788,7 @@ namespace ChatApp
             groupBox2.Controls.AddRange(new Control[]
             {
                 lblCard2Title,
-                _cbChatRoomId, _btnRoomEnter, _btnRoomLeave,
+                _btnRoomList, _btnCreateRoom, _btnRoomLeave, _btnRenameRoom, _btnDeleteRoom,
                 lblServerUserCount, _txtServerUserCount, lblLobbyUserCount, _txtLobbyUserCount,
                 lblRoomUserCount, _txtRoomUserCount, _lblCurrentRoom,
                 _btnAttachFile, _txtMessage, _btnSend, _listBoxChat,
@@ -802,15 +909,34 @@ namespace ChatApp
             galleryPagePanel.Controls.Add(_galleryPanel);
             tabPageGallery.Controls.Add(galleryPagePanel);
 
+            var tabPageRoomList = new TabPage("채팅방");
+            var roomListPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+            _roomListPanel = new RoomListPanel();
+            // [추가] 이 패널 안에서 방 입장에 성공하면(직접 클릭/방 만들기
+            // 둘 다) 여기로 알려준다 — 현재 방 이름/방장 상태를 갱신하고
+            // 대화 탭으로 자동 전환한다(RoomEnterResPacket 자체엔 응답이
+            // 오는 즉시 대화 탭의 OnRoomEnterResultReceived도 별도로 반응해
+            // _currentRoomId 등을 갱신하므로, 여기서는 "탭 전환 + 이름/방장
+            // 보완"만 담당하면 된다).
+            _roomListPanel.RoomEntered += OnRoomListPanelRoomEntered;
+            roomListPagePanel.Controls.Add(_roomListPanel);
+            tabPageRoomList.Controls.Add(roomListPagePanel);
+
+            // [수정] 탭 순서: 대화(0) → 채팅방(1) → 갤러리(2). 아래
+            // SelectedIndex 하드코딩 값(BtnRoomList_Click/SwitchToGalleryTab
+            // 등)도 전부 이 순서에 맞춰져 있다 — 순서를 또 바꾸면 그쪽도
+            // 같이 고쳐야 한다.
             tabControl.TabPages.Add(tabPageChat);
+            tabControl.TabPages.Add(tabPageRoomList);
             tabControl.TabPages.Add(tabPageGallery);
 
-            // 갤러리 탭으로 전환할 때마다 최신 목록을 다시 받아온다 — 방금
-            // 다른 탭(대화)에서 업로드/설정한 이미지가 곧바로 반영되게.
+            // 갤러리/채팅방 목록 탭으로 전환할 때마다 최신 목록을 다시 받아온다.
             tabControl.SelectedIndexChanged += (s, e) =>
             {
                 if (tabControl.SelectedTab == tabPageGallery)
                     _galleryPanel.RefreshList();
+                else if (tabControl.SelectedTab == tabPageRoomList)
+                    _roomListPanel.RefreshList();
             };
 
             _tabControl = tabControl;

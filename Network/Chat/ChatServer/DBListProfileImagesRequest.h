@@ -14,8 +14,6 @@
 #include <string>
 #include <vector>
 
-constexpr BYTE kDbCallIdent_ListProfileImages = 203;
-
 //***************************************************************************
 // @brief 갤러리 항목 하나를 DB 왕복용으로 담는 평범한 구조체(프로토콜의
 //        ListProfileImagesItemResPacket과는 별개 — 이쪽은 고정폭 char 배열이

@@ -303,6 +303,131 @@ struct DeleteChatMessageNotifyPacket : PacketHeader
 	int64	messageId;
 };
 
+//***************************************************************************
+// @brief [추가] 방 생성 요청 구조체 (Client -> Server).
+// @details 생성과 동시에 요청자가 방장이 된다. 개수 제한(설정 파일의
+//          MaxRoomsPerOwner)에 걸리면 CreateRoomResPacket::reason이
+//          ERoomResult::RoomLimitExceeded로 온다.
+//***************************************************************************
+struct CreateRoomReqPacket : PacketHeader
+{
+	char	roomName[kRoomNameBytes];	// 방 이름(UTF-8)
+};
+
+//***************************************************************************
+// @brief [추가] 방 생성 응답 구조체 (Server -> Client).
+//***************************************************************************
+struct CreateRoomResPacket : PacketHeader
+{
+	uint8	success;	// 1: 성공, 0: 실패
+	uint8	reason;		// ERoomResult
+	int32	roomId;		// success==1일 때만 유효 — 새로 생성된 방 번호
+};
+
+//***************************************************************************
+// @brief [추가] 방 삭제 요청 구조체 (Client -> Server).
+// @details 요청자가 그 방의 현재 방장이어야 한다(아니면 reason이
+//          ERoomResult::NotOwner). 로비(kLobbyRoomId)는 애초에 rooms
+//          테이블에 존재하지 않는 예약값이라 이 요청 대상이 될 수 없다
+//          (서버가 RoomNotFound로 처리).
+//***************************************************************************
+struct DeleteRoomReqPacket : PacketHeader
+{
+	int32	roomId;
+};
+
+//***************************************************************************
+// @brief [추가] 방 삭제 응답 구조체 (Server -> Client, 요청자에게만).
+//***************************************************************************
+struct DeleteRoomResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;		// ERoomResult
+};
+
+//***************************************************************************
+// @brief [추가] 방 삭제 알림 (Server -> Client, 서버가 자발적으로 브로드캐스트).
+// @details 삭제가 성공했을 때만, 그 방(삭제되는 방 자체)에 있던 멤버
+//          전원에게 간다 — 받는 쪽은 로비로 돌아간 것으로 화면을 갱신하면
+//          된다(서버도 그 멤버들을 실제로 로비로 옮긴 뒤 이 알림을 보낸다).
+//***************************************************************************
+struct DeleteRoomNotifyPacket : PacketHeader
+{
+	int32	roomId;
+};
+
+//***************************************************************************
+// @brief [추가] 방 이름 변경 요청 구조체 (Client -> Server).
+// @details 요청자가 그 방의 현재 방장이어야 한다.
+//***************************************************************************
+struct RenameRoomReqPacket : PacketHeader
+{
+	int32	roomId;
+	char	newName[kRoomNameBytes];	// UTF-8
+};
+
+//***************************************************************************
+// @brief [추가] 방 이름 변경 응답 구조체 (Server -> Client, 요청자에게만).
+//***************************************************************************
+struct RenameRoomResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;		// ERoomResult
+};
+
+//***************************************************************************
+// @brief [추가] 방 이름 변경 알림 (Server -> Client, 서버가 자발적으로 브로드캐스트).
+// @details 변경이 성공했을 때만, 그 방에 있는 멤버 전원(요청자 포함)에게
+//          간다 — 화면에 표시 중인 방 이름을 갱신하면 된다.
+//***************************************************************************
+struct RenameRoomNotifyPacket : PacketHeader
+{
+	int32	roomId;
+	char	newName[kRoomNameBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 방 목록 조회 요청 구조체 (Client -> Server).
+// @details 바디 없음 — 로그인한 사용자면 누구나 전체 방 목록을 볼 수 있다
+//          (계정별 필터링 없음). ListProfileImagesReqPacket과 동일한 패턴.
+//***************************************************************************
+struct ListRoomsReqPacket : PacketHeader
+{
+};
+
+//***************************************************************************
+// @brief [추가] 방 목록 항목 단건 응답 구조체 (Server -> Client).
+//***************************************************************************
+struct ListRoomsItemResPacket : PacketHeader
+{
+	int32	roomId;
+	char	name[kRoomNameBytes];
+	char	ownerNickname[kNicknameBytes];	// 방장의 "지금" 닉네임(DB 조회 시점 스냅샷)
+	int32	userCount;						// 현재 그 방에 있는 인원수(GetRoomUserCount() 참고)
+};
+
+//***************************************************************************
+// @brief [추가] 방 목록 전송 완료 응답 구조체 (Server -> Client).
+//***************************************************************************
+struct ListRoomsEndResPacket : PacketHeader
+{
+	int32	totalCount;
+};
+
+//***************************************************************************
+// @brief [추가] 방장 자동 이양 알림 (Server -> Client, 서버가 자발적으로 브로드캐스트).
+// @details 방장이 그 방을 나가서(로비 이동 또는 접속 종료) 서버가 남은
+//          멤버 중 가장 오래 있었던 사람에게 방장을 자동으로 넘겼을 때만
+//          온다 — 그 방에 있는 멤버 전원(새 방장 포함)에게 간다. 아무도
+//          안 남았으면 이 알림 대신 DeleteRoomNotifyPacket이 간다(방
+//          자체가 삭제되므로).
+//***************************************************************************
+struct RoomOwnerChangedNotifyPacket : PacketHeader
+{
+	int32	roomId;
+	char	newOwnerNickname[kNicknameBytes];
+};
+
 #pragma pack(pop)
 
 #endif // ndef UC_CHATPACKET_H

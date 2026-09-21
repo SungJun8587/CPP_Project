@@ -156,6 +156,10 @@ int main()
 	// (ChatServerMain::RequestUploadToken() 참고).
 	server.SetFileServerUrl(TCharToString(SERVER_CONFIG->GetFileServerUrl()));
 
+	// 7-4. 1인당 생성 가능한 방 개수 상한 설정 — CreateRoomReq 처리
+	// 시(CChatServerMain::RequestCreateRoom()) 그대로 쓰인다.
+	server.SetMaxRoomsPerOwner(SERVER_CONFIG->GetMaxRoomsPerOwner());
+
 	std::cout << "ChatServer started. Press Ctrl+C to stop." << std::endl;
 
 	// 8. 메인 스레드 대기 루프 — 실제 I/O는 IOCP 워커 스레드들이 처리한다.

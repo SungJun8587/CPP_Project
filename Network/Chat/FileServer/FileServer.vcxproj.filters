@@ -154,7 +154,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Image\PngCodec.cpp">
       <Filter>UtilCore\Image</Filter>
     </ClCompile>
-    <ClCompile Include="ImageResizeUtil.cpp" />
     <ClCompile Include="FileServerRouter.cpp" />
     <ClCompile Include="FileMetadataRepository.cpp" />
     <ClCompile Include="FileSendBufferPool.cpp" />
@@ -453,7 +452,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Image\PngCodec.h">
       <Filter>UtilCore\Image</Filter>
     </ClInclude>
-    <ClInclude Include="ImageResizeUtil.h" />
     <ClInclude Include="FileServerRouter.h" />
     <ClInclude Include="FileMetadata.h" />
     <ClInclude Include="FileMetadataRepository.h" />

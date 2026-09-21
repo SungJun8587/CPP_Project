@@ -13,11 +13,11 @@
 --   - 토큰 원문은 DB에 저장하지 않음 — 해시만 저장(CryptoUtil.h/AccountDBHandler.cpp 설계 참고)
 -- ***************************************************************************
 
-CREATE DATABASE IF NOT EXISTS chat_db
+CREATE DATABASE IF NOT EXISTS chat
 	CHARACTER SET utf8mb4
 	COLLATE utf8mb4_unicode_ci;
 
-USE chat_db;
+USE chat;
 
 -- ---------------------------------------------------------------------------
 -- users : uid = 내부 전용 순번 PK, public_id = 외부 노출용 안정 식별자,
@@ -111,6 +111,37 @@ COLLATE = utf8mb4_unicode_ci
 COMMENT = '유저당 여러 장 저장 가능한 프로필 이미지 갤러리';
 
 -- ---------------------------------------------------------------------------
+-- rooms : 동적으로 생성/삭제되는 이름 있는 채팅방. [신규]
+--   - room_id는 이 테이블의 AUTO_INCREMENT 값을 그대로 프로토콜의 int32
+--     roomId로 쓴다(1부터 시작 — MySQL AUTO_INCREMENT 기본 동작). 로비를
+--     가리키는 예약값 kLobbyRoomId(0)과는 절대 충돌하지 않는다.
+--   - owner_public_id: 방장의 계정. 방장이 방을 나가면(로비 이동/접속
+--     종료) 서버가 남은 멤버 중 가장 오래 있었던 사람에게 자동으로
+--     이양한다(TransferRoomOwnerDBHandler.cpp) — 그 방에 아무도 안
+--     남았으면 방 자체를 삭제한다(방장 없는 빈 방을 남겨두지 않음).
+--   - [설계] 방 생성 개수 제한(설정 파일의 MaxRoomsPerOwner)은 이 테이블에
+--     제약으로 걸지 않는다 — CreateRoomDBHandler.cpp가 INSERT 전에
+--     COUNT(*)로 직접 확인한다(설정값은 DB가 아니라 서버 설정 파일에
+--     있으므로, DB 제약만으로는 표현할 수 없음).
+-- ---------------------------------------------------------------------------
+CREATE TABLE rooms
+(
+	room_id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '방 고유 번호(프로토콜의 roomId와 동일)',
+	name            VARCHAR(50)  NOT NULL COMMENT '방 이름(표시용, 방장이 변경 가능)',
+	owner_public_id CHAR(32)     NOT NULL COMMENT '방장 계정 — users.public_id 참조. 방장이 나가면 서버가 자동으로 다른 멤버에게 이양',
+	created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '방 생성 시각',
+
+	INDEX idx_rooms_owner_public_id (owner_public_id),
+	CONSTRAINT fk_rooms_owner
+		FOREIGN KEY (owner_public_id) REFERENCES users (public_id)
+		ON DELETE CASCADE
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_unicode_ci
+COMMENT = '동적으로 생성/삭제되는 이름 있는 채팅방';
+
+-- ---------------------------------------------------------------------------
 -- (선택) 애플리케이션 접속 계정 생성 — demo(ChatServer.cpp)의 CDBNode 설정과
 -- 맞추려면 아래 계정 정보를 그대로 쓰거나, 실제 운영 값으로 바꿔서 실행하세요.
 -- 이미 계정이 있다면 이 블록은 건너뛰어도 됩니다. DB 관리자 권한 필요.
@@ -120,12 +151,8 @@ COMMENT = '유저당 여러 장 저장 가능한 프로필 이미지 갤러리';
 -- FLUSH PRIVILEGES;
 
 -- ---------------------------------------------------------------------------
--- (마이그레이션) 이미 users 테이블이 존재하는 기존 DB라면:
---   1) users.profile_image_url 컬럼을 예전에 추가했었다면 이제 필요 없으니
---      제거하세요(대표 이미지는 user_profile_images.status로만 관리).
---        ALTER TABLE users DROP COLUMN profile_image_url;
---   2) user_profile_images 테이블이 없다면 위 CREATE TABLE 블록을 그대로
---      실행하세요.
---   3) 신규 계정 생성 시 GRANT 대상에 이 테이블도 추가해야 합니다:
---        GRANT SELECT, INSERT, UPDATE, DELETE ON chat_db.user_profile_images TO 'chat_user'@'%';
+-- (마이그레이션) 이미 users/user_profile_images 테이블이 있는 기존 DB에
+-- rooms 기능만 추가하려면 위 CREATE TABLE rooms 블록만 그대로 실행하고,
+-- 아래 GRANT도 추가하세요:
+--   GRANT SELECT, INSERT, UPDATE, DELETE ON chat_db.rooms TO 'chat_user'@'%';
 -- ---------------------------------------------------------------------------

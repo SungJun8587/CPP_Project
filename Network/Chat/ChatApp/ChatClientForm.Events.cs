@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -50,6 +51,7 @@ namespace ChatApp
                     // IsLoggedIn() 확인)하므로, TCP 연결 시점이 아니라
                     // 로그인 성공 시점에 붙인다.
                     _galleryPanel.AttachClient(_client);
+                    _roomListPanel.AttachClient(_client);
 
                     // 서버가 로그인 직후 자동으로 로비에 배정한다 — 클라이언트도
                     // 그 전제로 현재 위치를 로비로 잡아둔다(서버의 RoomUserCountNotify가
@@ -59,7 +61,6 @@ namespace ChatApp
 
                     _btnSend.Enabled = true;
                     _btnAttachFile.Enabled = true;
-                    _cbChatRoomId.Enabled = true;
                     _txtMessage.Enabled = true;
                     _btnOpenNicknameDialog.Visible = true;
                     _picProfileImage.Visible = true;
@@ -160,10 +161,7 @@ namespace ChatApp
                 }
                 else
                 {
-                    string reasonText = (res.Reason == RoomResult.InvalidRoomId)
-                        ? $"유효하지 않은 방 번호입니다(1~{ProtocolConstants.MaxRoomId})."
-                        : "알 수 없는 오류";
-                    AppendSystemLog("[시스템] 방 입장 실패 - " + reasonText, ColorSystemError);
+                    AppendSystemLog("[시스템] 방 입장 실패 - " + DescribeRoomResult(res.Reason), ColorSystemError);
                 }
             });
         }
@@ -177,6 +175,8 @@ namespace ChatApp
                     AppendSystemLog($"[시스템] {res.RoomId}번 방에서 나감 (남은 인원 {res.RoomUserCount}명)", ColorSystemOk);
 
                     _currentRoomId = ProtocolConstants.LobbyRoomId;
+                    _currentRoomName = null;
+                    _currentRoomOwnerNickname = null;
                     _txtRoomUserCount.Text = ""; // 로비 자체 인원수는 이 라벨이 아니라 RoomUserCountNotify로 별도 관리하지 않음(단순화)
                     UpdateRoomStatusUI();
                 }
@@ -232,6 +232,14 @@ namespace ChatApp
                         AppendSystemLog("[시스템] 프로필 이미지가 해제되었습니다.", ColorSystemOk);
                     else
                         AppendSystemLog("[시스템] 프로필 이미지가 설정되었습니다 - " + _myProfileImageUrl, ColorSystemOk);
+
+                    // [추가] 업로드/URL설정/해제 전부 이 응답 하나로 귀결되므로
+                    // (SetProfileImageUrlReq 공통 경로), 여기서 갤러리 탭의
+                    // 썸네일 목록을 바로 다시 불러온다 — 방금 바뀐 대표 표시나
+                    // 새로 추가된 사진이 갤러리 탭을 다시 열지 않아도 곧바로
+                    // 보이게 한다. 삭제는 ProfileImageGalleryPanel 안에서
+                    // 자체적으로 이미 이렇게 처리하고 있다(OnDeleteResultReceived).
+                    _galleryPanel.RefreshList();
                 }
                 else
                 {
@@ -293,7 +301,6 @@ namespace ChatApp
                 _btnConnect.Text = "접속";
                 _btnSend.Enabled = false;
                 _btnAttachFile.Enabled = false;
-                _cbChatRoomId.Enabled = false;
                 _txtMessage.Enabled = false;
                 _btnOpenNicknameDialog.Visible = false;
                 _picProfileImage.Visible = false;
@@ -316,6 +323,7 @@ namespace ChatApp
                 }
 
                 _galleryPanel.DetachClient();
+                _roomListPanel.DetachClient();
             });
         }
 
@@ -412,6 +420,18 @@ namespace ChatApp
             _client.RoomEnterResultReceived += OnRoomEnterResultReceived;
             _client.RoomLeaveResultReceived += OnRoomLeaveResultReceived;
             _client.RoomUserCountChanged += OnRoomUserCountChanged;
+
+            // [추가] 방 관리 — CreateRoomResultReceived/RoomListItemReceived/
+            // RoomListEndReceived는 여기서 구독하지 않는다(RoomListPanel(채팅방 탭)이
+            // 열려있는 동안만 자체적으로 구독/해지) — 메인 폼은 방 생성
+            // "지름길" 버튼(BtnCreateRoom_Click)의 결과만 알면 되므로
+            // CreateRoomResultReceived만 구독한다.
+            _client.CreateRoomResultReceived += OnCreateRoomResultReceived;
+            _client.DeleteRoomResultReceived += OnDeleteRoomResultReceived;
+            _client.DeleteRoomNotified += OnDeleteRoomNotified;
+            _client.RenameRoomResultReceived += OnRenameRoomResultReceived;
+            _client.RenameRoomNotified += OnRenameRoomNotified;
+            _client.RoomOwnerChangedNotified += OnRoomOwnerChangedNotified;
             _client.ServerUserCountReceived += OnServerUserCountReceived;
             _client.SetProfileImageUrlResultReceived += OnSetProfileImageUrlResultReceived;
             _client.DeleteChatMessageResultReceived += OnDeleteChatMessageResultReceived;
@@ -514,13 +534,103 @@ namespace ChatApp
             }
         }
 
-        private void BtnRoomEnter_Click(object sender, EventArgs e)
+        //***************************************************************************
+        // @brief [수정] "방 목록" 클릭 — 이제 모달 다이얼로그 대신 "채팅방"
+        //        그 안에서 목록 조회/생성/입장을 전부 처리하고, 실제로
+        //        입장에 성공하면 EnteredRoom에 방 이름/방장 정보가 담겨
+        //        돌아온다 — 그 값으로 로컬 상태(_currentRoomName/
+        //        _currentRoomOwnerNickname)를 갱신한다(RoomEnterResPacket
+        //        자체엔 이 정보가 없어서 이 다이얼로그가 보완해준다).
+        //***************************************************************************
+        //***************************************************************************
+        // @brief [수정] "방 목록" 클릭 — 이제 모달 다이얼로그 대신 "채팅방"
+        //        탭(RoomListPanel, 갤러리와 동일한 내장 패널 방식)으로
+        //        전환한다. 실제 목록 조회/생성/입장은 전부 그 패널이 처리하고,
+        //        입장에 성공하면 OnRoomListPanelRoomEntered()가 대화 탭으로
+        //        자동 전환해준다.
+        //***************************************************************************
+        private void BtnRoomList_Click(object sender, EventArgs e)
         {
-            if (_cbChatRoomId.SelectedItem == null)
+            _tabControl.SelectedIndex = 1; // 0=대화, 1=채팅방, 2=갤러리
+        }
+
+        //***************************************************************************
+        // @brief [추가] RoomListPanel에서 방 입장에 성공했을 때(직접 클릭
+        //        또는 그 안의 "방 만들기") 호출된다 — 방 이름/방장 상태를
+        //        갱신하고 대화 탭으로 자동 전환한다. _currentRoomId 자체는
+        //        대화 탭이 항상 구독 중인 OnRoomEnterResultReceived()가
+        //        이미 갱신했을 것이므로 여기서 다시 건드리지 않는다.
+        //***************************************************************************
+        private void OnRoomListPanelRoomEntered(RoomListItemData room)
+        {
+            _currentRoomName = room.Name;
+            _currentRoomOwnerNickname = room.OwnerNickname;
+            UpdateRoomStatusUI();
+            _tabControl.SelectedIndex = 0; // 대화 탭으로 전환
+        }
+
+        //***************************************************************************
+        // @brief [추가] "방 만들기" 클릭 — RoomListPanel(채팅방 탭)을 거치지 않고
+        //        메인 화면에서 바로 만들 수 있는 지름길. 이름만 물어보고
+        //        CreateRoomReq를 보낸 뒤 결과는 OnCreateRoomResultReceived()가
+        //        처리한다(성공 시 그 방으로 바로 입장까지 시도).
+        //***************************************************************************
+        private void BtnCreateRoom_Click(object sender, EventArgs e)
+        {
+            if (_client == null)
                 return;
 
-            int roomId = (int)_cbChatRoomId.SelectedItem;
-            _client?.RequestRoomEnter(roomId);
+            string roomName = PromptForText(this, "방 만들기", "방 이름을 입력하세요:", "");
+            if (string.IsNullOrWhiteSpace(roomName))
+                return;
+
+            // [추가] CreateRoomResData엔 roomId만 오고 이름은 안 온다 —
+            // OnCreateRoomResultReceived()가 _currentRoomName을 채울 수
+            // 있도록 방금 입력한 이름을 잠시 기억해둔다(RoomListPanel을
+            // 거친 경우엔 그 패널이 목록에서 직접 찾아 보완하므로 이 필드가
+            // 필요 없지만, 이 지름길 경로는 목록 자체를 조회한 적이 없어서
+            // 이렇게 하지 않으면 방 이름을 알 방법이 없다).
+            _pendingCreatedRoomName = roomName.Trim();
+            _client.RequestCreateRoom(_pendingCreatedRoomName);
+        }
+
+        //***************************************************************************
+        // @brief [추가] "이름변경" 클릭 — 방장일 때만 보이는 버튼
+        //        (UpdateRoomStatusUI() 참고). 새 이름을 물어보고
+        //        RenameRoomReq를 보낸다 — 성공 여부/실제 반영은
+        //        OnRenameRoomResultReceived()/OnRenameRoomNotified()가 처리한다.
+        //***************************************************************************
+        private void BtnRenameRoom_Click(object sender, EventArgs e)
+        {
+            if (_client == null || _currentRoomId <= ProtocolConstants.LobbyRoomId)
+                return;
+
+            string newName = PromptForText(this, "방 이름 변경", "새 방 이름을 입력하세요:", _currentRoomName ?? "");
+            if (string.IsNullOrWhiteSpace(newName))
+                return;
+
+            _client.RequestRenameRoom(_currentRoomId, newName.Trim());
+        }
+
+        //***************************************************************************
+        // @brief [추가] "방 삭제" 클릭 — 방장일 때만 보이는 버튼. 확인
+        //        후 DeleteRoomReq를 보낸다 — 성공하면 서버가 이 클라이언트를
+        //        포함해 그 방에 있던 모두를 로비로 옮기고 DeleteRoomNotify를
+        //        보내주므로(OnDeleteRoomNotified()), 여기서 직접 화면을
+        //        로비로 되돌리지는 않는다.
+        //***************************************************************************
+        private void BtnDeleteRoom_Click(object sender, EventArgs e)
+        {
+            if (_client == null || _currentRoomId <= ProtocolConstants.LobbyRoomId)
+                return;
+
+            if (MessageBox.Show(this, $"'{_currentRoomName}' 방을 삭제할까요?\n방에 있던 모든 사람이 로비로 이동됩니다.",
+                "방 삭제", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            _client.RequestDeleteRoom(_currentRoomId);
         }
 
         private void BtnRoomLeave_Click(object sender, EventArgs e)
@@ -544,6 +654,160 @@ namespace ChatApp
                 case LoginResult.AccountNotFound: return "저장된 계정을 찾을 수 없습니다.";
                 case LoginResult.TokenMismatch: return "토큰이 일치하지 않습니다(다른 기기의 잔여 토큰이거나 손상됨).";
                 case LoginResult.DbError: return "서버 오류 - 잠시 후 다시 시도해주세요.";
+                default: return reason.ToString();
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] "방 만들기" 지름길 버튼(BtnCreateRoom_Click)의 결과.
+        //        채팅방 탭(RoomListPanel)의 "방 만들기"로 만든 경우엔 그
+        //        패널 자신이 별도로 이 이벤트를 구독해 처리하므로(RoomListPanel.
+        //        OnCreateRoomResultReceived), 그 탭이 열려있는 동안엔 이
+        //        핸들러도 같이 불린다 — 성공 시 여기서도 동일하게 자동
+        //        입장을 시도하지만, 이미 같은 방에 입장 중이면 서버 입장에서
+        //        중복 RoomEnterReq는 그냥 "이미 그 방에 있음"으로 안전하게
+        //        처리되므로 문제없다.
+        //***************************************************************************
+        private void OnCreateRoomResultReceived(CreateRoomResData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (!data.Success)
+                {
+                    AppendSystemLog("[시스템] 방 생성 실패 - " + DescribeRoomResult(data.Reason), ColorSystemError);
+                    return;
+                }
+
+                // [수정 — 버그] CreateRoomResultReceived는 이 핸들러와
+                // RoomListPanel.OnCreateRoomResultReceived() 둘 다 구독하고
+                // 있다 — "채팅방" 탭의 자체 "방 만들기"로 생성했을 때도
+                // 이 핸들러가 똑같이 불려서, 예전엔 여기서도 무조건
+                // RequestRoomEnter()를 또 보냈다. 그러면 입장 요청이 두 번
+                // 나가고, 두 번째 RoomEnterRes가 도착했을 때 RoomListPanel
+                // 쪽의 _pendingCreatedRoomName은 이미 첫 응답 처리 때
+                // null로 비워진 뒤라 "(새 방)"으로 덮어써버리는 경쟁 상태가
+                // 있었다(반대 방향도 마찬가지 — RoomListPanel.cs의
+                // OnCreateRoomResultReceived() 주석 참고). 이 핸들러 자신의
+                // _pendingCreatedRoomName이 비어있다는 건 "이 방 만들기
+                // 버튼(채팅 탭 지름길)으로 생성된 게 아니다"라는 뜻이므로,
+                // 그 경우엔 아무것도 안 하고 RoomListPanel 쪽 처리에 맡긴다.
+                if (_pendingCreatedRoomName == null)
+                    return;
+
+                AppendSystemLog($"[시스템] 방 생성 성공(roomId={data.RoomId}) - 입장 중...", ColorSystemOk);
+
+                // 방금 입력했던 이름을 그대로 쓰고, 방장은 나 자신이므로
+                // 내 닉네임으로 채운다.
+                _currentRoomName = _pendingCreatedRoomName;
+                _currentRoomOwnerNickname = _currentNickname;
+                _pendingCreatedRoomName = null;
+
+                _client?.RequestRoomEnter(data.RoomId);
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 삭제 요청(BtnDeleteRoom_Click)의 결과 — 요청자
+        //        본인에게만 온다. 실제로 로비로 옮겨지는 것은 이 응답이
+        //        아니라 곧이어 오는 DeleteRoomNotify(그 방 멤버 전원에게)가
+        //        처리한다 — 여기서는 성공/실패 로그만 남긴다.
+        //***************************************************************************
+        private void OnDeleteRoomResultReceived(DeleteRoomResData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (!data.Success)
+                    AppendSystemLog("[시스템] 방 삭제 실패 - " + DescribeRoomResult(data.Reason), ColorSystemError);
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 삭제 알림 — 삭제된 방에 있던 멤버 전원에게(요청자
+        //        포함) 온다. 서버가 이미 그 멤버들을 실제로 로비로 옮긴
+        //        뒤에 보내는 알림이므로, 클라이언트는 자기 화면 상태만
+        //        로비로 맞춰주면 된다(별도로 RoomLeaveReq를 보낼 필요 없음).
+        //***************************************************************************
+        private void OnDeleteRoomNotified(DeleteRoomNotifyData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (data.RoomId != _currentRoomId)
+                    return; // 내가 있던 방이 아니면(다른 방 삭제 알림이 잘못 온 경우는 없지만 방어적으로) 무시
+
+                AppendSystemLog("[시스템] 방이 삭제되어 로비로 이동했습니다.", ColorSystemInfo);
+
+                _currentRoomId = ProtocolConstants.LobbyRoomId;
+                _currentRoomName = null;
+                _currentRoomOwnerNickname = null;
+                _txtRoomUserCount.Text = "";
+                UpdateRoomStatusUI();
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 이름 변경 요청(BtnRenameRoom_Click)의 결과 —
+        //        요청자 본인에게만 온다. 실제 이름 반영은 곧이어 오는
+        //        RenameRoomNotify(그 방 멤버 전원에게)가 처리한다.
+        //***************************************************************************
+        private void OnRenameRoomResultReceived(RenameRoomResData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (!data.Success)
+                    AppendSystemLog("[시스템] 방 이름 변경 실패 - " + DescribeRoomResult(data.Reason), ColorSystemError);
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 이름 변경 알림 — 그 방에 있는 멤버 전원에게
+        //        (요청자 포함) 온다.
+        //***************************************************************************
+        private void OnRenameRoomNotified(RenameRoomNotifyData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (data.RoomId != _currentRoomId)
+                    return;
+
+                _currentRoomName = data.NewName;
+                UpdateRoomStatusUI();
+                AppendSystemLog($"[시스템] 방 이름이 '{data.NewName}'(으)로 변경되었습니다.", ColorSystemInfo);
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방장 자동 이양 알림 — 방장이 나가서 서버가 남은
+        //        멤버 중 가장 오래 있었던 사람에게 자동으로 넘겼을 때, 그
+        //        방에 있는 멤버 전원에게(새 방장 포함) 온다.
+        //***************************************************************************
+        private void OnRoomOwnerChangedNotified(RoomOwnerChangedNotifyData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (data.RoomId != _currentRoomId)
+                    return;
+
+                _currentRoomOwnerNickname = data.NewOwnerNickname;
+                UpdateRoomStatusUI();
+
+                bool isMeNewOwner = data.NewOwnerNickname == _currentNickname;
+                AppendSystemLog(isMeNewOwner
+                    ? "[시스템] 방장이 나가서 내가 새 방장이 되었습니다."
+                    : $"[시스템] 방장이 나가서 '{data.NewOwnerNickname}'님이 새 방장이 되었습니다.",
+                    ColorSystemInfo);
+            });
+        }
+
+        private static string DescribeRoomResult(RoomResult reason)
+        {
+            switch (reason)
+            {
+                case RoomResult.InvalidRoomId: return "존재하지 않는 방입니다.";
+                case RoomResult.RoomNotFound: return "존재하지 않는 방입니다.";
+                case RoomResult.NotOwner: return "방장만 할 수 있습니다.";
+                case RoomResult.RoomLimitExceeded: return "생성 가능한 방 개수를 초과했습니다.";
+                case RoomResult.InvalidName: return "방 이름이 올바르지 않습니다.";
+                case RoomResult.DbError: return "서버 오류가 발생했습니다.";
                 default: return reason.ToString();
             }
         }

@@ -126,8 +126,7 @@ int main()
 		FILESERVER_CONFIG->GetMaxSessionCount(), FILESERVER_CONFIG->GetWorkerThreadCnt(),
 		FILESERVER_CONFIG->GetStorageDir(),
 		TCharToString(FILESERVER_CONFIG->GetPublicBaseUrl()),
-		FILESERVER_CONFIG->GetMaxUploadBytes(),
-		FILESERVER_CONFIG->GetMaxProfileImageDimension()
+		FILESERVER_CONFIG->GetMaxUploadBytes()
 	);
 
 	if( !started )

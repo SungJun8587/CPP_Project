@@ -185,6 +185,33 @@
     <ClCompile Include="PacketHandler\DeleteChatMessageHandler.cpp">
       <Filter>PacketHandler</Filter>
     </ClCompile>
+    <ClCompile Include="PacketHandler\CreateRoomHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\DeleteRoomHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ListRoomsHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\RenameRoomHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\CreateRoomDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\DeleteRoomDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\ListRoomsDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\RenameRoomDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\TransferRoomOwnerDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -454,6 +481,11 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
+    <ClInclude Include="DBCreateRoomRequest.h" />
+    <ClInclude Include="DBDeleteRoomRequest.h" />
+    <ClInclude Include="DBListRoomsRequest.h" />
+    <ClInclude Include="DBRenameRoomRequest.h" />
+    <ClInclude Include="DBTransferRoomOwnerRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

@@ -57,13 +57,35 @@ namespace ChatApp
         DeleteChatMessageReq = 26,      // Client -> Server
         DeleteChatMessageRes = 27,      // Server -> Client, 요청자에게만
         DeleteChatMessageNotify = 28,   // Server -> Client, 그 메시지가 원래 브로드캐스트된 방 전체에(요청자 포함)
+
+        // [추가] 방 생성/삭제/이름변경/목록조회 + 방장 자동 이양 알림 —
+        // 서버 쪽 ChatPacketTypes.h와 번호를 정확히 맞춰야 한다.
+        CreateRoomReq = 29,             // Client -> Server, 방 생성 요청(생성자가 방장이 됨)
+        CreateRoomRes = 30,             // Server -> Client, 방 생성 결과 응답
+        DeleteRoomReq = 31,             // Client -> Server, 방 삭제 요청(방장만 가능)
+        DeleteRoomRes = 32,             // Server -> Client, 방 삭제 결과 응답(요청자에게만)
+        DeleteRoomNotify = 33,          // Server -> Client, 방 삭제 시 그 방 멤버 전원에게
+        RenameRoomReq = 34,             // Client -> Server, 방 이름 변경 요청(방장만 가능)
+        RenameRoomRes = 35,             // Server -> Client, 방 이름 변경 결과 응답(요청자에게만)
+        RenameRoomNotify = 36,          // Server -> Client, 방 이름 변경 시 그 방 멤버 전원에게
+        ListRoomsReq = 37,              // Client -> Server, 존재하는 모든 방 목록 조회 요청
+        ListRoomsItemRes = 38,          // Server -> Client, 방 목록 항목 단건 응답(가변 개수 스트리밍)
+        ListRoomsEndRes = 39,           // Server -> Client, 방 목록 전송 완료
+        RoomOwnerChangedNotify = 40,    // Server -> Client, 방장이 나가서 다른 멤버에게 자동 이양됐을 때 그 방 멤버 전원에게
     }
 
-    // RoomEnterResPacket::reason
+    // RoomEnterResPacket::reason 및 방 생성/삭제/이름변경 결과 공용.
+    // [수정] 방 생성/삭제/이름변경 기능 도입으로 사유가 늘었다 — 서버
+    // ChatPacketTypes.h::ERoomResult와 정확히 같은 값을 유지해야 한다.
     public enum RoomResult : byte
     {
         Ok = 0,
         InvalidRoomId = 1,
+        RoomNotFound = 2,
+        NotOwner = 3,
+        RoomLimitExceeded = 4,
+        InvalidName = 5,
+        DbError = 6,
     }
 
     // LoginResPacket::reason / ChangeNicknameResPacket::reason 공용.
@@ -102,6 +124,8 @@ namespace ChatApp
         public const int GeneratedNicknameBytes = 32;   // NicknameGenerateResPacket::nickname — kNicknameBytes와 별개 상수라 혼동 주의
 
         public const int ProfileImageUrlBytes = 256;    // kProfileImageUrlBytes
+
+        public const int RoomNameBytes = 100;    // kRoomNameBytes
 
         public const int UploadTokenBytes = 64;         // kUploadTokenBytes 대응 — RequestUploadTokenResPacket::uploadToken 필드 크기(16진 인코딩된 32바이트 토큰)
 
@@ -319,7 +343,9 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief 방 입장 요청. roomId는 1~ProtocolConstants.MaxRoomId만 유효(서버가 재검증).
+        // @brief 방 입장 요청. [수정] roomId는 더 이상 고정 범위(1~MaxRoomId)가
+        //        아니다 — 서버가 CChatServerMain::RoomExists()로 실제 존재
+        //        여부를 확인한다(동적 생성/삭제되는 방).
         //***************************************************************************
         public static byte[] BuildRoomEnterReq(int roomId)
         {
@@ -330,6 +356,70 @@ namespace ChatApp
                 bw.Write(size);
                 bw.Write((ushort)PacketType.RoomEnterReq);
                 bw.Write(roomId);
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 생성 요청. 성공하면 요청자가 방장이 된다.
+        //***************************************************************************
+        public static byte[] BuildCreateRoomReq(string roomName)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + ProtocolConstants.RoomNameBytes);
+                bw.Write(size);
+                bw.Write((ushort)PacketType.CreateRoomReq);
+                bw.Write(FixedUtf8(roomName, ProtocolConstants.RoomNameBytes));
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 삭제 요청. 요청자가 그 방의 현재 방장이어야 한다.
+        //***************************************************************************
+        public static byte[] BuildDeleteRoomReq(int roomId)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(int));
+                bw.Write(size);
+                bw.Write((ushort)PacketType.DeleteRoomReq);
+                bw.Write(roomId);
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 이름 변경 요청. 요청자가 그 방의 현재 방장이어야 한다.
+        //***************************************************************************
+        public static byte[] BuildRenameRoomReq(int roomId, string newName)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(int) + ProtocolConstants.RoomNameBytes);
+                bw.Write(size);
+                bw.Write((ushort)PacketType.RenameRoomReq);
+                bw.Write(roomId);
+                bw.Write(FixedUtf8(newName, ProtocolConstants.RoomNameBytes));
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 존재하는 모든 방 목록 조회 요청. 바디 없음 — 로그인한
+        //        사용자면 누구나 조회 가능.
+        //***************************************************************************
+        public static byte[] BuildListRoomsReq()
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                bw.Write((ushort)ProtocolConstants.HeaderBytes);
+                bw.Write((ushort)PacketType.ListRoomsReq);
                 return ms.ToArray();
             }
         }
@@ -428,6 +518,81 @@ namespace ChatApp
         public string SenderNickname;   // Server -> Client 방향에서만 의미 있음(브로드캐스트 시점의 발신자 닉네임)
         public string SenderProfileImageUrl;    // 위와 동일한 의미 — 미설정이면 빈 문자열
         public string Message;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방 생성 응답.
+    //***************************************************************************
+    public class CreateRoomResData
+    {
+        public bool Success;
+        public RoomResult Reason;
+        public int RoomId;  // Success==true일 때만 유효
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방 삭제 응답(요청자에게만).
+    //***************************************************************************
+    public class DeleteRoomResData
+    {
+        public bool Success;
+        public RoomResult Reason;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방 삭제 알림 — 그 방에 있던 멤버 전원에게(요청자 포함).
+    //        받는 쪽은 로비로 돌아간 것으로 화면을 갱신하면 된다(서버도
+    //        실제로 그렇게 이동시킨 뒤 이 알림을 보낸다).
+    //***************************************************************************
+    public class DeleteRoomNotifyData
+    {
+        public int RoomId;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방 이름 변경 응답(요청자에게만).
+    //***************************************************************************
+    public class RenameRoomResData
+    {
+        public bool Success;
+        public RoomResult Reason;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방 이름 변경 알림 — 그 방에 있는 멤버 전원에게(요청자 포함).
+    //***************************************************************************
+    public class RenameRoomNotifyData
+    {
+        public int RoomId;
+        public string NewName;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방 목록 항목 하나.
+    //***************************************************************************
+    public class RoomListItemData
+    {
+        public int RoomId;
+        public string Name;
+        public string OwnerNickname;
+        public int UserCount;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방 목록 전송 완료.
+    //***************************************************************************
+    public class ListRoomsEndResData
+    {
+        public int TotalCount;
+    }
+
+    //***************************************************************************
+    // @brief [추가] 방장 자동 이양 알림 — 그 방에 있는 멤버 전원에게(새 방장 포함).
+    //***************************************************************************
+    public class RoomOwnerChangedNotifyData
+    {
+        public int RoomId;
+        public string NewOwnerNickname;
     }
 
     public class RoomEnterResPacketData
@@ -671,6 +836,131 @@ namespace ChatApp
                 br.ReadUInt16();
                 br.ReadUInt16();
                 return new DeleteChatMessageNotifyData { MessageId = br.ReadInt64() };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 생성 응답 파싱.
+        //***************************************************************************
+        public static CreateRoomResData ParseCreateRoomRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new CreateRoomResData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (RoomResult)br.ReadByte(),
+                    RoomId = br.ReadInt32(),
+                };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 삭제 응답 파싱.
+        //***************************************************************************
+        public static DeleteRoomResData ParseDeleteRoomRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new DeleteRoomResData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (RoomResult)br.ReadByte(),
+                };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 삭제 알림 파싱.
+        //***************************************************************************
+        public static DeleteRoomNotifyData ParseDeleteRoomNotify(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new DeleteRoomNotifyData { RoomId = br.ReadInt32() };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 이름 변경 응답 파싱.
+        //***************************************************************************
+        public static RenameRoomResData ParseRenameRoomRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new RenameRoomResData
+                {
+                    Success = br.ReadByte() != 0,
+                    Reason = (RoomResult)br.ReadByte(),
+                };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 이름 변경 알림 파싱.
+        //***************************************************************************
+        public static RenameRoomNotifyData ParseRenameRoomNotify(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                int roomId = br.ReadInt32();
+                string newName = Utf8FromFixed(br.ReadBytes(ProtocolConstants.RoomNameBytes));
+                return new RenameRoomNotifyData { RoomId = roomId, NewName = newName };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 목록 항목 단건 파싱.
+        //***************************************************************************
+        public static RoomListItemData ParseListRoomsItemRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                int roomId = br.ReadInt32();
+                string name = Utf8FromFixed(br.ReadBytes(ProtocolConstants.RoomNameBytes));
+                string ownerNickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
+                int userCount = br.ReadInt32();
+                return new RoomListItemData { RoomId = roomId, Name = name, OwnerNickname = ownerNickname, UserCount = userCount };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 목록 전송 완료 파싱.
+        //***************************************************************************
+        public static ListRoomsEndResData ParseListRoomsEndRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                return new ListRoomsEndResData { TotalCount = br.ReadInt32() };
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방장 자동 이양 알림 파싱.
+        //***************************************************************************
+        public static RoomOwnerChangedNotifyData ParseRoomOwnerChangedNotify(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                int roomId = br.ReadInt32();
+                string newOwnerNickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
+                return new RoomOwnerChangedNotifyData { RoomId = roomId, NewOwnerNickname = newOwnerNickname };
             }
         }
 

@@ -86,7 +86,6 @@ using namespace std;
 #include "FileStorage.h"
 #include "LocalFileStorage.h"
 #include "FileSendBufferPool.h"
-#include "ImageResizeUtil.h"
 #include "FileMetadata.h"
 #include "FileMetadataRepository.h"
 #include "FileServerSession.h"

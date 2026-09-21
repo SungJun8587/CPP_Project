@@ -19,5 +19,8 @@
     <Compile Update="ProfileImageGalleryPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="RoomListPanel.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
   </ItemGroup>
 </Project>

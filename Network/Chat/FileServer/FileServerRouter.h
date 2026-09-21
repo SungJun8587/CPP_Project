@@ -2,18 +2,16 @@
 //***************************************************************************
 // FileServerRouter.h : interface for the CFileServerRouter class.
 //
-// [설계 — Router/Handler 분리] CFileServerMain::HandleRequest()에 있던
-// 메서드+경로 라우팅 로직을 그대로 옮겼다. 실제 처리는 이 클래스가 소유한
-// 세 핸들러(Upload/Download/Delete)에 위임한다 — CFileServerMain은 이제
-// 이 라우터 하나를 생성해서 HandleRequest() 호출을 그대로 전달만 한다.
 //***************************************************************************
 
 #ifndef UC_FILESERVERROUTER_H
 #define UC_FILESERVERROUTER_H
 
+#include "FileServerSession.h"
 #include "FileUploadHandler.h"
 #include "FileDownloadHandler.h"
 #include "FileDeleteHandler.h"
+#include <Network/HTTP/HttpPacketBuilder.h>
 #include <Network/HTTP/HttpRequestParser.h>
 
 #include <memory>
@@ -34,8 +32,7 @@ public:
 		CRedisService* redisService,
 		CFileMetadataRepository* metadataRepo,
 		std::string publicBaseUrl,
-		int64 maxUploadBytes,
-		int32 maxProfileImageDimension);
+		int64 maxUploadBytes);
 
 	//***************************************************************************
 	// @brief 완성된 HTTP 요청 하나를 라우팅합니다(CFileServerSession::OnRecv()가

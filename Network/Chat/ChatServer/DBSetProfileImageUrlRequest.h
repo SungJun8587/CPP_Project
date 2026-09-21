@@ -15,13 +15,6 @@
 #include <array>
 
 //***************************************************************************
-// @brief 이 DB 비동기 시스템 안에서 프로필 이미지 URL 설정 요청을 식별할 callIdent.
-// @details kDbCallIdent_Signup(200)/kDbCallIdent_ChangeNickname(201)과
-//          겹치지 않게 배정.
-//***************************************************************************
-constexpr BYTE kDbCallIdent_SetProfileImageUrl = 202;
-
-//***************************************************************************
 // @struct ST_SET_PROFILE_IMAGE_URL_REQ
 // @brief 로그인된 계정(publicId로 식별)에 외부 URL을 새 갤러리 항목으로
 //        등록하고 대표(status=1)로 지정하는 요청.

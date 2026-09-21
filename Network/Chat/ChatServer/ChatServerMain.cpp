@@ -14,6 +14,11 @@
 #include "DBSetProfileImageUrlRequest.h"
 #include "DBSelectProfileImageRequest.h"
 #include "DBDeleteProfileImageRequest.h"
+#include "DBCreateRoomRequest.h"
+#include "DBDeleteRoomRequest.h"
+#include "DBRenameRoomRequest.h"
+#include "DBListRoomsRequest.h"
+#include "DBTransferRoomOwnerRequest.h"
 
 #include <algorithm>
 #include <cstring>
@@ -73,6 +78,13 @@ bool CChatServerMain::Start(
 	// 실패로 걸린다.
 	if( !MEMBER_DB_ASYNC.StartService(dbNodeVec, dbMaxThreadCnt) )
 		return false;
+
+	// [추가] DB(rooms 테이블)에 저장된 방 목록을 인메모리 레지스트리로
+	// 읽어들인다 — 비동기라 이 시점엔 완료를 기다리지 않는다(완료 전
+	// 짧은 창에서는 RoomEnterReq가 그 방들을 "존재하지 않음"으로 볼 수
+	// 있으나, DB 워커가 보통 매우 빨리 처리하므로 실무 영향은 미미하다고
+	// 판단).
+	LoadRoomRegistryFromDb();
 
 	// 3. IOCP 서버 서비스 시작 — 세션 팩토리가 CChatSession을 생성하며 this를 주입
 	SessionFactory factory = [this]() -> CSessionRef
@@ -308,7 +320,7 @@ void CChatServerMain::RequestSignup(
 
 	// DB 워커 스레드 → JobQueue로 이관하는 콜백. CChatSession의 public
 	// API만 쓰면 어느 스레드가 실제로 이 잡을 실행하든 안전하다.
-	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, const std::string& completedNickname,
+	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, const std::string& completedNickname,
 		const std::array<BYTE, kPublicIdBytes>& completedPublicId,
 		const std::array<BYTE, kTokenBytes>& newToken,
 		const std::string& profileImageUrl)
@@ -316,10 +328,15 @@ void CChatServerMain::RequestSignup(
 			if( jobQueue == nullptr )
 				return;
 
-			jobQueue->DoAsync([onComplete, result, completedNickname, completedPublicId, newToken, profileImageUrl]()
+			// [추가] DB(AccountDBHandler.cpp)가 돌려준 image_ref가 상대
+			// 경로("/images/...")로 저장돼 있으면 클라이언트에게 나가기
+			// 전에 완전한 URL로 복원한다 — ToDisplayImageUrl() 참고.
+			const std::string displayProfileImageUrl = ToDisplayImageUrl(profileImageUrl);
+
+			jobQueue->DoAsync([onComplete, result, completedNickname, completedPublicId, newToken, displayProfileImageUrl]()
 				{
 					if( onComplete )
-						onComplete(result, completedNickname, completedPublicId, newToken, profileImageUrl);
+						onComplete(result, completedNickname, completedPublicId, newToken, displayProfileImageUrl);
 				});
 		};
 
@@ -425,7 +442,11 @@ void CChatServerMain::RequestSetProfileImageUrl(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result,
+	// [추가] DB엔 "{fileServerUrl}/images/{경로}" 형태 대신 "/images/{경로}"만
+	// 저장한다 — ToStorableImageRef() 참고. 외부 URL이면 그대로 통과된다.
+	const std::string storableUrl = ToStorableImageRef(newUrl);
+
+	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result,
 		const std::array<BYTE, kPublicIdBytes>& completedPublicId,
 		const std::string& completedNewUrl,
 		int64 newImageId)
@@ -433,22 +454,28 @@ void CChatServerMain::RequestSetProfileImageUrl(
 			if( jobQueue == nullptr )
 				return;
 
-			jobQueue->DoAsync([onComplete, result, completedPublicId, completedNewUrl, newImageId]()
+			// [추가] DB(SetProfileImageUrlDBHandler.cpp)는 방금 저장한 값을
+			// 그대로 에코해주므로, 상대 경로로 저장했다면 이 시점의
+			// completedNewUrl도 상대 경로다 — 클라이언트에겐 항상 완전한
+			// URL을 줘야 하므로 여기서 다시 복원한다.
+			const std::string displayUrl = ToDisplayImageUrl(completedNewUrl);
+
+			jobQueue->DoAsync([onComplete, result, completedPublicId, displayUrl, newImageId]()
 				{
 					if( onComplete )
-						onComplete(result, completedPublicId, completedNewUrl, newImageId);
+						onComplete(result, completedPublicId, displayUrl, newImageId);
 				});
 		};
 
 	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SET_PROFILE_IMAGE_URL_REQ>(
 		MEMBER_DB_ASYNC,
 		kDbCallIdent_SetProfileImageUrl,
-		[&publicId, &newUrl, dispatchToJobQueue](ST_SET_PROFILE_IMAGE_URL_REQ* req)
+		[&publicId, &storableUrl, dispatchToJobQueue](ST_SET_PROFILE_IMAGE_URL_REQ* req)
 		{
 			::memcpy(req->publicId, publicId.data(), publicId.size());
 
-			const size_t urlCopyLen = (std::min)(newUrl.size(), sizeof(req->url) - 1);
-			::memcpy(req->url, newUrl.data(), urlCopyLen);
+			const size_t urlCopyLen = (std::min)(storableUrl.size(), sizeof(req->url) - 1);
+			::memcpy(req->url, storableUrl.data(), urlCopyLen);
 
 			req->onComplete = dispatchToJobQueue;
 		},
@@ -474,6 +501,12 @@ void CChatServerMain::MoveToRoom(std::shared_ptr<CChatSession> session, int32 ne
 	int32 oldRoomRemainingCount = 0;
 	bool hadOldRoom = false;
 	int32 newRoomCountAfter = 0;
+	// [추가] 방장 이양 판단(HandleRoomOwnershipOnLeave)에 쓸 스냅샷 — 이
+	// 함수는 _roomMutex를 해제한 뒤에 호출해야 하므로(그 안에서
+	// BroadcastToRoom()/MoveToRoom() 재귀 호출이 다시 _roomMutex를 잠금),
+	// 락이 걸려있는 동안 필요한 정보만 미리 복사해둔다.
+	std::vector<std::shared_ptr<CChatSession>> oldRoomRemainingMembers;
+	const std::array<BYTE, kPublicIdBytes> leavingPublicId = session->GetPublicId();
 
 	{
 		std::lock_guard<std::mutex> lock(_roomMutex);
@@ -497,6 +530,13 @@ void CChatServerMain::MoveToRoom(std::shared_ptr<CChatSession> session, int32 ne
 
 				oldRoomRemainingCount = static_cast<int32>(members.size());
 				hadOldRoom = true;
+
+				oldRoomRemainingMembers.reserve(members.size());
+				for( auto& w : members )
+				{
+					if( auto s = w.lock() )
+						oldRoomRemainingMembers.push_back(s);
+				}
 			}
 		}
 
@@ -527,7 +567,14 @@ void CChatServerMain::MoveToRoom(std::shared_ptr<CChatSession> session, int32 ne
 	// 인원수가 바뀐 두 위치(원래 있던 곳/새로 들어간 곳)에 갱신된 인원수를
 	// 알린다 — 이미 그 방에 있던 다른 사람들의 화면도 실시간으로 갱신되게.
 	if( hadOldRoom && oldRoomId != newRoomId )
+	{
 		NotifyRoomUserCount(oldRoomId, oldRoomRemainingCount);
+
+		// [추가] 방금 나간 사람이 그 방의 방장이었는지 확인하고, 맞으면
+		// 이양/삭제를 처리한다 — 로비(kLobbyRoomId)나 레지스트리에 없는
+		// 위치면 이 함수가 즉시 반환하므로 항상 호출해도 안전하다.
+		HandleRoomOwnershipOnLeave(oldRoomId, leavingPublicId, oldRoomRemainingMembers);
+	}
 	NotifyRoomUserCount(newRoomId, newRoomCountAfter);
 }
 
@@ -542,6 +589,11 @@ void CChatServerMain::LeaveCurrentRoom(CChatSession* session)
 	int32 roomId = -1;
 	int32 remainingCount = 0;
 	bool hadRoom = false;
+	// [추가] MoveToRoom()과 동일한 이유 — _roomMutex 해제 후 사용할 스냅샷.
+	// leavingPublicId는 session 포인터가 이 함수 이후(연결 종료 마무리
+	// 과정에서) 소멸될 수 있으므로 값으로 미리 복사해둔다.
+	std::vector<std::shared_ptr<CChatSession>> remainingMembers;
+	const std::array<BYTE, kPublicIdBytes> leavingPublicId = session->GetPublicId();
 
 	{
 		std::lock_guard<std::mutex> lock(_roomMutex);
@@ -564,10 +616,20 @@ void CChatServerMain::LeaveCurrentRoom(CChatSession* session)
 
 		remainingCount = static_cast<int32>(members.size());
 		hadRoom = true;
+
+		remainingMembers.reserve(members.size());
+		for( auto& w : members )
+		{
+			if( auto s = w.lock() )
+				remainingMembers.push_back(s);
+		}
 	}
 
 	if( hadRoom )
+	{
 		NotifyRoomUserCount(roomId, remainingCount);
+		HandleRoomOwnershipOnLeave(roomId, leavingPublicId, remainingMembers);
+	}
 }
 
 //***************************************************************************
@@ -711,15 +773,24 @@ void CChatServerMain::RequestListProfileImages(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, const std::vector<SProfileImageEntry>& images)
+	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, const std::vector<SProfileImageEntry>& images)
 		{
 			if( jobQueue == nullptr )
 				return;
 
-			jobQueue->DoAsync([onComplete, result, images]()
+			// [추가] 목록 항목마다 image_ref가 상대 경로로 저장돼 있으면
+			// 완전한 URL로 복원한다 — RequestSignup()과 동일한 이유
+			// (ToDisplayImageUrl() 참고). 벡터를 복사해서 그 자리에서
+			// 바꿔치기한다 — 원본 images는 DB 콜백 스코프가 끝나면 사라지므로
+			// 어차피 복사가 필요했다.
+			std::vector<SProfileImageEntry> displayImages = images;
+			for( SProfileImageEntry& entry : displayImages )
+				entry.imageRef = ToDisplayImageUrl(entry.imageRef);
+
+			jobQueue->DoAsync([onComplete, result, displayImages]()
 				{
 					if( onComplete )
-						onComplete(result, images);
+						onComplete(result, displayImages);
 				});
 		};
 
@@ -867,4 +938,452 @@ void CChatServerMain::ScheduleFileDeletionIfOwned(const std::string& deletedImag
 	args.push_back(relativePath);
 
 	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+}
+
+//***************************************************************************
+// @brief DB에 저장하기 직전 — "{fileServerUrl}/images/{경로}" 형태면
+//        "/images/{경로}"만 남기고 호스트 부분을 잘라낸다.
+// @details ScheduleFileDeletionIfOwned()와 정확히 같은 접두사 판별 방식을
+//          쓴다 — FileServerMain::BuildPublicUrl()이 만드는 형식과 일치해야
+//          하므로, 그 함수가 이미 검증해둔 로직을 그대로 재사용했다.
+//***************************************************************************
+std::string CChatServerMain::ToStorableImageRef(const std::string& url) const
+{
+	if( url.empty() || _fileServerUrl.empty() )
+		return url;
+
+	std::string hostPrefix = _fileServerUrl;
+	if( !hostPrefix.empty() && hostPrefix.back() == '/' )
+		hostPrefix.pop_back();
+
+	// "{fileServerUrl}/images/..." -> "/images/..." — 맨 앞 "/"(=/images/의
+	// 시작)는 hostPrefix에 포함시키지 않고 남겨서, 결과가 항상 "/"로
+	// 시작하는 상대 경로가 되게 한다(ToDisplayImageUrl()이 이 "/"로 판별함).
+	if( url.rfind(hostPrefix, 0) == 0 )
+	{
+		const std::string remainder = url.substr(hostPrefix.size());
+		if( !remainder.empty() && remainder.front() == '/' )
+			return remainder;
+	}
+
+	return url; // 외부 URL이거나 형식이 안 맞음 — 그대로 저장(자르지 않음)
+}
+
+//***************************************************************************
+// @brief 클라이언트에게 보내기 직전 — ToStorableImageRef()의 역방향.
+// @details "/"로 시작하지 않으면(=이미 완전한 URL, 외부 URL이거나 이 기능
+//          적용 전에 저장된 예전 값) 그대로 돌려준다 — 그래서 기존 행을
+//          마이그레이션하지 않아도 안전하게 계속 동작한다.
+//***************************************************************************
+std::string CChatServerMain::ToDisplayImageUrl(const std::string& imageRef) const
+{
+	if( imageRef.empty() || _fileServerUrl.empty() || imageRef.front() != '/' )
+		return imageRef;
+
+	std::string hostPrefix = _fileServerUrl;
+	if( !hostPrefix.empty() && hostPrefix.back() == '/' )
+		hostPrefix.pop_back();
+
+	return hostPrefix + imageRef;
+}
+
+//***************************************************************************
+// @brief 방을 새로 만듭니다. RequestChangeNickname()과 동일한 구조를
+//        따르되, 성공 시 인메모리 레지스트리 등록이라는 부수효과가 하나
+//        더 있다 — 그 등록은 순수 데이터 작업(세션/IOCP 객체를 안 건드림)
+//        이라 DB 워커 스레드에서 바로 해도 안전하다(RequestDeleteProfileImage()의
+//        ScheduleFileDeletionIfOwned() 호출과 동일한 선례).
+//***************************************************************************
+void CChatServerMain::RequestCreateRoom(
+	std::shared_ptr<CChatSession> session,
+	const std::array<BYTE, kPublicIdBytes>& ownerPublicId,
+	const std::string& roomName,
+	std::function<void(ERoomResult result, int32 newRoomId)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_CREATE_ROOM_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_CreateRoom,
+		[this, ownerPublicId, roomName, jobQueue, onComplete](ST_CREATE_ROOM_REQ* req)
+		{
+			::memcpy(req->ownerPublicId, ownerPublicId.data(), ownerPublicId.size());
+			req->roomName = roomName;
+			req->maxRoomsPerOwner = _maxRoomsPerOwner;
+
+			req->onComplete = [this, ownerPublicId, roomName, jobQueue, onComplete](ERoomResult result, int32 newRoomId)
+				{
+					if( result == ERoomResult::Ok )
+					{
+						std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+						_roomRegistry[newRoomId] = SRoomInfo{ roomName, ownerPublicId };
+					}
+
+					if( jobQueue == nullptr )
+						return;
+
+					jobQueue->DoAsync([onComplete, result, newRoomId]()
+						{
+							if( onComplete )
+								onComplete(result, newRoomId);
+						});
+				};
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ERoomResult::DbError, 0);
+	}
+}
+
+//***************************************************************************
+// @brief 방을 삭제합니다.
+// @details [설계] 성공하면 그 방에 남아있던 멤버 전원에게
+//          DeleteRoomNotifyPacket을 브로드캐스트하고 로비로 옮긴 뒤,
+//          레지스트리에서도 제거한다 — 패킷 핸들러가 멤버 목록에 접근할
+//          방법이 없어서(그 정보는 이 클래스만 갖고 있음) 여기서 전담한다.
+//          이 부수효과들은 DB 워커 스레드에서 실행되지만, CChatSession::Send()가
+//          스레드 세이프(헤더 문서 참고)하고 MoveToRoom()/BroadcastToRoom()도
+//          자체 락(_roomMutex)으로 보호되므로 안전하다.
+//***************************************************************************
+void CChatServerMain::RequestDeleteRoom(
+	std::shared_ptr<CChatSession> session,
+	int32 roomId,
+	const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+	std::function<void(ERoomResult result)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_ROOM_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_DeleteRoom,
+		[this, roomId, requesterPublicId, jobQueue, onComplete](ST_DELETE_ROOM_REQ* req)
+		{
+			req->roomId = roomId;
+			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+
+			req->onComplete = [this, roomId, jobQueue, onComplete](ERoomResult result)
+				{
+					if( result == ERoomResult::Ok )
+					{
+						std::vector<std::shared_ptr<CChatSession>> members;
+						{
+							std::lock_guard<std::mutex> lock(_roomMutex);
+							auto it = _roomMembers.find(roomId);
+							if( it != _roomMembers.end() )
+							{
+								members.reserve(it->second.size());
+								for( auto& w : it->second )
+									if( auto s = w.lock() )
+										members.push_back(s);
+							}
+						}
+
+						DeleteRoomNotifyPacket notify{};
+						notify.size = sizeof(notify);
+						notify.type = static_cast<uint16>(EChatPacketType::DeleteRoomNotify);
+						notify.roomId = roomId;
+						BroadcastToRoom(roomId, &notify, notify.size);
+
+						// 남아있던 멤버 전원을 로비로 이동. MoveToRoom() 내부가
+						// 이 방(oldRoomId==roomId)의 방장 이양 로직도 같이 타게
+						// 되는데, 방 자체가 곧 레지스트리에서 삭제될 것이므로
+						// (바로 아래) 그 로직은 "레지스트리에 이미 없음" 경로로
+						// 빠져 아무 일도 안 한다 — 순서가 중요하다(레지스트리
+						// 삭제를 먼저 하면 이 멤버 이동들이 다른 코드 경로를
+						// 타서 예상과 달라질 수 있음).
+						for( auto& memberSession : members )
+						{
+							int32 lobbyCount = 0;
+							MoveToRoom(memberSession, kLobbyRoomId, lobbyCount);
+						}
+
+						{
+							std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+							_roomRegistry.erase(roomId);
+						}
+					}
+
+					if( jobQueue == nullptr )
+						return;
+
+					jobQueue->DoAsync([onComplete, result]()
+						{
+							if( onComplete )
+								onComplete(result);
+						});
+				};
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ERoomResult::DbError);
+	}
+}
+
+//***************************************************************************
+// @brief 방 이름을 바꿉니다. 성공 시 그 방 멤버 전원에게
+//        RenameRoomNotifyPacket을 브로드캐스트한다.
+//***************************************************************************
+void CChatServerMain::RequestRenameRoom(
+	std::shared_ptr<CChatSession> session,
+	int32 roomId,
+	const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+	const std::string& newName,
+	std::function<void(ERoomResult result)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_RENAME_ROOM_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_RenameRoom,
+		[this, roomId, requesterPublicId, newName, jobQueue, onComplete](ST_RENAME_ROOM_REQ* req)
+		{
+			req->roomId = roomId;
+			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			req->newName = newName;
+
+			req->onComplete = [this, roomId, newName, jobQueue, onComplete](ERoomResult result)
+				{
+					if( result == ERoomResult::Ok )
+					{
+						{
+							std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+							auto it = _roomRegistry.find(roomId);
+							if( it != _roomRegistry.end() )
+								it->second.name = newName;
+						}
+
+						RenameRoomNotifyPacket notify{};
+						notify.size = sizeof(notify);
+						notify.type = static_cast<uint16>(EChatPacketType::RenameRoomNotify);
+						notify.roomId = roomId;
+						const size_t nameCopyLen = (std::min)(newName.size(), sizeof(notify.newName) - 1);
+						::memcpy(notify.newName, newName.data(), nameCopyLen);
+						BroadcastToRoom(roomId, &notify, notify.size);
+					}
+
+					if( jobQueue == nullptr )
+						return;
+
+					jobQueue->DoAsync([onComplete, result]()
+						{
+							if( onComplete )
+								onComplete(result);
+						});
+				};
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ERoomResult::DbError);
+	}
+}
+
+//***************************************************************************
+// @brief 존재하는 모든 방을 조회합니다. RequestListProfileImages()와
+//        완전히 동일한 구조(부수효과 없음 — 순수 조회).
+//***************************************************************************
+void CChatServerMain::RequestListRooms(
+	std::shared_ptr<CChatSession> session,
+	std::function<void(ELoginResult result, const std::vector<SRoomListEntry>& rooms)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
+		{
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, result, rooms]()
+				{
+					if( onComplete )
+						onComplete(result, rooms);
+				});
+		};
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOMS_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_ListRooms,
+		[dispatchToJobQueue](ST_LIST_ROOMS_REQ* req)
+		{
+			req->onComplete = dispatchToJobQueue;
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ELoginResult::DbError, std::vector<SRoomListEntry>());
+	}
+}
+
+//***************************************************************************
+// @brief roomId가 실제로 존재하는 방인지(로비 포함) 확인합니다.
+//***************************************************************************
+bool CChatServerMain::RoomExists(int32 roomId) const
+{
+	if( roomId == kLobbyRoomId )
+		return true;
+
+	std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+	return _roomRegistry.find(roomId) != _roomRegistry.end();
+}
+
+//***************************************************************************
+// @brief roomId를 떠난 사람이 그 방의 방장이었는지 확인하고, 맞으면
+//        이양(남은 멤버가 있을 때) 또는 삭제(아무도 안 남았을 때)를 한다.
+// @details [주의] 호출부(MoveToRoom()/LeaveCurrentRoom())가 이미 _roomMutex를
+//          해제한 뒤에 불러야 한다 — 이 함수가 내부적으로
+//          BroadcastToRoom()/MoveToRoom()(빈 방 정리 경로는 아니지만, 삭제
+//          쪽은 RequestDeleteRoom()의 onComplete가 그걸 하므로 여기서는
+//          아님)을 호출하지 않으므로 실제로는 재진입 위험이 없지만,
+//          _roomRegistryMutex와 _roomMutex의 락 순서를 항상 "먼저 걸린 락을
+//          풀고 다음 락을 건다"로 유지하기 위한 방어적 설계다.
+//***************************************************************************
+void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<BYTE, kPublicIdBytes>& leavingPublicId,
+	const std::vector<std::shared_ptr<CChatSession>>& remainingMembers)
+{
+	std::array<BYTE, kPublicIdBytes> currentOwner{};
+
+	{
+		std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+		auto it = _roomRegistry.find(roomId);
+		if( it == _roomRegistry.end() )
+			return; // 로비 등 방장 개념이 없는 위치
+
+		currentOwner = it->second.ownerPublicId;
+	}
+
+	if( currentOwner != leavingPublicId )
+		return; // 방장이 나간 게 아니면 할 일 없음
+
+	if( remainingMembers.empty() )
+	{
+		// 아무도 안 남음 — 방 자체를 지운다. 레지스트리는 즉시(동기) 반영해
+		// 그 사이 들어오는 RoomEnterReq가 이미 없는 방으로 정확히 처리되게
+		// 하고, DB 삭제는 비동기로 뒤따라간다(실패해도 인메모리 관점에서는
+		// 이미 없는 방이라 사용자 체감 문제는 없음 — 다만 로그는 남긴다).
+		{
+			std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+			_roomRegistry.erase(roomId);
+		}
+
+		PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_ROOM_REQ>(
+			MEMBER_DB_ASYNC,
+			kDbCallIdent_DeleteRoom,
+			[roomId, leavingPublicId](ST_DELETE_ROOM_REQ* req)
+			{
+				req->roomId = roomId;
+				::memcpy(req->requesterPublicId, leavingPublicId.data(), leavingPublicId.size());
+				req->onComplete = [roomId](ERoomResult result)
+					{
+						if( result != ERoomResult::Ok )
+							LOG_ERROR(_T("HandleRoomOwnershipOnLeave: 빈 방(roomId=%d) 자동 삭제 DB 반영 실패(reason=%d) — 인메모리에서는 이미 삭제됨"),
+								roomId, static_cast<int32>(result));
+					};
+			},
+			kMaxDbQueueCapacity);
+
+		return;
+	}
+
+	// 가장 오래 있었던 멤버(벡터 맨 앞 — _roomMembers가 erase-remove로
+	// 삽입 순서를 유지하므로)에게 이양한다.
+	std::shared_ptr<CChatSession> newOwnerSession = remainingMembers.front();
+	const std::array<BYTE, kPublicIdBytes> newOwnerPublicId = newOwnerSession->GetPublicId();
+	const std::string newOwnerNickname = newOwnerSession->GetNickname();
+
+	{
+		std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+		auto it = _roomRegistry.find(roomId);
+		if( it != _roomRegistry.end() )
+			it->second.ownerPublicId = newOwnerPublicId;
+	}
+
+	PushDBAsyncRequest<COdbcAsyncSrv, ST_TRANSFER_ROOM_OWNER_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_TransferRoomOwner,
+		[roomId, newOwnerPublicId](ST_TRANSFER_ROOM_OWNER_REQ* req)
+		{
+			req->roomId = roomId;
+			::memcpy(req->newOwnerPublicId, newOwnerPublicId.data(), newOwnerPublicId.size());
+			req->onComplete = [roomId](bool success)
+				{
+					if( !success )
+						LOG_ERROR(_T("HandleRoomOwnershipOnLeave: 방장 이양(roomId=%d) DB 반영 실패 — 인메모리는 이미 반영됨"), roomId);
+				};
+		},
+		kMaxDbQueueCapacity);
+
+	RoomOwnerChangedNotifyPacket notify{};
+	notify.size = sizeof(notify);
+	notify.type = static_cast<uint16>(EChatPacketType::RoomOwnerChangedNotify);
+	notify.roomId = roomId;
+	const size_t nicknameCopyLen = (std::min)(newOwnerNickname.size(), sizeof(notify.newOwnerNickname) - 1);
+	::memcpy(notify.newOwnerNickname, newOwnerNickname.data(), nicknameCopyLen);
+
+	BroadcastToRoom(roomId, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 서버 시작 시 DB에 저장된 모든 방을 인메모리 레지스트리로 읽어들인다.
+// @details Crypto::CCryptoUtil::FromHex()(CryptoUtil.h 확인 완료 —
+//          ToHex()의 정확한 역방향, 16진 문자열 -> 원본 바이트, 실패 시
+//          false 반환)로 DB의 16진 owner_public_id 문자열을 다시 바이트로
+//          복원한다. 형식이 깨진 값(있어서는 안 되지만 방어적으로)이면
+//          그 방 하나만 건너뛰고 나머지는 계속 로딩한다.
+//***************************************************************************
+void CChatServerMain::LoadRoomRegistryFromDb()
+{
+	PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOMS_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_ListRooms,
+		[this](ST_LIST_ROOMS_REQ* req)
+		{
+			req->onComplete = [this](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
+				{
+					if( result != ELoginResult::Ok )
+					{
+						LOG_ERROR(_T("LoadRoomRegistryFromDb: 방 목록 초기 로딩 실패"));
+						return;
+					}
+
+					std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+					int32 loadedCount = 0;
+					for( const SRoomListEntry& entry : rooms )
+					{
+						std::array<BYTE, kPublicIdBytes> ownerPublicId{};
+						if( !Crypto::CCryptoUtil::FromHex(entry.ownerPublicId, ownerPublicId.data(), ownerPublicId.size()) )
+						{
+							LOG_ERROR(_T("LoadRoomRegistryFromDb: roomId=%d의 owner_public_id 16진 디코딩 실패 — 이 방은 건너뜀"), entry.roomId);
+							continue;
+						}
+
+						_roomRegistry[entry.roomId] = SRoomInfo{ entry.name, ownerPublicId };
+						++loadedCount;
+					}
+
+					LOG_INFO(_T("LoadRoomRegistryFromDb: 방 %d개 로딩 완료"), loadedCount);
+				};
+		},
+		kMaxDbQueueCapacity);
 }

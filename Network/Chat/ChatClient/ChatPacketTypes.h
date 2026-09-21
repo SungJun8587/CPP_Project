@@ -41,9 +41,39 @@ constexpr size_t kNicknameBytes = 50;
 constexpr size_t kProfileImageUrlBytes = 256;
 
 //***************************************************************************
+// @brief [추가] 방 이름 필드 버퍼 바이트 크기 (UTF-8, NUL 포함).
+// @details DB rooms.name이 VARCHAR(50)이므로, 한글 기준(3바이트/글자)
+//          최대 길이를 넉넉히 커버하도록 여유 있게 잡았다.
+//***************************************************************************
+constexpr size_t kRoomNameBytes = 100;
+
+//***************************************************************************
+// @brief DB 비동기 요청(ST_XXX_REQ::callIdent)을 식별하는
+//        값들을 전부 여기 한곳에 모았다.
+// @details callIdent는 BYTE(0~255) 하나뿐이라 이 프로젝트 전체가 이
+//          공간을 공유한다 — 새 값을 추가할 때는 반드시 이 블록의
+//          마지막 값 다음 번호를 쓸 것.
+//***************************************************************************
+constexpr BYTE kDbCallIdent_Signup = 200;				// DBSignupRequest.h — 회원가입/재접속 검증
+constexpr BYTE kDbCallIdent_ChangeNickname = 201;		// DBChangeNicknameRequest.h — 닉네임 변경
+constexpr BYTE kDbCallIdent_SetProfileImageUrl = 202;	// DBSetProfileImageUrlRequest.h — 프로필 이미지 URL 등록
+constexpr BYTE kDbCallIdent_ListProfileImages = 203;	// DBListProfileImagesRequest.h — 프로필 이미지 갤러리 목록 조회
+constexpr BYTE kDbCallIdent_SelectProfileImage = 204;	// DBSelectProfileImageRequest.h — 갤러리 이미지 대표 지정
+constexpr BYTE kDbCallIdent_DeleteProfileImage = 205;	// DBDeleteProfileImageRequest.h — 갤러리 이미지 삭제
+constexpr BYTE kDbCallIdent_CreateRoom = 206;			// DBCreateRoomRequest.h — 방 생성
+constexpr BYTE kDbCallIdent_DeleteRoom = 207;			// DBDeleteRoomRequest.h — 방 삭제
+constexpr BYTE kDbCallIdent_RenameRoom = 208;			// DBRenameRoomRequest.h — 방 이름 변경
+constexpr BYTE kDbCallIdent_ListRooms = 209;			// DBListRoomsRequest.h — 방 목록 조회
+constexpr BYTE kDbCallIdent_TransferRoomOwner = 210;	// DBTransferRoomOwnerRequest.h — 방장 자동 이양(서버 내부 전용)
+
+//***************************************************************************
 // @brief 로비 및 룸 식별 상수
-// @details 로비(kLobbyRoomId=0)는 기본 공용 채팅 공간이며, 룸은 1~kMaxRoomId
-//          범위의 고정 식별자를 사용합니다.
+// @details [수정] 방이 동적으로 생성/삭제되면서 kMaxRoomId(고정 상한)는
+//          더 이상 "유효한 방 번호 범위"를 뜻하지 않는다 — 이제 방
+//          존재 여부는 CChatServerMain::RoomExists()(DB rooms 테이블 기반
+//          인메모리 레지스트리)로 판단한다. 이 상수 자체는 하위 호환을
+//          위해 남겨뒀을 뿐 더 이상 RoomEnterHandler.cpp 등에서 참조하지
+//          않는다.
 //***************************************************************************
 constexpr int32_t kLobbyRoomId = 0;
 constexpr int32_t kMaxRoomId = 10;
@@ -63,13 +93,19 @@ enum class ELoginResult : uint8_t
 };
 
 //***************************************************************************
-// @brief 방 입장 및 퇴장 처리 결과 열거형
+// @brief 방 입장/퇴장/생성/삭제/이름변경 처리 결과 열거형
 // @details RoomEnterResPacket::reason 등의 필드에 설정됩니다.
+// @details [추가] 방 생성/삭제/이름변경 기능 도입으로 사유가 늘었다.
 //***************************************************************************
 enum class ERoomResult : uint8_t
 {
-	Ok = 0,	// 성공
-	InvalidRoomId = 1,	// 유효하지 않은 Room ID (범위 초과)
+	Ok = 0,					// 성공
+	InvalidRoomId = 1,		// 유효하지 않은 Room ID (존재하지 않는 방)
+	RoomNotFound = 2,		// [추가] 존재하지 않는 방(삭제/이름변경 대상)
+	NotOwner = 3,			// [추가] 요청자가 그 방의 방장이 아님(삭제/이름변경 시도)
+	RoomLimitExceeded = 4,	// [추가] 1인당 생성 가능한 방 개수 상한 초과
+	InvalidName = 5,		// [추가] 방 이름 형식 위반(빈 문자열/길이 초과 등)
+	DbError = 6,			// [추가] DB 처리 오류
 };
 
 //***************************************************************************
@@ -103,6 +139,23 @@ enum class EChatPacketType : uint16_t
 	SelectProfileImageRes = 23,				// Server -> Client, 대표 이미지 선택 결과 응답
 	DeleteProfileImageReq = 24,				// Client -> Server, 갤러리 내 특정 이미지 삭제 요청
 	DeleteProfileImageRes = 25,				// Server -> Client, 이미지 삭제 결과 응답
+	DeleteChatMessageReq = 26,				// Client -> Server, 특정 채팅 메시지 삭제 요청
+	DeleteChatMessageRes = 27,				// Server -> Client, 메시지 삭제 결과 응답
+	DeleteChatMessageNotify = 28,			// Server -> Client(Broadcast), 메시지 삭제 실시간 통보
+
+	// [추가] 방 생성/삭제/이름변경/목록조회 + 방장 자동 이양 알림.
+	CreateRoomReq = 29,						// Client -> Server, 방 생성 요청(생성자가 방장이 됨)
+	CreateRoomRes = 30,						// Server -> Client, 방 생성 결과 응답
+	DeleteRoomReq = 31,						// Client -> Server, 방 삭제 요청(방장만 가능)
+	DeleteRoomRes = 32,						// Server -> Client, 방 삭제 결과 응답(요청자에게만)
+	DeleteRoomNotify = 33,					// Server -> Client(Broadcast), 방 삭제 시 그 방 멤버 전원에게
+	RenameRoomReq = 34,						// Client -> Server, 방 이름 변경 요청(방장만 가능)
+	RenameRoomRes = 35,						// Server -> Client, 방 이름 변경 결과 응답(요청자에게만)
+	RenameRoomNotify = 36,					// Server -> Client(Broadcast), 방 이름 변경 시 그 방 멤버 전원에게
+	ListRoomsReq = 37,						// Client -> Server, 존재하는 모든 방 목록 조회 요청
+	ListRoomsItemRes = 38,					// Server -> Client, 방 목록 항목 단건 응답(가변 개수 스트리밍)
+	ListRoomsEndRes = 39,					// Server -> Client, 방 목록 전송 완료 및 총 개수 통지
+	RoomOwnerChangedNotify = 40,			// Server -> Client(Broadcast), 방장이 나가서 다른 멤버에게 자동 이양됐을 때 그 방 멤버 전원에게
 };
 
 //***************************************************************************

@@ -12,7 +12,7 @@
 //***************************************************************************
 CFileServerConfig::CFileServerConfig()
 	: _nServerPort(0), _nMaxSessionCount(0), _nWorkerThreadCnt(0)
-	, _nRedisPoolSize(0), _nMaxUploadBytes(0), _nMaxProfileImageDimension(0)
+	, _nRedisPoolSize(0), _nMaxUploadBytes(0)
 {
 	memset(_tszServerName, 0, sizeof(_tszServerName));
 	memset(_tszIP, 0, sizeof(_tszIP));
@@ -62,17 +62,6 @@ bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 		return false;
 	}
 
-	// [주의] CRapidJSONUtil::operator[]가 키 누락 시 어떻게 동작하는지(예외/
-	// 기본값 등) 확인 못했다 — 다른 필수 키들과 마찬가지로 이 키도 설정
-	// 파일에 반드시 있어야 한다고 가정한다(예전 설정 파일에 이 키가 없다면
-	// 추가해줘야 함).
-	_nMaxProfileImageDimension = jsonUtil[_T("MaxProfileImageDimension")];
-	if( _nMaxProfileImageDimension <= 0 )
-	{
-		LOG_ERROR(_T("CFileServerConfig::Init: invalid MaxProfileImageDimension(%d) — must be > 0"), _nMaxProfileImageDimension);
-		return false;
-	}
-
 	_redisNodeVec = jsonUtil.Deserialize<CVector<CRedisNode>>(_T("RedisNode"));
 
 	return true;
@@ -102,7 +91,6 @@ void CFileServerConfig::PrintServerSettingInfo()
 	LOG_INFO(_T("StorageDir : %s"), _tszStorageDir);
 	LOG_INFO(_T("PublicBaseUrl : %s"), _tszPublicBaseUrl);
 	LOG_INFO(_T("MaxUploadBytes : %lld"), static_cast<long long>(_nMaxUploadBytes));
-	LOG_INFO(_T("MaxProfileImageDimension : %d"), _nMaxProfileImageDimension);
 
 	LOG_INFO(_T("--------------- Connect RedisNode size : %d ---------------"), static_cast<int>(_redisNodeVec.size()));
 	for( uint32 i = 0; i < _redisNodeVec.size(); i++ )

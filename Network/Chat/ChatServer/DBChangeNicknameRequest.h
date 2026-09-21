@@ -15,13 +15,6 @@
 #include <array>
 
 //***************************************************************************
-// @brief 이 DB 비동기 시스템 안에서 닉네임 변경 요청을 식별할 callIdent.
-// @details kDbCallIdent_Signup(200)과 겹치지 않게 배정 — DBSignupRequest.h
-//          참고(callIdent는 BYTE라 프로젝트 전체가 0~255 슬롯을 공유함).
-//***************************************************************************
-constexpr BYTE kDbCallIdent_ChangeNickname = 201;
-
-//***************************************************************************
 // @struct ST_CHANGE_NICKNAME_REQ
 // @brief 로그인된 계정(publicId로 식별)의 닉네임을 newNickname으로 바꾸는 요청.
 // @details [설계 변경] nickname은 더 이상 users 테이블의 PRIMARY KEY가

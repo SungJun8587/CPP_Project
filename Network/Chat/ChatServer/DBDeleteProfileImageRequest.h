@@ -13,8 +13,6 @@
 #include <functional>
 #include <string>
 
-constexpr BYTE kDbCallIdent_DeleteProfileImage = 205;
-
 //***************************************************************************
 // @struct ST_DELETE_PROFILE_IMAGE_REQ
 // @brief 갤러리에서 이미지 하나(imageId)를 삭제. WHERE에 user_public_id도
