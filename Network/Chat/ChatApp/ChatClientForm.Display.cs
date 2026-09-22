@@ -764,11 +764,18 @@ namespace ChatApp
             }
         }
 
-        private void AppendChat(string senderName, string senderProfileImageUrl, string message, bool isMyMessage, long messageId = 0)
+        //***************************************************************************
+        // @brief [수정] timestamp 파라미터 추가 — 실시간 메시지는 항상 null을
+        //        넘겨서 지금 시각을 쓰지만(기존 동작 그대로), 과거 대화
+        //        기록(OnChatHistoryItemReceived())은 실제 발신 시각을 그대로
+        //        넘겨서 날짜 구분선이 그 시점 기준으로 정확히 나뉘게 한다.
+        //***************************************************************************
+        private void AppendChat(string senderName, string senderProfileImageUrl, string message, bool isMyMessage, long messageId = 0, DateTime? timestamp = null)
         {
+            DateTime effectiveTimestamp = timestamp ?? DateTime.Now;
+
             // [추가] 마지막 메시지와 날짜(일 단위)가 다르면(또는 첫 메시지면)
             // 구분선을 먼저 끼워 넣는다 — 카카오톡 등에서 흔히 보이는 패턴.
-            DateTime now = DateTime.Now;
             DateTime? lastDate = null;
             for (int i = _listBoxChat.Items.Count - 1; i >= 0; i--)
             {
@@ -778,10 +785,10 @@ namespace ChatApp
                     break;
                 }
             }
-            if (lastDate == null || lastDate.Value != now.Date)
-                _listBoxChat.Items.Add(new DateSeparatorItem { Date = now });
+            if (lastDate == null || lastDate.Value != effectiveTimestamp.Date)
+                _listBoxChat.Items.Add(new DateSeparatorItem { Date = effectiveTimestamp });
 
-            _listBoxChat.Items.Add(new ChatBubbleItem(senderName, senderProfileImageUrl, message, isMyMessage, messageId));
+            _listBoxChat.Items.Add(new ChatBubbleItem(senderName, senderProfileImageUrl, message, isMyMessage, messageId) { Timestamp = effectiveTimestamp });
             int newIndex = _listBoxChat.Items.Count - 1;
             _listBoxChat.TopIndex = newIndex;
 
@@ -825,6 +832,7 @@ namespace ChatApp
                 _btnRoomLeave.Enabled = false;
                 _btnRenameRoom.Visible = false;
                 _btnDeleteRoom.Visible = false;
+                _pnlRoomInfo.Visible = false;
                 return;
             }
 
@@ -837,8 +845,7 @@ namespace ChatApp
             else
             {
                 string roomLabel = string.IsNullOrEmpty(_currentRoomName) ? $"{_currentRoomId}번 방" : _currentRoomName;
-                string ownerLabel = string.IsNullOrEmpty(_currentRoomOwnerNickname) ? "" : $" (방장: {_currentRoomOwnerNickname})";
-                SetCurrentRoomLabel($"위치: {roomLabel}{ownerLabel}");
+                SetCurrentRoomLabel($"위치: {roomLabel}");
             }
 
             _btnRoomList.Enabled = true;
@@ -848,6 +855,85 @@ namespace ChatApp
             bool isOwner = !inLobby && _currentRoomOwnerNickname != null && _currentRoomOwnerNickname == _currentNickname;
             _btnRenameRoom.Visible = isOwner;
             _btnDeleteRoom.Visible = isOwner;
+
+            // [추가] 방 프로필 이미지+이름+방장 행 — 로비에서는 숨기고,
+            // 방에 있을 때만 채워서 보여준다. 방장이면 아바타에 손 커서를
+            // 줘서 "클릭해서 바꿀 수 있다"를 암시한다(PnlRoomAvatar_Click
+            // 참고 — 방장이 아니면 클릭해도 아무 일도 안 함).
+            _pnlRoomInfo.Visible = !inLobby;
+            if (!inLobby)
+            {
+                _lblRoomInfoName.Text = string.IsNullOrEmpty(_currentRoomName) ? $"{_currentRoomId}번 방" : _currentRoomName;
+                _lblRoomInfoOwner.Text = string.IsNullOrEmpty(_currentRoomOwnerNickname) ? "" : $"방장: {_currentRoomOwnerNickname}";
+                _pnlRoomAvatar.RoomName = _lblRoomInfoName.Text;
+                _pnlRoomAvatar.Cursor = isOwner ? Cursors.Hand : Cursors.Default;
+
+                ApplyRoomAvatarImage(_currentRoomImageUrl);
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 아바타에 표시할 이미지를 갱신한다. 캐시에 이미
+        //        있으면 즉시 반영하고, 없으면 RequestAvatarImage()로
+        //        비동기 로딩을 걸고 완료되는 대로 다시 칠한다.
+        // @details 로딩이 끝나는 시점엔 사용자가 이미 다른 방으로 옮겨가
+        //          _currentRoomImageUrl이 바뀌어 있을 수 있다 — 그 경우
+        //          지금은 상관없는 이미지이므로 반영하지 않는다(완료 콜백
+        //          안에서 다시 한번 비교).
+        //***************************************************************************
+        private void ApplyRoomAvatarImage(string imageUrl)
+        {
+            if (string.IsNullOrEmpty(imageUrl))
+            {
+                AppendSystemLog("[디버그] ApplyRoomAvatarImage: URL이 비어있음 - 기본 아바타로", ColorSystemDebug);
+                _pnlRoomAvatar.LoadedImage = null;
+                _pnlRoomAvatar.Invalidate();
+                return;
+            }
+
+            Image cached;
+            lock (_avatarImageCache)
+            {
+                _avatarImageCache.TryGetValue(imageUrl, out cached);
+            }
+
+            if (cached != null)
+            {
+                AppendSystemLog($"[디버그] ApplyRoomAvatarImage: 캐시 히트 - 즉시 반영 (url={imageUrl})", ColorSystemDebug);
+                _pnlRoomAvatar.LoadedImage = cached;
+                _pnlRoomAvatar.Invalidate();
+                return;
+            }
+
+            AppendSystemLog($"[디버그] ApplyRoomAvatarImage: 캐시 미스 - 로딩 시작 (url={imageUrl})", ColorSystemDebug);
+            _pnlRoomAvatar.LoadedImage = null;
+            _pnlRoomAvatar.Invalidate();
+
+            RequestAvatarImage(imageUrl, () =>
+            {
+                if (IsDisposed || !IsHandleCreated)
+                    return;
+
+                Invoke((MethodInvoker)delegate
+                {
+                    if (_currentRoomImageUrl != imageUrl)
+                    {
+                        AppendSystemLog($"[디버그] ApplyRoomAvatarImage: 로딩 완료됐지만 그 사이 방이 바뀌어 무시 (요청url={imageUrl}, 지금url={_currentRoomImageUrl})", ColorSystemDebug);
+                        return; // 그 사이 다른 방으로 이동함 — 이 결과는 이제 안 맞음
+                    }
+
+                    lock (_avatarImageCache)
+                    {
+                        _avatarImageCache.TryGetValue(imageUrl, out var img);
+                        _pnlRoomAvatar.LoadedImage = img;
+                        AppendSystemLog(img != null
+                            ? $"[디버그] ApplyRoomAvatarImage: 로딩 완료 - 반영함 (url={imageUrl})"
+                            : $"[디버그] ApplyRoomAvatarImage: 로딩 완료됐는데 캐시에 이미지가 없음(fetch 실패 추정) (url={imageUrl})",
+                            ColorSystemDebug);
+                    }
+                    _pnlRoomAvatar.Invalidate();
+                });
+            });
         }
 
         //***************************************************************************

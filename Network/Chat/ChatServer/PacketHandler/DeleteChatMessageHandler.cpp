@@ -44,6 +44,10 @@ namespace
 		if( result != CChatServerMain::EDeleteMessageResult::Ok )
 			return;
 
+		// [추가] 대화 기록(Redis)에서도 이 메시지를 제거한다 — 로비면
+		// RemoveRoomChatMessage() 내부에서 즉시 반환하므로 안전하게 항상 호출.
+		server->RemoveRoomChatMessage(roomId, packet->messageId);
+
 		DeleteChatMessageNotifyPacket notify{};
 		notify.size = sizeof(notify);
 		notify.type = static_cast<uint16>(EChatPacketType::DeleteChatMessageNotify);

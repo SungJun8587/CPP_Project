@@ -240,6 +240,72 @@ public:
 	void ScheduleFileDeletionIfOwned(const std::string& deletedImageRef);
 
 	//***************************************************************************
+	// @brief [추가] 방 대화 기록 항목 하나(Redis 조회 결과를 담는 평범한 구조체).
+	//***************************************************************************
+	struct SChatHistoryEntry
+	{
+		int64		messageId = 0;
+		std::string	senderPublicId;		// 16진 문자열
+		std::string	nickname;			// 발신 당시 스냅샷
+		std::string	profileImageUrl;	// 발신 당시 스냅샷
+		std::string	message;
+		int64		timestampMs = 0;
+	};
+
+	//***************************************************************************
+	// @brief [추가] 방 대화 메시지 하나를 Redis에 기록한다(로비는 기록하지
+	//        않음 — kLobbyRoomId면 즉시 반환).
+	// @details 키 구조:
+	//          - "RoomChatOrder:{roomId}" : ZSET, score/member = messageId
+	//            (정렬/범위 조회용, ZREVRANGE로 최근 N개를 얻는다)
+	//          - "RoomChatMsg:{roomId}" : HASH, field = messageId, value =
+	//            "senderPublicId\x01nickname\x01profileImageUrl\x01message\x01timestampMs"
+	//            (필드를 SOH(0x01) 문자로 이어붙인 단일 문자열 — 일반
+	//            텍스트/닉네임/URL에 나올 일이 없는 제어문자라 이스케이프가
+	//            필요 없다. JSON 등 별도 파싱 라이브러리 의존 없이 안전하게
+	//            처리하기 위한 선택)
+	//          방 하나당 메시지 내용은 이 키 하나(HASH)에 필드로 전부 모여
+	//          있으므로, 조회 시 HMGET 한 번으로 여러 메시지를 한꺼번에
+	//          가져올 수 있다(메시지마다 별도 키를 만드는 방식보다 왕복이
+	//          훨씬 적다) — RequestRoomChatHistory() 참고.
+	// @details [설계] 개수 제한 없이 전부 저장한다(방이 삭제될 때까지) —
+	//          조회 시에만 최근 1000개로 자른다.
+	//***************************************************************************
+	void RecordRoomChatMessage(
+		int32 roomId,
+		const std::array<BYTE, kPublicIdBytes>& senderPublicId,
+		const std::string& nickname,
+		const std::string& profileImageUrl,
+		const std::string& message,
+		int64 messageId);
+
+	//***************************************************************************
+	// @brief [추가] 메시지 하나를 대화 기록에서 제거한다(DeleteChatMessageReq
+	//        성공 시 호출). 로비면 아무 일도 안 한다.
+	//***************************************************************************
+	void RemoveRoomChatMessage(int32 roomId, int64 messageId);
+
+	//***************************************************************************
+	// @brief [추가] 방의 대화 기록 전체를 지운다(방 삭제 시 호출) —
+	//        RoomChatOrder/RoomChatMsg 두 키를 통째로 DEL한다. 로비면
+	//        애초에 기록이 없으므로 아무 일도 안 한다.
+	//***************************************************************************
+	void ClearRoomChatHistory(int32 roomId);
+
+	//***************************************************************************
+	// @brief [추가] 방의 최근 대화 기록(최대 1000개)을 오래된 순서로
+	//        조회한다. 로비면 항상 빈 목록으로 즉시 완료한다.
+	// @details Redis 왕복 2번(ZREVRANGE로 최근 messageId 목록 → HMGET으로
+	//          그 내용들을 한 번에 조회)을 순차로 체이닝한다 — 메시지마다
+	//          개별 조회하면 최대 1000번 왕복이 필요해지므로, HMGET으로
+	//          한 번에 묶었다.
+	//***************************************************************************
+	void RequestRoomChatHistory(
+		std::shared_ptr<CChatSession> session,
+		int32 roomId,
+		std::function<void(const std::vector<SChatHistoryEntry>& history)> onComplete);
+
+	//***************************************************************************
 	// @brief [추가] DB(user_profile_images.image_ref)에 저장하기 직전에
 	//        호출 — "{fileServerUrl}/images/{경로}" 형태(우리 파일 서버가
 	//        만든 URL)면 앞부분을 잘라내고 "/images/{경로}"만 남긴다.
@@ -411,6 +477,26 @@ public:
 		std::function<void(ELoginResult result, const std::vector<SRoomListEntry>& rooms)> onComplete);
 
 	//***************************************************************************
+	// @brief [추가] 방 프로필 이미지를 설정/교체/해제합니다. requesterPublicId가
+	//        그 방의 현재 방장이어야 합니다. newImageUrl이 빈 문자열이면
+	//        해제(기본 이미지로 되돌림)로 처리합니다.
+	// @details [설계] RequestSetProfileImageUrl()과 동일하게 DB엔 상대경로로
+	//          저장하고(ToStorableImageRef()) 클라이언트로 나갈 땐 완전한
+	//          URL로 복원한다(ToDisplayImageUrl()). 성공하면 이 함수 내부에서:
+	//          1) 교체되기 전 이미지가 우리 파일 서버 소유였으면 실제 파일
+	//             삭제를 예약하고(ScheduleFileDeletionIfOwned()),
+	//          2) 그 방에 있는 멤버 전원에게 RoomImageChangedNotifyPacket을
+	//             브로드캐스트한다.
+	//          — onComplete는 요청자에게 보낼 직접 응답용으로만 쓰면 된다.
+	//***************************************************************************
+	void RequestSetRoomImage(
+		std::shared_ptr<CChatSession> session,
+		int32 roomId,
+		const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+		const std::string& newImageUrl,
+		std::function<void(ERoomResult result)> onComplete);
+
+	//***************************************************************************
 	// @brief [추가] 1인당 생성 가능한 방 개수 상한(설정 파일의
 	//        MaxRoomsPerOwner)을 반환합니다. RequestCreateRoom() 내부가
 	//        DB 요청(ST_CREATE_ROOM_REQ::maxRoomsPerOwner)에 그대로 실어
@@ -446,11 +532,20 @@ private:
 	//***************************************************************************
 	// @brief [추가] roomId를 떠난 사람이 그 방의 방장이었는지 확인하고,
 	//        맞으면 후속 처리(방장 이양 또는 빈 방 삭제)를 한다.
-	// @details MoveToRoom()/LeaveCurrentRoom()이 "이미 멤버 목록에서 제거를
-	//          마친 뒤"(=remainingMembers가 제거 후 남은 멤버) 호출한다 —
-	//          _roomMutex를 이미 해제한 상태에서 불러야 한다(이 함수
-	//          내부의 BroadcastToRoom()/MoveToRoom() 재귀 호출이 다시
-	//          _roomMutex를 잠그므로, 안 그러면 데드락이 난다).
+	// @details [수정] MoveToRoom()에서만 호출된다 — 즉 RoomLeaveReq(로비
+	//          복귀)나 다른 방으로 이동하는 것처럼 "명시적으로 그 방을
+	//          떠나는 행동"에서만 작동한다. LeaveCurrentRoom()(연결 종료
+	//          전용)에서는 의도적으로 호출하지 않는다 — 단순 접속 끊김
+	//          (네트워크 문제, 앱 재시작 등)만으로 방장이 자동 이양되거나
+	//          방이 삭제돼버리면, 방 대화 기록을 "방이 없어질 때까지
+	//          유지"하기로 한 취지와 맞지 않는다. 방장은 오프라인 상태에서도
+	//          여전히 그 방의 방장이고, 재접속하면 그대로 관리를 이어갈 수
+	//          있어야 한다.
+	//          "이미 멤버 목록에서 제거를 마친 뒤"(=remainingMembers가 제거
+	//          후 남은 멤버) 호출해야 한다 — _roomMutex를 이미 해제한
+	//          상태에서 불러야 한다(이 함수 내부의 BroadcastToRoom()/
+	//          MoveToRoom() 재귀 호출이 다시 _roomMutex를 잠그므로, 안
+	//          그러면 데드락이 난다).
 	//          - 남은 멤버가 있으면: 벡터의 맨 앞(가장 오래 있었던 사람 —
 	//            _roomMembers가 erase-remove로 삽입 순서를 유지하므로)에게
 	//            이양하고 RoomOwnerChangedNotifyPacket을 브로드캐스트한다.

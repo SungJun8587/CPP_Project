@@ -44,9 +44,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-// [수정 — 컴파일 오류] 이 프로젝트 설정(암시적 using 등)에서 System.Net.Mime.MediaTypeNames에도
-// Font/Image라는 이름의 클래스가 있어서, System.Drawing.Font/Image와 이름이 겹쳐 모호한
-// 참조 오류가 났다. 타입 별칭으로 System.Drawing 쪽을 명시적으로 고정한다.
 using Font = System.Drawing.Font;
 using Image = System.Drawing.Image;
 
@@ -81,6 +78,60 @@ namespace ChatApp
         //          켜는 것으로 충분하고, 이건 네이티브 그리기 흐름을 건드리지
         //          않는다(ListBox/ListView에서 흔히 쓰는 표준적인 방법).
         //***************************************************************************
+        //***************************************************************************
+        // @brief [추가] 방 프로필 이미지를 원형으로 그리는 작은 패널.
+        // @details ChatListBox_DrawItem()의 DrawAvatar() 로직(이미지 있으면
+        //          원형 클립으로 그리고, 없으면 이름 기반 색상+이니셜로
+        //          대체)과 같은 시각적 규칙을 따르되, 리스트박스 OwnerDraw
+        //          항목이 아니라 독립된 컨트롤이라 별도 클래스로 뽑았다.
+        //          실제 이미지 로딩/캐싱은 ChatClientForm.Media.cs의
+        //          RequestAvatarImage()를 그대로 재사용한다(URL 캐시를 공유).
+        //***************************************************************************
+        private class RoomAvatarPanel : Panel
+        {
+            public string RoomName;	// 기본 아바타(이니셜) 계산용
+            public Image LoadedImage;	// 로드 완료된 이미지 — 없으면 기본 아바타로 대체
+
+            public RoomAvatarPanel()
+            {
+                DoubleBuffered = true;
+                Size = new Size(36, 36);
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+                var g = e.Graphics;
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+
+                if (LoadedImage != null)
+                {
+                    using (var clipPath = new GraphicsPath())
+                    {
+                        clipPath.AddEllipse(rect);
+                        Region previousClip = g.Clip;
+                        g.SetClip(clipPath, CombineMode.Intersect);
+                        g.DrawImage(LoadedImage, rect);
+                        g.Clip = previousClip;
+                    }
+                    return;
+                }
+
+                string name = string.IsNullOrEmpty(RoomName) ? "?" : RoomName;
+                Color color = AvatarPalette[(uint)name.GetHashCode() % (uint)AvatarPalette.Length];
+
+                using (var brush = new SolidBrush(color))
+                    g.FillEllipse(brush, rect);
+
+                string initial = name.Substring(0, 1).ToUpperInvariant();
+                using (var font = new Font(Font.FontFamily, 14f, FontStyle.Bold))
+                using (var textBrush = new SolidBrush(Color.White))
+                using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                    g.DrawString(initial, font, textBrush, rect, fmt);
+            }
+        }
+
         private class DoubleBufferedListBox : ListBox
         {
             public DoubleBufferedListBox()
@@ -200,6 +251,7 @@ namespace ChatApp
         // 클라이언트가 직접 채워 유지한다. 로비에 있으면 둘 다 null.
         private string _currentRoomName;
         private string _currentRoomOwnerNickname;
+        private string _currentRoomImageUrl; // [추가] 현재 방의 프로필 이미지. 빈 문자열/null이면 기본 아바타
 
         // [추가] "방 만들기" 지름길 버튼(채팅 탭)이 CreateRoomReq를 보낸
         // 직후부터 응답이 올 때까지 잠깐 기억해두는 방 이름 — 자세한 이유는
@@ -302,7 +354,21 @@ namespace ChatApp
         // fetch 인프라/HttpClient를 재사용). URL 하나당 한 번만 요청(캐시).
         // 아직 못 받아왔거나 실패했으면 DrawAvatar()가 색깔 원형+이니셜로 대체한다.
         private readonly Dictionary<string, Image> _avatarImageCache = new Dictionary<string, Image>();
-        private readonly HashSet<string> _avatarFetchInProgress = new HashSet<string>();
+        // [수정 — 버그] 예전엔 HashSet<string>(진행 중 여부만 표시)이라, 같은
+        // URL을 거의 동시에 요청하는 두 번째 이상의 호출자는 콜백이 아예
+        // 등록되지 않고 조용히 버려졌다 — 방 아바타(UpdateRoomStatusUI(),
+        // OnRoomImageChangedNotified() 등 여러 지점에서 같은 URL을 부를 수
+        // 있음)가 "DB엔 반영됐는데 화면엔 절대 안 뜨는" 증상의 원인이었다.
+        // 이제 URL마다 "지금 기다리고 있는 콜백들의 목록"을 들고 있다가,
+        // 로딩이 끝나면 그 URL을 기다리던 모두를 한꺼번에 불러준다.
+        private readonly Dictionary<string, List<Action>> _avatarPendingCallbacks = new Dictionary<string, List<Action>>();
+
+        // [추가] 방 프로필 이미지 표시용 — 버튼 줄 바로 아래의 새 행
+        // (아바타+방 이름+방장 이름). 로비에서는 숨긴다.
+        private Panel _pnlRoomInfo;
+        private RoomAvatarPanel _pnlRoomAvatar;
+        private Label _lblRoomInfoName;
+        private Label _lblRoomInfoOwner;
 
         private const int kLinkPreviewCardHeight = 66;
         private const int kFileCardHeight = 50; // 파일 첨부 카드(아이콘+파일명+용량) 고정 높이
@@ -324,7 +390,7 @@ namespace ChatApp
         // 유지해야 한다. Debug/Trace/Warning은 아직 실제로 호출하는 곳이
         // 없지만(현재는 Ok/Error/Info만 씀), 범례에는 항상 다섯 개 전부
         // 표시해서 나중에 로그를 세분화할 때 바로 쓸 수 있게 해뒀다.
-        private static readonly Color ColorSystemDebug = Color.White;
+        private static readonly Color ColorSystemDebug = Color.Purple;
         private static readonly Color ColorSystemTrace = Color.Blue;
         private static readonly Color ColorSystemInfo = Color.Green;
         private static readonly Color ColorSystemWarning = Color.Gold; // 순수 Yellow는 흰 배경에서 거의 안 보여서 조금 더 진한 톤을 씀
@@ -705,30 +771,61 @@ namespace ChatApp
             _btnDeleteRoom.Click += BtnDeleteRoom_Click;
             StyleDynamicButton(_btnDeleteRoom);
 
-            // [수정] 서버 동접자수를 로비 유저수 왼쪽에 배치 — 프로필 이름과
-            // 같은 형태(정적 라벨 + 읽기전용 텍스트박스)로 통일했다. 그룹박스1이
-            // 아니라 여기(그룹박스2)로 옮긴 이유는 "로비 유저수 왼쪽"이라는
-            // 배치 요구를 만족하려면 로비/방 유저수와 같은 줄에 있어야 하기
-            // 때문이다.
-            var lblServerUserCount = new Label { Text = "서버 동접자수 : ", Left = 11, Top = 58, Width = 94, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
-            _txtServerUserCount = new Label { Left = 105, Top = 58, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
+            // [추가] 방 프로필 이미지 + 방 이름 + 방장 이름 — 버튼 줄
+            // (Top=22~47) 바로 아래에 새로 만든 공간. 로비에 있을 때는
+            // 이 행 전체를 숨긴다(UpdateRoomStatusUI() 참고). 이 행이
+            // 새로 생긴 만큼 아래 있던 통계 줄(Top=58→94)과 채팅
+            // 리스트박스(Top=88→126, Height=244→206)를 같이 내려서
+            // 그룹박스 전체 높이(374)는 그대로 유지했다.
+            _pnlRoomInfo = new Panel { Left = 11, Top = 52, Width = 540, Height = 38, Visible = false };
 
-            var lblLobbyUserCount = new Label { Text = "로비 유저수 : ", Left = 155, Top = 58, Width = 81, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
-            _txtLobbyUserCount = new Label { Left = 236, Top = 58, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
+            _pnlRoomAvatar = new RoomAvatarPanel { Left = 0, Top = 1 };
+            _pnlRoomAvatar.Cursor = Cursors.Default;
+            _pnlRoomAvatar.Click += PnlRoomAvatar_Click;
 
-            var lblRoomUserCount = new Label { Text = "방 유저수 : ", Left = 286, Top = 58, Width = 68, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
-            _txtRoomUserCount = new Label { Left = 354, Top = 58, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
+            _lblRoomInfoName = new Label
+            {
+                Left = 44,
+                Top = 0,
+                Width = 490,
+                Height = 18,
+                AutoEllipsis = true,
+                Font = new Font(Font.FontFamily, 9.5f, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+            _lblRoomInfoOwner = new Label
+            {
+                Left = 44,
+                Top = 18,
+                Width = 490,
+                Height = 16,
+                AutoEllipsis = true,
+                ForeColor = TextMutedColor,
+                Font = new Font(Font.FontFamily, 8f),
+                TextAlign = ContentAlignment.MiddleLeft,
+            };
+
+            _pnlRoomInfo.Controls.Add(_pnlRoomAvatar);
+            _pnlRoomInfo.Controls.Add(_lblRoomInfoName);
+            _pnlRoomInfo.Controls.Add(_lblRoomInfoOwner);
+
+            var lblServerUserCount = new Label { Text = "서버 동접자수 : ", Left = 11, Top = 94, Width = 94, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
+            _txtServerUserCount = new Label { Left = 105, Top = 94, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
+
+            var lblLobbyUserCount = new Label { Text = "로비 유저수 : ", Left = 155, Top = 94, Width = 81, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
+            _txtLobbyUserCount = new Label { Left = 236, Top = 94, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
+
+            var lblRoomUserCount = new Label { Text = "방 유저수 : ", Left = 286, Top = 94, Width = 68, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
+            _txtRoomUserCount = new Label { Left = 354, Top = 94, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
 
             // [수정 — 버그] 방 이름+방장 닉네임을 합친 문구("위치: OOO방
             // (방장: OOO)")를 담기엔 Width=153이 너무 좁아서, 방장 이름
-            // 부분이 시야 밖으로 잘려 아예 안 보이는 문제가 있었다. 이
-            // 줄은 그룹박스 오른쪽 끝(Left=404+Width=153=557, 그룹박스
-            // 폭 562)에 거의 딱 맞게 배치돼 있고 바로 아래는 채팅
-            // 리스트박스라 가로/세로 어느 쪽으로도 더 넓힐 여유가 없다 —
-            // 그래서 라벨 자체를 넓히는 대신, 말줄임표(...)로 우아하게
-            // 잘라내고 전체 텍스트는 마우스를 올리면 툴팁으로 보이게
-            // 했다(아래 UpdateRoomStatusUI()에서 ToolTip.SetToolTip() 호출).
-            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 58, Width = 153, ForeColor = TextMutedColor, AutoEllipsis = true };
+            // 부분이 시야 밖으로 잘려 아예 안 보이는 문제가 있었다. 이제
+            // 방 이름/방장은 위의 _pnlRoomInfo가 훨씬 넓은 공간에 보여주므로,
+            // 이 라벨은 "로비"/"(로그인 전)"처럼 짧은 상태 표시로만 쓰인다
+            // (UpdateRoomStatusUI() 참고) — 그래도 혹시 모를 긴 텍스트에
+            // 대비해 AutoEllipsis+툴팁은 그대로 남겨뒀다.
+            _lblCurrentRoom = new Label { Text = "위치: (로그인 전)", Left = 404, Top = 94, Width = 153, ForeColor = TextMutedColor, AutoEllipsis = true };
             _roomStatusToolTip = new ToolTip();
 
             // [추가] 파일 첨부 — 입력창 왼쪽에 작은 버튼으로 배치. 클릭하면
@@ -747,9 +844,13 @@ namespace ChatApp
             _listBoxChat = new DoubleBufferedListBox
             {
                 Left = 10,
-                Top = 88,
+                // [수정] 방 정보 줄(_pnlRoomInfo)과 통계 줄이 아래로 밀리면서
+                // (Top=88→126) 이 리스트박스도 같이 내려왔다 — 끝 지점(332,
+                // 첨부/입력 줄 Top=338 바로 위)은 그대로 유지하려고 Height도
+                // 244→206으로 줄였다(그룹박스 전체 높이는 안 바꿈).
+                Top = 126,
                 Width = 542,
-                Height = 244,
+                Height = 206,
                 DrawMode = DrawMode.OwnerDrawVariable,
                 HorizontalScrollbar = false, // 말풍선 너비를 자동으로 줄바꿈하려면 가로 스크롤은 꺼둬야 함
                 ScrollAlwaysVisible = true,
@@ -788,7 +889,7 @@ namespace ChatApp
             groupBox2.Controls.AddRange(new Control[]
             {
                 lblCard2Title,
-                _btnRoomList, _btnCreateRoom, _btnRoomLeave, _btnRenameRoom, _btnDeleteRoom,
+                _btnRoomList, _btnCreateRoom, _btnRoomLeave, _btnRenameRoom, _btnDeleteRoom, _pnlRoomInfo,
                 lblServerUserCount, _txtServerUserCount, lblLobbyUserCount, _txtLobbyUserCount,
                 lblRoomUserCount, _txtRoomUserCount, _lblCurrentRoom,
                 _btnAttachFile, _txtMessage, _btnSend, _listBoxChat,
@@ -919,6 +1020,10 @@ namespace ChatApp
             // _currentRoomId 등을 갱신하므로, 여기서는 "탭 전환 + 이름/방장
             // 보완"만 담당하면 된다).
             _roomListPanel.RoomEntered += OnRoomListPanelRoomEntered;
+            // [추가] 방장 관리 메뉴의 "프로필 이미지 변경"은 업로드 토큰
+            // 발급+파일 서버 업로드가 필요해서(HttpClient 등을 이 폼이
+            // 들고 있음) RoomListPanel이 직접 못 하고 여기로 위임한다.
+            _roomListPanel.RoomImageEditRequested += roomId => UploadRoomImage(roomId);
             roomListPagePanel.Controls.Add(_roomListPanel);
             tabPageRoomList.Controls.Add(roomListPagePanel);
 

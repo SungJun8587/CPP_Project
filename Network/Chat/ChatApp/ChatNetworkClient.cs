@@ -52,6 +52,14 @@ namespace ChatApp
         public event Action<RoomListItemData> RoomListItemReceived;
         public event Action<ListRoomsEndResData> RoomListEndReceived;
         public event Action<RoomOwnerChangedNotifyData> RoomOwnerChangedNotified;
+
+        // [추가] 방 프로필 이미지 설정 결과 + 변경 알림.
+        public event Action<SetRoomImageResData> SetRoomImageResultReceived;
+        public event Action<RoomImageChangedNotifyData> RoomImageChangedNotified;
+
+        // [추가] 방 입장 시 자동으로 오는 과거 대화 기록.
+        public event Action<ChatHistoryItemData> ChatHistoryItemReceived;
+        public event Action<ChatHistoryEndData> ChatHistoryEndReceived;
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -109,6 +117,9 @@ namespace ChatApp
         public void RequestDeleteRoom(int roomId) => SendRaw(PacketBuilder.BuildDeleteRoomReq(roomId));
         public void RequestRenameRoom(int roomId, string newName) => SendRaw(PacketBuilder.BuildRenameRoomReq(roomId, newName));
         public void RequestListRooms() => SendRaw(PacketBuilder.BuildListRoomsReq());
+
+        // [추가] 방 프로필 이미지 설정/교체/해제 요청.
+        public void RequestSetRoomImage(int roomId, string imageUrl) => SendRaw(PacketBuilder.BuildSetRoomImageReq(roomId, imageUrl));
         public void RequestRoomLeave() => SendRaw(PacketBuilder.BuildRoomLeaveReq());
         public void RequestServerUserCount() => SendRaw(PacketBuilder.BuildServerUserCountReq());
 
@@ -294,6 +305,22 @@ namespace ChatApp
 
                 case PacketType.RoomOwnerChangedNotify:
                     RoomOwnerChangedNotified?.Invoke(PacketParser.ParseRoomOwnerChangedNotify(full));
+                    break;
+
+                case PacketType.SetRoomImageRes:
+                    SetRoomImageResultReceived?.Invoke(PacketParser.ParseSetRoomImageRes(full));
+                    break;
+
+                case PacketType.RoomImageChangedNotify:
+                    RoomImageChangedNotified?.Invoke(PacketParser.ParseRoomImageChangedNotify(full));
+                    break;
+
+                case PacketType.ChatHistoryItemRes:
+                    ChatHistoryItemReceived?.Invoke(PacketParser.ParseChatHistoryItemRes(full));
+                    break;
+
+                case PacketType.ChatHistoryEndRes:
+                    ChatHistoryEndReceived?.Invoke(PacketParser.ParseChatHistoryEndRes(full));
                     break;
 
                 default:

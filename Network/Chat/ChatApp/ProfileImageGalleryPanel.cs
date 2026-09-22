@@ -204,7 +204,20 @@ namespace ChatApp
         private Label _lblStatus;
 
         private readonly List<GalleryItem> _items = new List<GalleryItem>();
-        private GalleryTile _selectedTile;
+        // [수정 — 멀티 삭제] 단일 선택(_selectedTile)에서 다중 선택으로 확장.
+        // "대표로 지정"은 여전히 하나만 골랐을 때만 의미가 있어서(대표는
+        // 항상 한 장뿐이므로), 그 버튼은 개수가 정확히 1개일 때만 활성화한다.
+        private readonly HashSet<GalleryTile> _selectedTiles = new HashSet<GalleryTile>();
+
+        // [추가] 삭제 요청은 서버 응답(DeleteProfileImageResData)에 어떤
+        // 이미지에 대한 것인지 식별자가 없다 — Success/Reason뿐이다. 여러
+        // 장을 한꺼번에 보내면 어떤 응답이 어떤 요청 것인지 구분할 수
+        // 없으므로, 하나씩 순서대로 보내고 응답을 받은 뒤에야 다음 걸
+        // 보내는 큐로 처리한다(느리지만 정확하다 — 몇 장 안 되는 갤러리
+        // 삭제에서 체감 지연은 미미함).
+        private readonly Queue<long> _pendingDeleteQueue = new Queue<long>();
+        private int _deleteSuccessCount;
+        private int _deleteFailCount;
         private bool _pendingDeleteWasActive;
 
         //***************************************************************************
@@ -291,7 +304,7 @@ namespace ChatApp
             // ── 하단 액션 버튼 + 상태 ──────────────────────────────────
             var buttonPanel = new Panel { Dock = DockStyle.Bottom, Height = 40, Padding = new Padding(10, 4, 10, 4) };
 
-            _btnSelect = new Button { Text = "대표로 지정", Dock = DockStyle.Left, Width = 270, Height = 32 };
+            _btnSelect = new Button { Text = "대표로 지정", Dock = DockStyle.Left, Width = 270, Height = 32, Enabled = false };
             StyleActionButton(_btnSelect, filled: true);
             _btnSelect.Click += BtnSelect_Click;
 
@@ -419,8 +432,7 @@ namespace ChatApp
             }
 
             ClearThumbnails();
-            _selectedTile = null;
-            _btnDelete.Enabled = false;
+            ClearSelection();
 
             _picActive.Image?.Dispose();
             _picActive.Image = null;
@@ -467,8 +479,7 @@ namespace ChatApp
                 return;
 
             ClearThumbnails();
-            _selectedTile = null;
-            _btnDelete.Enabled = false;
+            ClearSelection();
 
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "불러오는 중...";
@@ -562,8 +573,19 @@ namespace ChatApp
                 {
                     _lblStatus.ForeColor = ChatTheme.Current.Success;
                     _lblStatus.Text = "대표로 지정했습니다.";
-                    string newRef = _selectedTile?.Item?.ImageRef ?? string.Empty;
+
+                    // 대표 지정은 정확히 1개 선택 상태에서만 가능하므로
+                    // (BtnSelect_Click 참고), _selectedTiles에 남아있는
+                    // 유일한 타일에서 참조를 가져온다.
+                    string newRef = string.Empty;
+                    foreach (GalleryTile t in _selectedTiles)
+                    {
+                        newRef = t.Item?.ImageRef ?? string.Empty;
+                        break;
+                    }
+
                     ActiveImageChanged?.Invoke(newRef);
+                    ClearSelection();
                     RefreshList();
                 }
                 else
@@ -574,6 +596,13 @@ namespace ChatApp
             });
         }
 
+        //***************************************************************************
+        // @brief [수정 — 멀티 삭제] 응답 하나는 "지금 큐에서 막 보낸 요청"에
+        //        대한 것으로 간주한다(순차 처리라 한 번에 하나만 요청 중이므로
+        //        안전하게 매칭됨). 성공/실패를 누적하고 ProcessNextPendingDelete()로
+        //        다음 항목을 이어서 처리한다 — 큐가 비면 그 함수가 알아서
+        //        결과 요약 + RefreshList()를 한 번만 수행한다.
+        //***************************************************************************
         private void OnDeleteResultReceived(DeleteProfileImageResData data)
         {
             if (IsDisposed)
@@ -582,20 +611,11 @@ namespace ChatApp
             BeginInvoke((MethodInvoker)delegate
             {
                 if (data.Success)
-                {
-                    _lblStatus.ForeColor = ChatTheme.Current.Success;
-                    _lblStatus.Text = "삭제했습니다.";
-
-                    if (_pendingDeleteWasActive)
-                        ActiveImageChanged?.Invoke(string.Empty);
-
-                    RefreshList();
-                }
+                    _deleteSuccessCount++;
                 else
-                {
-                    _lblStatus.ForeColor = ChatTheme.Current.Danger;
-                    _lblStatus.Text = "삭제 실패";
-                }
+                    _deleteFailCount++;
+
+                ProcessNextPendingDelete();
             });
         }
 
@@ -623,29 +643,54 @@ namespace ChatApp
             _flowThumbnails.ResumeLayout();
         }
 
+        //***************************************************************************
+        // @brief [수정 — 멀티 삭제] 클릭한 타일 하나만 선택 상태를 토글한다
+        //        — 예전엔 "다른 선택을 풀고 이것만 선택"하는 단일 선택이었지만,
+        //        이제 여러 장을 동시에 선택할 수 있어야 하므로 다른 선택에는
+        //        손대지 않는다.
+        //***************************************************************************
         private void SelectTile(GalleryTile tile)
         {
             if (tile.IsAddTile)
                 return;
 
-            if (_selectedTile != null)
+            if (_selectedTiles.Contains(tile))
             {
-                _selectedTile.IsSelected = false;
-                _selectedTile.Invalidate();
-            }
-
-            if (_selectedTile == tile)
-            {
-                _selectedTile = null;
+                _selectedTiles.Remove(tile);
+                tile.IsSelected = false;
             }
             else
             {
-                _selectedTile = tile;
+                _selectedTiles.Add(tile);
                 tile.IsSelected = true;
-                tile.Invalidate();
             }
+            tile.Invalidate();
 
-            _btnDelete.Enabled = _selectedTile != null;
+            UpdateActionButtonsForSelection();
+        }
+
+        //***************************************************************************
+        // @brief [추가] 선택된 개수에 따라 "대표로 지정"/"삭제" 버튼의
+        //        활성화 여부와 문구를 갱신한다.
+        //***************************************************************************
+        private void UpdateActionButtonsForSelection()
+        {
+            int count = _selectedTiles.Count;
+
+            _btnSelect.Enabled = count == 1; // 대표는 한 장만 가능 — 여러 장 선택 시엔 모호하므로 비활성화
+
+            _btnDelete.Enabled = count > 0;
+            _btnDelete.Text = count > 1 ? $"삭제 ({count})" : "삭제";
+        }
+
+        //***************************************************************************
+        // @brief [추가] 선택 상태를 전부 해제한다 — 목록 새로고침/연결
+        //        해제 시 호출(RefreshList()/DetachClient() 등).
+        //***************************************************************************
+        private void ClearSelection()
+        {
+            _selectedTiles.Clear();
+            UpdateActionButtonsForSelection();
         }
 
         private async Task<byte[]> FetchImageBytesAsync(string imageRef)
@@ -692,27 +737,95 @@ namespace ChatApp
 
         private void BtnSelect_Click(object sender, EventArgs e)
         {
-            if (_client == null || _selectedTile == null || _selectedTile.IsAddTile)
+            // [수정] 다중 선택 중엔 이 버튼 자체가 비활성화돼 있지만
+            // (UpdateActionButtonsForSelection() 참고), 방어적으로 여기서도
+            // 정확히 1개일 때만 진행한다.
+            if (_client == null || _selectedTiles.Count != 1)
+                return;
+
+            GalleryTile tile = null;
+            foreach (GalleryTile t in _selectedTiles) { tile = t; break; }
+            if (tile == null || tile.IsAddTile)
                 return;
 
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "대표로 지정하는 중...";
-            _client.RequestSelectProfileImage(_selectedTile.Item.ImageId);
+            _client.RequestSelectProfileImage(tile.Item.ImageId);
         }
 
+        //***************************************************************************
+        // @brief [수정 — 멀티 삭제] 선택된 이미지 전부를 삭제 큐에 넣고
+        //        순차 처리를 시작한다. 서버 응답이 어떤 이미지에 대한
+        //        것인지 식별할 방법이 없어서(DeleteProfileImageResData 참고)
+        //        한 번에 하나씩만 요청한다 — ProcessNextPendingDelete()가
+        //        응답을 받을 때마다 큐의 다음 항목을 꺼내 이어서 보낸다.
+        //***************************************************************************
         private void BtnDelete_Click(object sender, EventArgs e)
         {
-            if (_client == null || _selectedTile == null || _selectedTile.IsAddTile)
+            if (_client == null || _selectedTiles.Count == 0)
                 return;
 
-            if (MessageBox.Show(FindForm(), "이 이미지를 삭제할까요?", "확인", MessageBoxButtons.YesNo) != DialogResult.Yes)
+            int count = _selectedTiles.Count;
+            string confirmText = count > 1 ? $"선택한 이미지 {count}장을 삭제할까요?" : "이 이미지를 삭제할까요?";
+            if (MessageBox.Show(FindForm(), confirmText, "확인", MessageBoxButtons.YesNo) != DialogResult.Yes)
                 return;
 
-            _pendingDeleteWasActive = _selectedTile.Item.IsActive;
+            _pendingDeleteQueue.Clear();
+            _deleteSuccessCount = 0;
+            _deleteFailCount = 0;
+            _pendingDeleteWasActive = false;
 
+            foreach (GalleryTile tile in _selectedTiles)
+            {
+                if (tile.IsAddTile)
+                    continue;
+
+                _pendingDeleteQueue.Enqueue(tile.Item.ImageId);
+                if (tile.Item.IsActive)
+                    _pendingDeleteWasActive = true;
+            }
+
+            _btnDelete.Enabled = false;
+            _btnSelect.Enabled = false;
+            ProcessNextPendingDelete();
+        }
+
+        //***************************************************************************
+        // @brief [추가] 삭제 큐에서 하나를 꺼내 요청을 보낸다. 큐가 비었으면
+        //        지금까지의 성공/실패 결과를 요약해서 보여주고 목록을
+        //        새로고침한다(대표 이미지가 삭제 대상에 포함돼 있었으면
+        //        ActiveImageChanged도 같이 알린다).
+        //***************************************************************************
+        private void ProcessNextPendingDelete()
+        {
+            if (_pendingDeleteQueue.Count == 0)
+            {
+                if (_deleteFailCount == 0)
+                {
+                    _lblStatus.ForeColor = ChatTheme.Current.Success;
+                    _lblStatus.Text = _deleteSuccessCount > 1 ? $"{_deleteSuccessCount}장 삭제했습니다." : "삭제했습니다.";
+                }
+                else
+                {
+                    _lblStatus.ForeColor = ChatTheme.Current.Danger;
+                    _lblStatus.Text = $"삭제 완료 {_deleteSuccessCount}장, 실패 {_deleteFailCount}장";
+                }
+
+                if (_pendingDeleteWasActive)
+                    ActiveImageChanged?.Invoke(string.Empty);
+
+                ClearSelection();
+                RefreshList();
+                return;
+            }
+
+            long imageId = _pendingDeleteQueue.Dequeue();
+
+            int remaining = _pendingDeleteQueue.Count + 1;
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
-            _lblStatus.Text = "삭제하는 중...";
-            _client.RequestDeleteProfileImage(_selectedTile.Item.ImageId);
+            _lblStatus.Text = remaining > 1 ? $"삭제하는 중... ({remaining}장 남음)" : "삭제하는 중...";
+
+            _client.RequestDeleteProfileImage(imageId);
         }
     }
 }

@@ -397,6 +397,8 @@ struct ListRoomsReqPacket : PacketHeader
 
 //***************************************************************************
 // @brief [추가] 방 목록 항목 단건 응답 구조체 (Server -> Client).
+// @details [수정] imageUrl 필드 추가 — 방 프로필 이미지. 비어있으면 기본
+//          이미지(클라이언트가 방 이름 기반 아바타로 대체 표시)를 뜻한다.
 //***************************************************************************
 struct ListRoomsItemResPacket : PacketHeader
 {
@@ -404,6 +406,7 @@ struct ListRoomsItemResPacket : PacketHeader
 	char	name[kRoomNameBytes];
 	char	ownerNickname[kNicknameBytes];	// 방장의 "지금" 닉네임(DB 조회 시점 스냅샷)
 	int32	userCount;						// 현재 그 방에 있는 인원수(GetRoomUserCount() 참고)
+	char	imageUrl[kProfileImageUrlBytes];	// 방 프로필 이미지. 빈 문자열이면 기본 이미지
 };
 
 //***************************************************************************
@@ -426,6 +429,66 @@ struct RoomOwnerChangedNotifyPacket : PacketHeader
 {
 	int32	roomId;
 	char	newOwnerNickname[kNicknameBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 방 프로필 이미지 설정/교체/해제 요청 구조체 (Client -> Server).
+// @details 요청자가 그 방의 현재 방장이어야 한다. imageUrl이 빈 문자열이면
+//          "해제"(기본 이미지로 되돌림)로 처리한다. user_profile_images와
+//          달리 갤러리가 아니라 단일 값이라 — 이 요청 하나로 기존 값을
+//          완전히 교체한다(서버가 이전 값이 우리 파일 서버 소유였으면
+//          실제 파일 삭제도 예약함).
+//***************************************************************************
+struct SetRoomImageReqPacket : PacketHeader
+{
+	int32	roomId;
+	char	imageUrl[kProfileImageUrlBytes];	// 새 이미지 URL(UTF-8). 빈 문자열이면 해제
+};
+
+//***************************************************************************
+// @brief [추가] 방 프로필 이미지 설정 응답 구조체 (Server -> Client, 요청자에게만).
+//***************************************************************************
+struct SetRoomImageResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;		// ERoomResult
+};
+
+//***************************************************************************
+// @brief [추가] 방 프로필 이미지 변경 알림 (Server -> Client, 서버가 자발적으로 브로드캐스트).
+// @details 설정이 성공했을 때만, 그 방에 있는 멤버 전원(요청자 포함)에게
+//          간다 — 화면에 표시 중인 방 아바타를 갱신하면 된다.
+//***************************************************************************
+struct RoomImageChangedNotifyPacket : PacketHeader
+{
+	int32	roomId;
+	char	imageUrl[kProfileImageUrlBytes];	// 빈 문자열이면 기본 이미지로 되돌아간 것
+};
+
+//***************************************************************************
+// @brief [추가] 과거 대화 기록 항목 단건 (Server -> Client, 요청자에게만).
+// @details 방 입장에 성공한 직후 서버가 자동으로(클라이언트가 별도로
+//          요청하지 않아도) 그 방의 최근 기록을 오래된 순서로 하나씩
+//          스트리밍한다 — ListRoomsItemRes 등과 동일한 "가변 개수 스트리밍"
+//          패턴. ChatPacket과 필드 구성이 거의 같지만, 실시간 브로드캐스트가
+//          아니라 이 요청자 한 명에게만 간다는 점이 다르다.
+//***************************************************************************
+struct ChatHistoryItemResPacket : PacketHeader
+{
+	int64	messageId;							// DeleteChatMessageReq에 그대로 쓸 수 있는 실제 메시지 ID
+	char	nickname[kNicknameBytes];			// 발신 당시 닉네임(스냅샷)
+	char	profileImageUrl[kProfileImageUrlBytes];	// 발신 당시 프로필 이미지 URL(스냅샷)
+	char	message[256];						// 채팅 메시지 본문 — ChatPacket::message와 동일 크기
+	int64	timestampMs;						// 발신 시각(Unix epoch 밀리초)
+};
+
+//***************************************************************************
+// @brief [추가] 과거 대화 기록 전송 완료 (Server -> Client, 요청자에게만).
+//***************************************************************************
+struct ChatHistoryEndResPacket : PacketHeader
+{
+	int32	roomId;
+	int32	totalCount;
 };
 
 #pragma pack(pop)

@@ -48,9 +48,18 @@ constexpr size_t kProfileImageUrlBytes = 256;
 constexpr size_t kRoomNameBytes = 100;
 
 //***************************************************************************
-// @brief DB 비동기 요청(ST_XXX_REQ::callIdent)을 식별하는
+// @brief [추가 — 통합] DB 비동기 요청(ST_XXX_REQ::callIdent)을 식별하는
 //        값들을 전부 여기 한곳에 모았다.
-// @details callIdent는 BYTE(0~255) 하나뿐이라 이 프로젝트 전체가 이
+// @details 원래는 각 DB*Request.h 파일(DBSignupRequest.h 등)이 자기 값을
+//          각자 선언했는데, 파일이 여러 개로 늘어나면서 같은 값을 실수로
+//          두 번 쓰는 충돌이 실제로 발생했다(kDbCallIdent_CreateRoom을
+//          처음엔 300으로 잡았다가 BYTE 범위 초과로 204로 낮췄는데,
+//          그게 이미 kDbCallIdent_SelectProfileImage가 쓰고 있던 값과
+//          겹쳤던 사고). 값을 전부 한곳에 모아두면 새 DB 요청을 추가할 때
+//          "지금까지 쓴 값이 어디까지인지"를 이 블록 하나만 보고 바로
+//          알 수 있어서 같은 실수를 구조적으로 막을 수 있다.
+//
+//          callIdent는 BYTE(0~255) 하나뿐이라 이 프로젝트 전체가 이
 //          공간을 공유한다 — 새 값을 추가할 때는 반드시 이 블록의
 //          마지막 값 다음 번호를 쓸 것.
 //***************************************************************************
@@ -65,6 +74,8 @@ constexpr BYTE kDbCallIdent_DeleteRoom = 207;			// DBDeleteRoomRequest.h — 방
 constexpr BYTE kDbCallIdent_RenameRoom = 208;			// DBRenameRoomRequest.h — 방 이름 변경
 constexpr BYTE kDbCallIdent_ListRooms = 209;			// DBListRoomsRequest.h — 방 목록 조회
 constexpr BYTE kDbCallIdent_TransferRoomOwner = 210;	// DBTransferRoomOwnerRequest.h — 방장 자동 이양(서버 내부 전용)
+constexpr BYTE kDbCallIdent_SetRoomImage = 211;		// DBSetRoomImageRequest.h — 방 프로필 이미지 설정/교체/해제
+// 다음 새 값은 212부터 시작할 것.
 
 //***************************************************************************
 // @brief 로비 및 룸 식별 상수
@@ -156,6 +167,15 @@ enum class EChatPacketType : uint16_t
 	ListRoomsItemRes = 38,					// Server -> Client, 방 목록 항목 단건 응답(가변 개수 스트리밍)
 	ListRoomsEndRes = 39,					// Server -> Client, 방 목록 전송 완료 및 총 개수 통지
 	RoomOwnerChangedNotify = 40,			// Server -> Client(Broadcast), 방장이 나가서 다른 멤버에게 자동 이양됐을 때 그 방 멤버 전원에게
+
+	// [추가] 방 프로필 이미지 설정/교체/해제(방장 전용) + 변경 알림.
+	SetRoomImageReq = 41,					// Client -> Server, 방 프로필 이미지 설정/교체/해제 요청(방장만 가능, 빈 URL이면 해제)
+	SetRoomImageRes = 42,					// Server -> Client, 설정 결과 응답(요청자에게만)
+	RoomImageChangedNotify = 43,			// Server -> Client(Broadcast), 이미지가 바뀌었을 때 그 방 멤버 전원에게
+
+	// [추가] 방 입장 시 서버가 자동으로 스트리밍해주는 과거 대화 기록.
+	ChatHistoryItemRes = 44,				// Server -> Client, 기록 항목 단건(가변 개수 스트리밍) — 요청자에게만
+	ChatHistoryEndRes = 45,					// Server -> Client, 기록 전송 완료 — 요청자에게만
 };
 
 //***************************************************************************

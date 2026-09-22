@@ -14,6 +14,9 @@
 #include <string>
 #include <vector>
 
+// [수정 — 통합] kDbCallIdent_ListRooms 값은 이제 ChatPacketTypes.h에
+// 모여있다 — ChatPacket.h가 그 헤더를 include하므로 그대로 쓸 수 있다.
+
 //***************************************************************************
 // @brief 방 목록 항목 하나(DB 왕복용 평범한 구조체).
 // @details ownerNickname은 users 테이블과의 JOIN으로 "지금 시점"의 닉네임을
@@ -27,6 +30,7 @@ struct SRoomListEntry
 	std::string	name;
 	std::string	ownerPublicId;	// 16진 문자열
 	std::string	ownerNickname;
+	std::string	imageRef;		// [추가] 방 프로필 이미지. 비어있으면(NULL) 기본 이미지
 };
 
 //***************************************************************************

@@ -54,6 +54,52 @@ namespace
 		res.reason = static_cast<uint8>(ERoomResult::Ok);
 		res.roomUserCount = newUserCount;
 		session.Send(&res, sizeof(res));
+
+		// [추가] 입장에 성공했고 로비가 아니면, 그 방의 최근 대화 기록을
+		// 이 세션에게만(브로드캐스트 아님) 자동으로 스트리밍해준다 —
+		// 카카오톡/디스코드처럼 방에 들어가자마자 과거 대화가 보이게.
+		// RequestRoomChatHistory()가 로비면 내부에서 즉시 빈 목록으로
+		// 완료하므로, 여기서 굳이 kLobbyRoomId를 먼저 걸러낼 필요는
+		// 없지만 완료 콜백 등록 자체를 아예 안 하도록 미리 걸러둔다.
+		if( roomId != kLobbyRoomId )
+		{
+			std::weak_ptr<CChatSession> sessionWeak = sessionRef;
+
+			server->RequestRoomChatHistory(sessionRef, roomId,
+				[sessionWeak, roomId](const std::vector<CChatServerMain::SChatHistoryEntry>& history)
+				{
+					auto session = sessionWeak.lock();
+					if( session == nullptr )
+						return;
+
+					for( const CChatServerMain::SChatHistoryEntry& entry : history )
+					{
+						ChatHistoryItemResPacket itemRes{};
+						itemRes.size = sizeof(itemRes);
+						itemRes.type = static_cast<uint16>(EChatPacketType::ChatHistoryItemRes);
+						itemRes.messageId = entry.messageId;
+						itemRes.timestampMs = entry.timestampMs;
+
+						const size_t nicknameCopyLen = (std::min)(entry.nickname.size(), sizeof(itemRes.nickname) - 1);
+						::memcpy(itemRes.nickname, entry.nickname.data(), nicknameCopyLen);
+
+						const size_t urlCopyLen = (std::min)(entry.profileImageUrl.size(), sizeof(itemRes.profileImageUrl) - 1);
+						::memcpy(itemRes.profileImageUrl, entry.profileImageUrl.data(), urlCopyLen);
+
+						const size_t messageCopyLen = (std::min)(entry.message.size(), sizeof(itemRes.message) - 1);
+						::memcpy(itemRes.message, entry.message.data(), messageCopyLen);
+
+						session->Send(&itemRes, sizeof(itemRes));
+					}
+
+					ChatHistoryEndResPacket endRes{};
+					endRes.size = sizeof(endRes);
+					endRes.type = static_cast<uint16>(EChatPacketType::ChatHistoryEndRes);
+					endRes.roomId = roomId;
+					endRes.totalCount = static_cast<int32>(history.size());
+					session->Send(&endRes, sizeof(endRes));
+				});
+		}
 	}
 }
 

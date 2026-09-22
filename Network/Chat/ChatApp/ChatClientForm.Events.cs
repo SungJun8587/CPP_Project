@@ -52,6 +52,7 @@ namespace ChatApp
                     // 로그인 성공 시점에 붙인다.
                     _galleryPanel.AttachClient(_client);
                     _roomListPanel.AttachClient(_client);
+                    _roomListPanel.MyNickname = _currentNickname; // 방장 관리 메뉴(⚙) 표시 여부 판단용
 
                     // 서버가 로그인 직후 자동으로 로비에 배정한다 — 클라이언트도
                     // 그 전제로 현재 위치를 로비로 잡아둔다(서버의 RoomUserCountNotify가
@@ -156,8 +157,37 @@ namespace ChatApp
                 {
                     _currentRoomId = res.RoomId;
                     _txtRoomUserCount.Text = res.RoomUserCount.ToString();
+
+                    // [수정 — 버그] UpdateRoomStatusUI()를 부르기 전에 방
+                    // 이름/방장/이미지를 여기서 동기적으로 먼저 채운다.
+                    // 예전엔 이 값들을 RoomListPanel.RoomEntered(비동기 이벤트)
+                    // 에만 맡겼는데, RoomEnterResultReceived를 구독한 두
+                    // 핸들러(이 함수와 RoomListPanel 자신) 중 이 함수가 먼저
+                    // 실행되다 보니, UpdateRoomStatusUI()가 아직 안 채워진
+                    // (이전 방의 잔재이거나 빈) 값으로 먼저 돌아버리는 경합이
+                    // 있었다 — 방 프로필 이미지가 DB엔 있는데 방금 들어갔을
+                    // 때는 기본 아바타로 보이던 버그의 원인. RoomListPanel이
+                    // 갖고 있는 목록 캐시를 서버 왕복 없이 즉시 동기 조회해서
+                    // 이 문제를 없앤다 — 캐시에 없으면(막 만든 방이라 아직
+                    // 목록에 없는 경우 등) 기존 값을 그대로 둔다
+                    // (OnCreateRoomResultReceived()가 이미 채워놨거나,
+                    // 나중에 RoomListPanel.RoomEntered가 보완해준다).
+                    var cachedInfo = _roomListPanel.TryGetCachedRoomInfo(res.RoomId);
+                    if (cachedInfo != null)
+                    {
+                        _currentRoomName = cachedInfo.Name;
+                        _currentRoomOwnerNickname = cachedInfo.OwnerNickname;
+                        _currentRoomImageUrl = cachedInfo.ImageUrl;
+                    }
+
                     UpdateRoomStatusUI();
                     AppendSystemLog($"[시스템] {res.RoomId}번 방 입장 성공 (인원 {res.RoomUserCount}명)", ColorSystemOk);
+
+                    // [추가] 이전에 있던 곳(로비 또는 다른 방)의 대화가 섞여
+                    // 보이지 않도록 화면을 비운다 — 곧이어 서버가 자동으로
+                    // 보내주는 이 방의 과거 기록(ChatHistoryItemRes)이
+                    // OnChatHistoryItemReceived()를 통해 다시 채워준다.
+                    _listBoxChat.Items.Clear();
                 }
                 else
                 {
@@ -177,8 +207,13 @@ namespace ChatApp
                     _currentRoomId = ProtocolConstants.LobbyRoomId;
                     _currentRoomName = null;
                     _currentRoomOwnerNickname = null;
+                    _currentRoomImageUrl = null;
                     _txtRoomUserCount.Text = ""; // 로비 자체 인원수는 이 라벨이 아니라 RoomUserCountNotify로 별도 관리하지 않음(단순화)
                     UpdateRoomStatusUI();
+
+                    // [추가] 로비는 대화 기록을 저장하지 않으므로(설계상 제외)
+                    // 방금 있던 방의 대화가 그대로 남아있으면 안 된다 — 비운다.
+                    _listBoxChat.Items.Clear();
                 }
                 else
                 {
@@ -432,6 +467,14 @@ namespace ChatApp
             _client.RenameRoomResultReceived += OnRenameRoomResultReceived;
             _client.RenameRoomNotified += OnRenameRoomNotified;
             _client.RoomOwnerChangedNotified += OnRoomOwnerChangedNotified;
+
+            // [추가] 방 프로필 이미지 설정 결과 + 변경 알림.
+            _client.SetRoomImageResultReceived += OnSetRoomImageResultReceived;
+            _client.RoomImageChangedNotified += OnRoomImageChangedNotified;
+
+            // [추가] 방 입장 시 자동으로 오는 과거 대화 기록.
+            _client.ChatHistoryItemReceived += OnChatHistoryItemReceived;
+            _client.ChatHistoryEndReceived += OnChatHistoryEndReceived;
             _client.ServerUserCountReceived += OnServerUserCountReceived;
             _client.SetProfileImageUrlResultReceived += OnSetProfileImageUrlResultReceived;
             _client.DeleteChatMessageResultReceived += OnDeleteChatMessageResultReceived;
@@ -529,6 +572,7 @@ namespace ChatApp
                 if (!string.IsNullOrEmpty(dialog.AppliedNickname))
                 {
                     _currentNickname = dialog.AppliedNickname;
+                    _roomListPanel.MyNickname = _currentNickname; // 방장 관리 메뉴 표시 여부가 닉네임 기준이라 같이 갱신
                     AppendSystemLog("[시스템] 닉네임 변경 성공 - " + dialog.AppliedNickname, ColorSystemOk);
                 }
             }
@@ -565,6 +609,7 @@ namespace ChatApp
         {
             _currentRoomName = room.Name;
             _currentRoomOwnerNickname = room.OwnerNickname;
+            _currentRoomImageUrl = room.ImageUrl;
             UpdateRoomStatusUI();
             _tabControl.SelectedIndex = 0; // 대화 탭으로 전환
         }
@@ -700,6 +745,7 @@ namespace ChatApp
                 // 내 닉네임으로 채운다.
                 _currentRoomName = _pendingCreatedRoomName;
                 _currentRoomOwnerNickname = _currentNickname;
+                _currentRoomImageUrl = null; // 새로 만든 방이라 아직 이미지가 없음(기본 아바타)
                 _pendingCreatedRoomName = null;
 
                 _client?.RequestRoomEnter(data.RoomId);
@@ -739,8 +785,10 @@ namespace ChatApp
                 _currentRoomId = ProtocolConstants.LobbyRoomId;
                 _currentRoomName = null;
                 _currentRoomOwnerNickname = null;
+                _currentRoomImageUrl = null;
                 _txtRoomUserCount.Text = "";
                 UpdateRoomStatusUI();
+                _listBoxChat.Items.Clear(); // 로비는 대화 기록이 없으므로 비운다
             });
         }
 
@@ -795,6 +843,94 @@ namespace ChatApp
                     ? "[시스템] 방장이 나가서 내가 새 방장이 되었습니다."
                     : $"[시스템] 방장이 나가서 '{data.NewOwnerNickname}'님이 새 방장이 되었습니다.",
                     ColorSystemInfo);
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 프로필 이미지 설정 요청(UploadRoomImage())의 결과 —
+        //        요청자 본인에게만 온다. 실제 이미지 반영은 곧이어 오는
+        //        RoomImageChangedNotify(그 방 멤버 전원에게)가 처리한다.
+        //***************************************************************************
+        private void OnSetRoomImageResultReceived(SetRoomImageResData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (!data.Success)
+                {
+                    AppendSystemLog("[시스템] 방 프로필 이미지 설정 실패 - " + DescribeRoomResult(data.Reason), ColorSystemError);
+                }
+                else
+                {
+                    // [추가 — 진단용] 요청자 본인에게 온 "설정 성공" 응답을
+                    // 받았는지 확인 — 이게 안 찍히면 SetRoomImageReq 자체가
+                    // 실패했거나 응답이 안 온 것이므로 DB 반영 자체를 의심해야
+                    // 한다. 이게 찍혔는데도 방 아바타가 안 바뀌면, 뒤이어 오는
+                    // RoomImageChangedNotify(OnRoomImageChangedNotified 로그
+                    // 참고)에 문제가 있다는 뜻이다.
+                    AppendSystemLog("[디버그] SetRoomImageRes 성공 응답 수신 — 곧 RoomImageChangedNotify가 와야 함", ColorSystemDebug);
+                }
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 프로필 이미지 변경 알림 — 그 방에 있는 멤버
+        //        전원에게(요청자 포함) 온다.
+        //***************************************************************************
+        private void OnRoomImageChangedNotified(RoomImageChangedNotifyData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                // [추가 — 진단용] 이 알림 자체가 도착했는지부터 확인.
+                // roomId가 안 맞아서 무시되는 건지, 아예 서버가 안 보낸
+                // 건지(=서버가 방 인원수를 0으로 찍었을 것) 구분하기 위함.
+                AppendSystemLog($"[디버그] RoomImageChangedNotify 수신 (roomId={data.RoomId}, 현재방={_currentRoomId}, url={data.ImageUrl})", ColorSystemDebug);
+
+                if (data.RoomId != _currentRoomId)
+                {
+                    AppendSystemLog("[디버그] 지금 있는 방이 아니라서 무시함", ColorSystemDebug);
+                    return;
+                }
+
+                _currentRoomImageUrl = data.ImageUrl;
+                ApplyRoomAvatarImage(_currentRoomImageUrl);
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 입장 시 서버가 자동으로 보내주는 과거 대화 기록
+        //        항목 하나. 실시간 채팅과 동일한 AppendChat()으로 화면에
+        //        쌓되, 실제 발신 시각(TimestampMs)을 그대로 넘겨서 날짜
+        //        구분선이 정확한 위치에 나뉘게 한다. MessageId도 그대로
+        //        넘기므로, 과거 메시지도 실시간 메시지와 똑같이 × 버튼으로
+        //        삭제할 수 있다(내가 보낸 메시지에 한해 — DrawFileAttachmentCard/
+        //        ChatListBox_MouseClick의 기존 판정 로직이 IsMyMessage만
+        //        보고 그대로 동작함).
+        //***************************************************************************
+        private void OnChatHistoryItemReceived(ChatHistoryItemData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                bool isMyMessage = data.SenderNickname == _currentNickname;
+                DateTime timestamp = DateTimeOffset.FromUnixTimeMilliseconds(data.TimestampMs).LocalDateTime;
+
+                AppendChat(data.SenderNickname, data.SenderProfileImageUrl, data.Message, isMyMessage, data.MessageId, timestamp);
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 과거 대화 기록 전송 완료. 딱히 화면을 더 바꿀 건
+        //        없고(항목들은 이미 OnChatHistoryItemReceived()가 다 그려놨음),
+        //        참고용으로 개수만 짧게 로그에 남긴다.
+        //***************************************************************************
+        private void OnChatHistoryEndReceived(ChatHistoryEndData data)
+        {
+            Invoke((MethodInvoker)delegate
+            {
+                if (data.RoomId != _currentRoomId)
+                    return;
+
+                if (data.TotalCount > 0)
+                    AppendSystemLog($"[시스템] 이전 대화 {data.TotalCount}개를 불러왔습니다.", ColorSystemInfo);
             });
         }
 

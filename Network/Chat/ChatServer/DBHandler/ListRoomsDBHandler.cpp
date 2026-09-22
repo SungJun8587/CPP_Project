@@ -29,7 +29,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRooms)
 	}
 
 	if( !guard->PrepareQuery(_T(
-		"SELECT r.room_id, r.name, r.owner_public_id, u.nickname "
+		"SELECT r.room_id, r.name, r.owner_public_id, u.nickname, r.image_ref "
 		"FROM rooms r JOIN users u ON r.owner_public_id = u.public_id "
 		"ORDER BY r.created_at DESC")) )
 	{
@@ -70,11 +70,18 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRooms)
 		if( !guard->GetData(4, nicknameBuf, nicknameBufLen) )
 			continue;
 
+		// image_ref는 NULL일 수 있다(기본 이미지) — GetData() 실패를
+		// "행 자체를 건너뛸 이유"로 취급하지 않고, 빈 문자열로만 둔다.
+		TCHAR imageRefBuf[512] = {};
+		int32 imageRefBufLen = static_cast<int32>(sizeof(imageRefBuf));
+		const bool hasImageRef = guard->GetData(5, imageRefBuf, imageRefBufLen);
+
 		SRoomListEntry entry;
 		entry.roomId = _ttoi(roomIdBuf);
 		entry.name = TStringToUtf8(_tstring(nameBuf));
 		entry.ownerPublicId = TStringToUtf8(_tstring(ownerIdBuf));
 		entry.ownerNickname = TStringToUtf8(_tstring(nicknameBuf));
+		entry.imageRef = hasImageRef ? TStringToUtf8(_tstring(imageRefBuf)) : std::string();
 		rooms.push_back(std::move(entry));
 	}
 	guard->ClearStmt();

@@ -53,6 +53,18 @@ namespace
 			// ChatServerMain.h::kMaxTrackedMessages 참고).
 			outPacket.messageId = server->RegisterOutgoingMessage(session.GetPublicId(), session.GetRoomId());
 			server->BroadcastToRoom(session.GetRoomId(), &outPacket, outPacket.size);
+
+			// [추가] 방(로비 제외) 대화 기록을 Redis에 남긴다 — 나중에
+			// RoomEnterHandler.cpp가 입장 시 자동으로 이 기록을 스트리밍해준다.
+			// 로비는 RecordRoomChatMessage() 내부에서 kLobbyRoomId를 보고
+			// 즉시 반환하므로 여기서 따로 분기할 필요는 없지만, 문자열 변환
+			// (strnlen)을 로비 메시지에서까지 매번 할 필요는 없어서 먼저 확인한다.
+			if( session.GetRoomId() != kLobbyRoomId )
+			{
+				const size_t messageLen = ::strnlen(outPacket.message, sizeof(outPacket.message));
+				const std::string messageText(outPacket.message, messageLen);
+				server->RecordRoomChatMessage(session.GetRoomId(), session.GetPublicId(), nickname, profileImageUrl, messageText, outPacket.messageId);
+			}
 		}
 	}
 }

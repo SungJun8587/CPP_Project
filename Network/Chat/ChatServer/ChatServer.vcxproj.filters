@@ -212,6 +212,12 @@
     <ClCompile Include="DBHandler\TransferRoomOwnerDBHandler.cpp">
       <Filter>DBHandler</Filter>
     </ClCompile>
+    <ClCompile Include="DBHandler\SetRoomImageDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\SetRoomImageHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -486,6 +492,7 @@
     <ClInclude Include="DBListRoomsRequest.h" />
     <ClInclude Include="DBRenameRoomRequest.h" />
     <ClInclude Include="DBTransferRoomOwnerRequest.h" />
+    <ClInclude Include="DBSetRoomImageRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

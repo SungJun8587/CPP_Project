@@ -146,6 +146,7 @@
     <ClCompile Include="DBHandler\RenameRoomDBHandler.cpp" />
     <ClCompile Include="DBHandler\SelectProfileImageDBHandler.cpp" />
     <ClCompile Include="DBHandler\SetProfileImageUrlDBHandler.cpp" />
+    <ClCompile Include="DBHandler\SetRoomImageDBHandler.cpp" />
     <ClCompile Include="DBHandler\TransferRoomOwnerDBHandler.cpp" />
     <ClCompile Include="PacketHandler\ChatChangeNicknameHandler.cpp" />
     <ClCompile Include="PacketHandler\ChatLoginHandler.cpp" />
@@ -164,6 +165,7 @@
     <ClCompile Include="PacketHandler\SelectProfileImageHandler.cpp" />
     <ClCompile Include="PacketHandler\ServerUserCountHandler.cpp" />
     <ClCompile Include="PacketHandler\SetProfileImageUrlHandler.cpp" />
+    <ClCompile Include="PacketHandler\SetRoomImageHandler.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -252,6 +254,7 @@
     <ClInclude Include="DBRenameRoomRequest.h" />
     <ClInclude Include="DBSelectProfileImageRequest.h" />
     <ClInclude Include="DBSetProfileImageUrlRequest.h" />
+    <ClInclude Include="DBSetRoomImageRequest.h" />
     <ClInclude Include="DBSignupRequest.h" />
     <ClInclude Include="DBTransferRoomOwnerRequest.h" />
     <ClInclude Include="NicknameValidation.h" />

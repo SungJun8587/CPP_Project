@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include <DB/DBAsyncPushHelper.h>
+#include <Redis/RedisResultSet.h>
 #include "ChatServerMain.h"
 #include "ChatSession.h"
 #include "DbServiceManager.h"
@@ -19,8 +20,10 @@
 #include "DBRenameRoomRequest.h"
 #include "DBListRoomsRequest.h"
 #include "DBTransferRoomOwnerRequest.h"
+#include "DBSetRoomImageRequest.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 namespace
@@ -589,11 +592,6 @@ void CChatServerMain::LeaveCurrentRoom(CChatSession* session)
 	int32 roomId = -1;
 	int32 remainingCount = 0;
 	bool hadRoom = false;
-	// [추가] MoveToRoom()과 동일한 이유 — _roomMutex 해제 후 사용할 스냅샷.
-	// leavingPublicId는 session 포인터가 이 함수 이후(연결 종료 마무리
-	// 과정에서) 소멸될 수 있으므로 값으로 미리 복사해둔다.
-	std::vector<std::shared_ptr<CChatSession>> remainingMembers;
-	const std::array<BYTE, kPublicIdBytes> leavingPublicId = session->GetPublicId();
 
 	{
 		std::lock_guard<std::mutex> lock(_roomMutex);
@@ -616,20 +614,21 @@ void CChatServerMain::LeaveCurrentRoom(CChatSession* session)
 
 		remainingCount = static_cast<int32>(members.size());
 		hadRoom = true;
-
-		remainingMembers.reserve(members.size());
-		for( auto& w : members )
-		{
-			if( auto s = w.lock() )
-				remainingMembers.push_back(s);
-		}
 	}
 
+	// [수정 — 버그] 예전엔 여기서도 HandleRoomOwnershipOnLeave()를 불러서,
+	// 방장이 "방 나가기"/"방 삭제"를 명시적으로 하지 않고 그냥 접속만
+	// 끊어도(네트워크 끊김, 앱 재시작 등) 방장이 자동 이양되거나 — 아무도
+	// 안 남았으면 방 자체가 DB에서 삭제됐다. 그런데 방 대화 기록을
+	// "방이 없어질 때까지 유지"하기로 한 이상, 단순 접속 끊김만으로 방과
+	// 그 기록이 통째로 사라지는 건 사용자가 기대하는 동작이 아니다 —
+	// 방장은 오프라인 상태에서도 여전히 방장이고, 재접속하면 그대로 방을
+	// 관리할 수 있어야 한다. 그래서 이 함수(연결 종료 전용)에서는 인원수
+	// 알림만 보내고, 방장 이양/방 삭제는 명시적 행동(RoomLeaveReq ->
+	// MoveToRoom(), DeleteRoomReq -> RequestDeleteRoom())에서만 일어나게
+	// 한다 — MoveToRoom()은 여전히 HandleRoomOwnershipOnLeave()를 호출한다.
 	if( hadRoom )
-	{
 		NotifyRoomUserCount(roomId, remainingCount);
-		HandleRoomOwnershipOnLeave(roomId, leavingPublicId, remainingMembers);
-	}
 }
 
 //***************************************************************************
@@ -940,6 +939,231 @@ void CChatServerMain::ScheduleFileDeletionIfOwned(const std::string& deletedImag
 	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
 }
 
+namespace
+{
+	// RecordRoomChatMessage()가 저장하는 필드 구분자 — 클래스 선언 밖(익명
+	// 네임스페이스)에 둬서 RemoveRoomChatMessage()/RequestRoomChatHistory()와
+	// 공유한다. 일반 텍스트/닉네임/URL에 나올 일이 없는 제어문자라 이스케이프가
+	// 필요 없다.
+	constexpr char kChatHistoryFieldDelim = '\x01';
+
+	std::string BuildRoomChatOrderKey(int32 roomId) { return "RoomChatOrder:" + std::to_string(roomId); }
+	std::string BuildRoomChatMsgKey(int32 roomId) { return "RoomChatMsg:" + std::to_string(roomId); }
+}
+
+//***************************************************************************
+// @brief 방 대화 메시지 하나를 Redis에 기록한다.
+//***************************************************************************
+void CChatServerMain::RecordRoomChatMessage(
+	int32 roomId,
+	const std::array<BYTE, kPublicIdBytes>& senderPublicId,
+	const std::string& nickname,
+	const std::string& profileImageUrl,
+	const std::string& message,
+	int64 messageId)
+{
+	if( roomId == kLobbyRoomId || _redisService == nullptr )
+		return;
+
+	const std::string senderPublicIdHex = Crypto::CCryptoUtil::ToHex(senderPublicId.data(), senderPublicId.size());
+	const int64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+		std::chrono::system_clock::now().time_since_epoch()).count();
+
+	std::string serialized;
+	serialized.reserve(senderPublicIdHex.size() + nickname.size() + profileImageUrl.size() + message.size() + 32);
+	serialized += senderPublicIdHex;
+	serialized += kChatHistoryFieldDelim;
+	serialized += nickname;
+	serialized += kChatHistoryFieldDelim;
+	serialized += profileImageUrl;
+	serialized += kChatHistoryFieldDelim;
+	serialized += message;
+	serialized += kChatHistoryFieldDelim;
+	serialized += std::to_string(nowMs);
+
+	const std::string messageIdStr = std::to_string(messageId);
+
+	// ZADD RoomChatOrder:{roomId} {messageId} {messageId} — score와 member
+	// 둘 다 messageId(문자열)로 준다. score는 정렬 기준(오름차순 발급되는
+	// int64라 시간순과 정확히 일치), member는 조회 후 HMGET에 그대로 쓸 키.
+	CVector<std::string> zaddArgs;
+	zaddArgs.push_back("ZADD");
+	zaddArgs.push_back(BuildRoomChatOrderKey(roomId));
+	zaddArgs.push_back(messageIdStr);
+	zaddArgs.push_back(messageIdStr);
+	_redisService->SendCommand(zaddArgs, [](const RedisValue& /*res*/) {});
+
+	// HSET RoomChatMsg:{roomId} {messageId} {serialized}
+	CVector<std::string> hsetArgs;
+	hsetArgs.push_back("HSET");
+	hsetArgs.push_back(BuildRoomChatMsgKey(roomId));
+	hsetArgs.push_back(messageIdStr);
+	hsetArgs.push_back(serialized);
+	_redisService->SendCommand(hsetArgs, [](const RedisValue& /*res*/) {});
+}
+
+//***************************************************************************
+// @brief 메시지 하나를 대화 기록에서 제거한다.
+//***************************************************************************
+void CChatServerMain::RemoveRoomChatMessage(int32 roomId, int64 messageId)
+{
+	if( roomId == kLobbyRoomId || _redisService == nullptr )
+		return;
+
+	const std::string messageIdStr = std::to_string(messageId);
+
+	CVector<std::string> zremArgs;
+	zremArgs.push_back("ZREM");
+	zremArgs.push_back(BuildRoomChatOrderKey(roomId));
+	zremArgs.push_back(messageIdStr);
+	_redisService->SendCommand(zremArgs, [](const RedisValue& /*res*/) {});
+
+	CVector<std::string> hdelArgs;
+	hdelArgs.push_back("HDEL");
+	hdelArgs.push_back(BuildRoomChatMsgKey(roomId));
+	hdelArgs.push_back(messageIdStr);
+	_redisService->SendCommand(hdelArgs, [](const RedisValue& /*res*/) {});
+}
+
+//***************************************************************************
+// @brief 방의 대화 기록 전체를 지운다(방 삭제 시 호출).
+//***************************************************************************
+void CChatServerMain::ClearRoomChatHistory(int32 roomId)
+{
+	if( roomId == kLobbyRoomId || _redisService == nullptr )
+		return;
+
+	// DEL은 여러 키를 한 번에 받으므로 한 커맨드로 두 키를 같이 지운다.
+	CVector<std::string> delArgs;
+	delArgs.push_back("DEL");
+	delArgs.push_back(BuildRoomChatOrderKey(roomId));
+	delArgs.push_back(BuildRoomChatMsgKey(roomId));
+	_redisService->SendCommand(delArgs, [](const RedisValue& /*res*/) {});
+}
+
+//***************************************************************************
+// @brief 방의 최근 대화 기록(최대 1000개)을 오래된 순서로 조회한다.
+// @details ZREVRANGE로 최신 messageId 1000개(최신순)를 얻은 뒤, 그 목록으로
+//          HMGET을 한 번 더 호출해 내용을 한꺼번에 가져온다 — 두 Redis
+//          왕복을 콜백 체이닝으로 순차 처리한다. 최종적으로 오래된 순서로
+//          뒤집어서 돌려준다(자연스러운 채팅 로그 순서).
+//***************************************************************************
+void CChatServerMain::RequestRoomChatHistory(
+	std::shared_ptr<CChatSession> session,
+	int32 roomId,
+	std::function<void(const std::vector<SChatHistoryEntry>& history)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	if( roomId == kLobbyRoomId || _redisService == nullptr )
+	{
+		if( onComplete )
+			onComplete(std::vector<SChatHistoryEntry>());
+		return;
+	}
+
+	CJobQueueRef jobQueue = _jobQueue;
+	const std::string msgKey = BuildRoomChatMsgKey(roomId);
+
+	CVector<std::string> zrevrangeArgs;
+	zrevrangeArgs.push_back("ZREVRANGE");
+	zrevrangeArgs.push_back(BuildRoomChatOrderKey(roomId));
+	zrevrangeArgs.push_back("0");
+	zrevrangeArgs.push_back("999"); // 최근 1000개(0~999, inclusive)
+
+	_redisService->SendCommand(zrevrangeArgs, [this, jobQueue, onComplete, msgKey](const RedisValue& orderRes)
+		{
+			CRedisResultSet orderSet(orderRes);
+			if( orderSet.IsEmpty() )
+			{
+				if( jobQueue == nullptr )
+					return;
+				jobQueue->DoAsync([onComplete]()
+					{
+						if( onComplete )
+							onComplete(std::vector<SChatHistoryEntry>());
+					});
+				return;
+			}
+
+			std::vector<std::string> messageIds;
+			messageIds.reserve(orderSet.GetSize());
+			std::string idStr;
+			while( orderSet.GetData(idStr) )
+				messageIds.push_back(idStr);
+
+			// HMGET RoomChatMsg:{roomId} {id1} {id2} ... — 여러 messageId의
+			// 내용을 한 번에 조회한다. 존재하지 않는 필드(그 사이 삭제된
+			// 메시지)는 CRedisResultSet이 빈 문자열로 채워준다.
+			CVector<std::string> hmgetArgs;
+			hmgetArgs.push_back("HMGET");
+			hmgetArgs.push_back(msgKey);
+			for( const std::string& id : messageIds )
+				hmgetArgs.push_back(id);
+
+			_redisService->SendCommand(hmgetArgs, [jobQueue, onComplete, messageIds](const RedisValue& hmgetRes)
+				{
+					CRedisResultSet hmgetSet(hmgetRes);
+
+					std::vector<SChatHistoryEntry> historyNewestFirst;
+					historyNewestFirst.reserve(messageIds.size());
+
+					for( size_t i = 0; i < messageIds.size(); ++i )
+					{
+						std::string serialized;
+						if( !hmgetSet.GetData(serialized) || serialized.empty() )
+							continue; // 그 사이 삭제된 메시지 — 건너뜀
+
+						// "senderPublicId\x01nickname\x01profileImageUrl\x01message\x01timestampMs" 분해.
+						std::vector<std::string> fields;
+						size_t start = 0;
+						for( size_t pos = 0; pos <= serialized.size(); ++pos )
+						{
+							if( pos == serialized.size() || serialized[pos] == kChatHistoryFieldDelim )
+							{
+								fields.push_back(serialized.substr(start, pos - start));
+								start = pos + 1;
+							}
+						}
+
+						if( fields.size() != 5 )
+							continue; // 형식이 깨진 값 — 방어적으로 건너뜀
+
+						SChatHistoryEntry entry;
+						try
+						{
+							entry.messageId = std::stoll(messageIds[i]);
+							entry.timestampMs = std::stoll(fields[4]);
+						}
+						catch( const std::exception& )
+						{
+							continue;
+						}
+						entry.senderPublicId = fields[0];
+						entry.nickname = fields[1];
+						entry.profileImageUrl = fields[2];
+						entry.message = fields[3];
+
+						historyNewestFirst.push_back(std::move(entry));
+					}
+
+					// 최신순으로 받았으니 자연스러운 채팅 로그 순서(오래된
+					// 것부터)로 뒤집는다.
+					std::vector<SChatHistoryEntry> historyOldestFirst(historyNewestFirst.rbegin(), historyNewestFirst.rend());
+
+					if( jobQueue == nullptr )
+						return;
+
+					jobQueue->DoAsync([onComplete, historyOldestFirst]()
+						{
+							if( onComplete )
+								onComplete(historyOldestFirst);
+						});
+				});
+		});
+}
+
 //***************************************************************************
 // @brief DB에 저장하기 직전 — "{fileServerUrl}/images/{경로}" 형태면
 //        "/images/{경로}"만 남기고 호스트 부분을 잘라낸다.
@@ -1110,6 +1334,11 @@ void CChatServerMain::RequestDeleteRoom(
 							std::lock_guard<std::mutex> lock(_roomRegistryMutex);
 							_roomRegistry.erase(roomId);
 						}
+
+						// [추가] 방 자체가 삭제됐으니 그 방의 대화 기록도
+						// 같이 지운다 — "방이 없어질 때까지 유지"라는 요구를
+						// 방이 사라지는 이 시점에 자연스럽게 만족시킨다.
+						ClearRoomChatHistory(roomId);
 					}
 
 					if( jobQueue == nullptr )
@@ -1208,15 +1437,22 @@ void CChatServerMain::RequestListRooms(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
+	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
 		{
 			if( jobQueue == nullptr )
 				return;
 
-			jobQueue->DoAsync([onComplete, result, rooms]()
+			// [추가] 항목마다 image_ref가 상대 경로로 저장돼 있으면 완전한
+			// URL로 복원한다 — RequestListProfileImages()와 동일한 이유
+			// (ToDisplayImageUrl() 참고).
+			std::vector<SRoomListEntry> displayRooms = rooms;
+			for( SRoomListEntry& entry : displayRooms )
+				entry.imageRef = ToDisplayImageUrl(entry.imageRef);
+
+			jobQueue->DoAsync([onComplete, result, displayRooms]()
 				{
 					if( onComplete )
-						onComplete(result, rooms);
+						onComplete(result, displayRooms);
 				});
 		};
 
@@ -1233,6 +1469,82 @@ void CChatServerMain::RequestListRooms(
 	{
 		if( onComplete )
 			onComplete(ELoginResult::DbError, std::vector<SRoomListEntry>());
+	}
+}
+
+//***************************************************************************
+// @brief 방 프로필 이미지를 설정/교체/해제합니다.
+// @details [설계] RequestDeleteRoom()과 동일한 구조 — 성공 시 부수효과
+//          (이전 파일 삭제 예약 + 방 멤버 브로드캐스트)를 DB 콜백 안에서
+//          바로 처리한다(RequestDeleteProfileImage()의
+//          ScheduleFileDeletionIfOwned() 호출과 같은 선례).
+//***************************************************************************
+void CChatServerMain::RequestSetRoomImage(
+	std::shared_ptr<CChatSession> session,
+	int32 roomId,
+	const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+	const std::string& newImageUrl,
+	std::function<void(ERoomResult result)> onComplete)
+{
+	if( session == nullptr )
+		return;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	// DB엔 상대경로로 저장 — RequestSetProfileImageUrl()과 동일한 이유
+	// (ToStorableImageRef() 참고). 외부 URL이면 그대로 통과된다.
+	const std::string storableUrl = ToStorableImageRef(newImageUrl);
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SET_ROOM_IMAGE_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_SetRoomImage,
+		[this, roomId, requesterPublicId, storableUrl, jobQueue, onComplete](ST_SET_ROOM_IMAGE_REQ* req)
+		{
+			req->roomId = roomId;
+			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			req->imageRef = storableUrl;
+
+			req->onComplete = [this, roomId, storableUrl, jobQueue, onComplete](ERoomResult result, const std::string& oldImageRef)
+				{
+					if( result == ERoomResult::Ok )
+					{
+						// 1) 교체되기 전 이미지가 우리 파일 서버 소유였으면
+						// 실제 파일 삭제를 예약한다. oldImageRef는 DB에
+						// 저장돼 있던 그대로(상대경로 형태)라, 완전한 URL
+						// 형태를 기대하는 ScheduleFileDeletionIfOwned()에
+						// 넘기기 전에 먼저 ToDisplayImageUrl()로 복원한다.
+						if( !oldImageRef.empty() )
+							ScheduleFileDeletionIfOwned(ToDisplayImageUrl(oldImageRef));
+
+						// 2) 그 방 멤버 전원에게 브로드캐스트.
+						RoomImageChangedNotifyPacket notify{};
+						notify.size = sizeof(notify);
+						notify.type = static_cast<uint16>(EChatPacketType::RoomImageChangedNotify);
+						notify.roomId = roomId;
+
+						const std::string displayUrl = ToDisplayImageUrl(storableUrl);
+						const size_t urlCopyLen = (std::min)(displayUrl.size(), sizeof(notify.imageUrl) - 1);
+						::memcpy(notify.imageUrl, displayUrl.data(), urlCopyLen);
+
+						BroadcastToRoom(roomId, &notify, notify.size);
+					}
+
+					if( jobQueue == nullptr )
+						return;
+
+					jobQueue->DoAsync([onComplete, result]()
+						{
+							if( onComplete )
+								onComplete(result);
+						});
+				};
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ERoomResult::DbError);
 	}
 }
 
@@ -1286,6 +1598,10 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 			std::lock_guard<std::mutex> lock(_roomRegistryMutex);
 			_roomRegistry.erase(roomId);
 		}
+
+		// [추가] RequestDeleteRoom()과 동일한 이유 — 방이 없어지는 이
+		// 경로(빈 방 자동 삭제)에서도 대화 기록을 같이 지운다.
+		ClearRoomChatHistory(roomId);
 
 		PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_ROOM_REQ>(
 			MEMBER_DB_ASYNC,

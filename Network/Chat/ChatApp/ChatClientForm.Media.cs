@@ -363,6 +363,119 @@ namespace ChatApp
         //***************************************************************************
         private const long kMaxProfileImageBytes = 5 * 1024 * 1024; // 5MB
 
+        //***************************************************************************
+        // @brief [추가] 방 아바타 클릭 — 방장일 때만 파일 선택 대화상자를
+        //        연다(방장이 아니면 조용히 무시 — UpdateRoomStatusUI()가
+        //        방장이 아니면 커서를 기본으로 바꿔놔서 애초에 "클릭 가능"
+        //        처럼 안 보이지만, 방어적으로 한 번 더 확인한다).
+        //***************************************************************************
+        private void PnlRoomAvatar_Click(object sender, EventArgs e)
+        {
+            bool isOwner = _currentRoomId > ProtocolConstants.LobbyRoomId
+                && _currentRoomOwnerNickname != null
+                && _currentRoomOwnerNickname == _currentNickname;
+
+            if (!isOwner)
+                return;
+
+            UploadRoomImage(_currentRoomId);
+        }
+
+        //***************************************************************************
+        // @brief 방 프로필 이미지를 업로드해서 roomId 방에 설정한다.
+        //        UploadMyProfileImage()와 거의 동일한 흐름(업로드 토큰 발급
+        //        → 파일 서버 업로드 → 결과 URL을 서버에 등록)이지만, 마지막
+        //        등록 단계만 SetProfileImageUrlReq 대신 SetRoomImageReq를
+        //        쓴다 — 방 이미지는 계정이 아니라 방(roomId)에 귀속되므로.
+        //        크기 제한(kMaxProfileImageBytes)도 프로필 이미지와 동일하게
+        //        적용한다.
+        // @details [수정] roomId를 파라미터로 받도록 일반화했다 — 처음엔
+        //          항상 _currentRoomId(지금 있는 방)만 대상이었는데,
+        //          "채팅방" 탭(RoomListPanel)의 방장 관리 메뉴에서 지금
+        //          안 들어가 있는 방의 이미지도 바꿀 수 있게 하려면 임의의
+        //          roomId를 받아야 했다 — 서버는 어차피 요청자가 그 방의
+        //          방장인지 다시 검증하므로(RequestSetRoomImage), 클라이언트
+        //          쪽에서 "지금 그 방에 있는지"는 더 이상 전제 조건이 아니다.
+        //***************************************************************************
+        private async void UploadRoomImage(int roomId)
+        {
+            if (_client == null || roomId <= ProtocolConstants.LobbyRoomId)
+                return;
+
+            using (var dlg = new OpenFileDialog { Filter = "이미지 파일|*.png;*.jpg;*.jpeg;*.bmp;*.gif" })
+            {
+                if (dlg.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                if (!File.Exists(dlg.FileName))
+                {
+                    MessageBox.Show(this, "파일을 찾을 수 없습니다.", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                long fileLength;
+                try
+                {
+                    fileLength = new FileInfo(dlg.FileName).Length;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(this, "파일 정보를 읽지 못했습니다: " + ex.Message, "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (fileLength > kMaxProfileImageBytes)
+                {
+                    MessageBox.Show(this,
+                        $"방 프로필 이미지는 {FormatFileSize(kMaxProfileImageBytes)} 이하만 가능합니다.\n선택한 파일: {FormatFileSize(fileLength)}",
+                        "파일이 너무 큽니다", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                AppendSystemLog("[시스템] 업로드 토큰 발급 중...", ColorSystemInfo);
+
+                try
+                {
+                    _uploadTokenTcs = new TaskCompletionSource<RequestUploadTokenResData>();
+                    _client.RequestUploadToken();
+
+                    var tokenResult = await WaitWithTimeout(_uploadTokenTcs.Task, TimeSpan.FromSeconds(10));
+                    if (tokenResult == null || !tokenResult.Success || string.IsNullOrEmpty(tokenResult.FileServerUrl))
+                    {
+                        AppendSystemLog("[시스템] 업로드 토큰 발급 실패 — 파일 서버가 설정돼 있지 않을 수 있습니다.", ColorSystemError);
+                        return;
+                    }
+
+                    AppendSystemLog("[시스템] 파일 서버에 업로드 중...", ColorSystemInfo);
+
+                    string uploadedUrl;
+                    try
+                    {
+                        uploadedUrl = await UploadToFileServerAsync(tokenResult.FileServerUrl, tokenResult.UploadToken, dlg.FileName, onProgress: null);
+                    }
+                    catch (Exception ex)
+                    {
+                        AppendSystemLog("[시스템] 파일 서버 업로드 실패: " + ex.Message, ColorSystemError);
+                        return;
+                    }
+
+                    if (string.IsNullOrEmpty(uploadedUrl))
+                    {
+                        AppendSystemLog("[시스템] 파일 서버가 URL을 돌려주지 않았습니다.", ColorSystemError);
+                        return;
+                    }
+
+                    // 방장 확인 및 실제 등록은 SetRoomImageRes/RoomImageChangedNotify가
+                    // 처리한다(OnSetRoomImageResultReceived/OnRoomImageChangedNotified 참고).
+                    _client.RequestSetRoomImage(roomId, uploadedUrl);
+                }
+                finally
+                {
+                    _uploadTokenTcs = null;
+                }
+            }
+        }
+
         private async void UploadMyProfileImage()
         {
             if (_client == null)
@@ -790,23 +903,58 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief url의 프로필 이미지를 요청한다(아바타용). 이미 캐시에 있거나
-        //        요청이 진행 중이면 새로 요청하지 않는다 — RequestLinkPreview()와
-        //        동일한 "URL 하나당 한 번만" 원칙.
+        // @brief url의 프로필 이미지를 요청한다(채팅 말풍선 아바타용).
+        //        RequestAvatarImage(url, onLoaded)의 얇은 래퍼 — 로딩 완료
+        //        시 그 채팅 항목만 다시 그리면 된다.
         //***************************************************************************
         private void RequestAvatarImage(string url, int itemIndex)
+        {
+            RequestAvatarImage(url, () => RefreshChatItem(itemIndex));
+        }
+
+        //***************************************************************************
+        // @brief [추가] url의 이미지를 요청한다(범용) — 이미 캐시에 있으면
+        //        즉시 콜백을 부르고 끝낸다. 아직 로딩 중이 아니면 새로
+        //        fetch를 시작하고, 이미 같은 URL을 다른 누군가가 fetch하는
+        //        중이면 그 콜백 목록에 이번 콜백을 추가만 해둔다(새로
+        //        fetch를 또 시작하지 않음 — "URL 하나당 fetch는 한 번만"
+        //        원칙, RequestLinkPreview()와 동일). 완료되면(성공/실패
+        //        무관) 그 URL을 기다리던 콜백 전부를 UI 스레드에서 순서대로
+        //        호출한다.
+        // @details [수정 — 버그] 예전엔 "진행 중이면 그냥 return"이라, 먼저
+        //          요청한 호출자의 콜백만 불리고 나중에 요청한 호출자(예:
+        //          방 입장 직후와 이미지 변경 알림이 거의 동시에 같은 URL을
+        //          요청하는 경우)의 콜백은 영원히 안 불렸다 — 방 프로필
+        //          이미지가 "DB엔 반영됐는데 화면엔 안 뜨는" 버그의 원인.
+        //***************************************************************************
+        private void RequestAvatarImage(string url, Action onLoaded)
         {
             if (string.IsNullOrEmpty(url))
                 return;
 
+            bool startFetch = false;
+
             lock (_avatarImageCache)
             {
-                if (_avatarImageCache.ContainsKey(url) || _avatarFetchInProgress.Contains(url))
+                if (_avatarImageCache.ContainsKey(url))
+                {
+                    onLoaded?.Invoke();
                     return;
-                _avatarFetchInProgress.Add(url);
+                }
+
+                if (_avatarPendingCallbacks.TryGetValue(url, out List<Action> waiters))
+                {
+                    waiters.Add(onLoaded);
+                }
+                else
+                {
+                    _avatarPendingCallbacks[url] = new List<Action> { onLoaded };
+                    startFetch = true;
+                }
             }
 
-            _ = FetchAvatarImageAsync(url, itemIndex);
+            if (startFetch)
+                _ = FetchAvatarImageAsync(url);
         }
 
         //***************************************************************************
@@ -826,7 +974,12 @@ namespace ChatApp
         }
 
 
-        private async Task FetchAvatarImageAsync(string url, int itemIndex)
+        //***************************************************************************
+        // @brief [수정] 이 URL을 기다리던 콜백 전부(RequestAvatarImage()가
+        //        쌓아둔 _avatarPendingCallbacks[url])를 로딩 완료 시 한꺼번에
+        //        호출한다 — 콜백을 하나만 받던 예전 시그니처에서 바뀜.
+        //***************************************************************************
+        private async Task FetchAvatarImageAsync(string url)
         {
             try
             {
@@ -846,14 +999,24 @@ namespace ChatApp
             catch
             {
                 // 네트워크 오류, 잘못된 URL, 이미지 디코딩 실패 등 — 조용히 무시.
+                // (실패해도 아래 finally에서 대기 중이던 콜백들은 정상적으로
+                // 다 불러준다 — 캐시에 이미지가 없을 뿐, 각자 기본 아바타로
+                // 표시하는 처리는 호출부 책임.)
             }
             finally
             {
+                List<Action> waiters;
                 lock (_avatarImageCache)
                 {
-                    _avatarFetchInProgress.Remove(url);
+                    _avatarPendingCallbacks.TryGetValue(url, out waiters);
+                    _avatarPendingCallbacks.Remove(url);
                 }
-                RefreshChatItem(itemIndex);
+
+                if (waiters != null)
+                {
+                    foreach (Action onLoaded in waiters)
+                        onLoaded?.Invoke();
+                }
             }
         }
 

@@ -1,5 +1,4 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // RoomListPanel.cs : 채팅방 목록 패널 — ProfileImageGalleryPanel.cs와 동일한
 //                    설계 패턴을 따르는 탭 내장 UserControl.
 //
@@ -14,8 +13,12 @@
 //***************************************************************************
 
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.IO;
+using System.Net.Http;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 namespace ChatApp
@@ -26,12 +29,27 @@ namespace ChatApp
         // @brief 방 목록 한 줄(카드)을 그리는 타일 — ProfileImageGalleryPanel.
         //        GalleryTile과 동일한 역할이지만, 정사각형 썸네일이 아니라
         //        가로로 긴 정보 행이라 별도로 그린다.
+        // @details [추가] 왼쪽에 방 프로필 이미지(원형)를 그린다 — 이미지가
+        //          없거나(Item.ImageUrl 비어있음) 아직 못 받아왔으면 방
+        //          이름 기반 색상+이니셜로 대체한다(ChatClientForm의
+        //          DrawAvatar()/RoomAvatarPanel과 같은 시각 규칙).
         //***************************************************************************
         private class RoomRow : Panel
         {
             private static Color Accent => ChatTheme.Current.Accent;
+            private static readonly Color[] AvatarPalette =
+            {
+                Color.FromArgb(255, 107, 107), Color.FromArgb(78, 205, 196), Color.FromArgb(69, 183, 209),
+                Color.FromArgb(150, 206, 180), Color.FromArgb(255, 195, 113), Color.FromArgb(162, 155, 254),
+                Color.FromArgb(253, 121, 168), Color.FromArgb(129, 236, 236),
+            };
 
             public RoomListItemData Item;
+            public RoomListPanel Owner; // 썸네일 캐시/로딩 및 방장 관리 액션 요청용
+
+            private Button _btnManage;
+            private ContextMenuStrip _manageMenu;
+            private bool _isOwnerRow;
 
             public RoomRow()
             {
@@ -39,6 +57,66 @@ namespace ChatApp
                 Cursor = Cursors.Hand;
                 Size = new Size(520, 56);
                 Margin = new Padding(0, 0, 0, 6);
+            }
+
+            //***************************************************************************
+            // @brief [추가] 이 행이 내 소유(방장인 방)인지에 따라 "⚙" 관리
+            //        버튼을 보이거나 숨긴다. OnItemReceived()가 Item을 채운
+            //        직후 호출한다. 버튼은 실제 자식 컨트롤이라, 이 위에서
+            //        클릭해도 RoomRow 자체의 Click(=방 입장)으로는 안 번진다
+            //        (WinForms 자식 컨트롤 클릭은 부모로 안 버블링됨).
+            //***************************************************************************
+            public void ConfigureManageButton(bool isOwner)
+            {
+                _isOwnerRow = isOwner;
+
+                if (!isOwner)
+                {
+                    if (_btnManage != null)
+                    {
+                        Controls.Remove(_btnManage);
+                        _btnManage.Dispose();
+                        _btnManage = null;
+                    }
+                    return;
+                }
+
+                if (_btnManage == null)
+                {
+                    _btnManage = new Button
+                    {
+                        Text = "⚙",
+                        Size = new Size(28, 28),
+                        FlatStyle = FlatStyle.Flat,
+                        Cursor = Cursors.Hand,
+                        BackColor = Color.White,
+                    };
+                    _btnManage.FlatAppearance.BorderSize = 1;
+                    _btnManage.FlatAppearance.BorderColor = ChatTheme.Current.Border;
+                    _btnManage.Click += (s, e) => ShowManageMenu();
+                    Controls.Add(_btnManage);
+                }
+                _btnManage.Location = new Point(Width - 38, (Height - 28) / 2);
+            }
+
+            //***************************************************************************
+            // @brief 관리 버튼 클릭 — 이름변경/프로필이미지변경/삭제 메뉴를 띄운다.
+            //        이름변경/삭제는 Owner가 직접 처리하고(간단한 요청+확인
+            //        대화상자뿐이라), 프로필 이미지 변경은 업로드 절차가
+            //        필요해서 ChatClientForm에 이벤트로 위임한다
+            //        (Owner.RoomImageEditRequested 참고).
+            //***************************************************************************
+            private void ShowManageMenu()
+            {
+                if (_manageMenu == null)
+                {
+                    _manageMenu = new ContextMenuStrip();
+                    _manageMenu.Items.Add("이름 변경", null, (s, e) => Owner?.RequestRenameRoomFromList(Item.RoomId, Item.Name));
+                    _manageMenu.Items.Add("프로필 이미지 변경", null, (s, e) => Owner?.RequestRoomImageEditFromList(Item.RoomId));
+                    _manageMenu.Items.Add(new ToolStripSeparator());
+                    _manageMenu.Items.Add("방 삭제", null, (s, e) => Owner?.RequestDeleteRoomFromList(Item.RoomId, Item.Name));
+                }
+                _manageMenu.Show(_btnManage, new Point(0, _btnManage.Height));
             }
 
             protected override void OnPaint(PaintEventArgs e)
@@ -56,20 +134,54 @@ namespace ChatApp
                         g.DrawPath(pen, path);
                 }
 
+                const int avatarSize = 40;
+                var avatarRect = new Rectangle(12, (Height - avatarSize) / 2, avatarSize, avatarSize);
+                Image thumbnail = string.IsNullOrEmpty(Item.ImageUrl) ? null : Owner?.GetThumbnail(Item.ImageUrl, this);
+
+                if (thumbnail != null)
+                {
+                    using (var clipPath = new GraphicsPath())
+                    {
+                        clipPath.AddEllipse(avatarRect);
+                        Region previousClip = g.Clip;
+                        g.SetClip(clipPath, CombineMode.Intersect);
+                        g.DrawImage(thumbnail, avatarRect);
+                        g.Clip = previousClip;
+                    }
+                }
+                else
+                {
+                    string name = string.IsNullOrEmpty(Item.Name) ? "?" : Item.Name;
+                    Color color = AvatarPalette[(uint)name.GetHashCode() % (uint)AvatarPalette.Length];
+                    using (var brush = new SolidBrush(color))
+                        g.FillEllipse(brush, avatarRect);
+
+                    string initial = name.Substring(0, 1).ToUpperInvariant();
+                    using (var initialFont = new Font(Font.FontFamily, 14f, FontStyle.Bold))
+                    using (var initialBrush = new SolidBrush(Color.White))
+                    using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                        g.DrawString(initial, initialFont, initialBrush, avatarRect, fmt);
+                }
+
+                int textLeft = avatarRect.Right + 12;
+
                 using (var nameFont = new Font(Font.FontFamily, 10f, FontStyle.Bold))
                 using (var nameBrush = new SolidBrush(Color.Black))
-                    g.DrawString(Item.Name, nameFont, nameBrush, new PointF(14, 8));
+                    g.DrawString(Item.Name, nameFont, nameBrush, new PointF(textLeft, 8));
 
                 using (var subFont = new Font(Font.FontFamily, 8.5f))
                 using (var subBrush = new SolidBrush(ChatTheme.Current.TextMuted))
-                    g.DrawString($"방장: {Item.OwnerNickname}", subFont, subBrush, new PointF(14, 30));
+                    g.DrawString($"방장: {Item.OwnerNickname}", subFont, subBrush, new PointF(textLeft, 30));
 
-                // 인원수 배지 — 오른쪽 끝.
+                // 인원수 배지 — 오른쪽 끝. [수정] 방장 행이면 관리(⚙) 버튼이
+                // 그 자리를 차지하므로, 배지를 그만큼(버튼 폭+여백) 왼쪽으로
+                // 밀어서 겹치지 않게 한다.
+                int rightMargin = _isOwnerRow ? 46 : 10;
                 string countText = $"{Item.UserCount}명";
                 using (var countFont = new Font(Font.FontFamily, 9f, FontStyle.Bold))
                 {
                     SizeF countSize = g.MeasureString(countText, countFont);
-                    var badgeRect = new RectangleF(Width - countSize.Width - 30, (Height - 22) / 2f, countSize.Width + 16, 22);
+                    var badgeRect = new RectangleF(Width - countSize.Width - 16 - rightMargin, (Height - 22) / 2f, countSize.Width + 16, 22);
                     using (var badgePath = RoundedRectPath(Rectangle.Round(badgeRect), 11))
                     using (var badgeBrush = new SolidBrush(ControlPaint.Light(Accent, 0.85f)))
                         g.FillPath(badgeBrush, badgePath);
@@ -95,6 +207,26 @@ namespace ChatApp
 
         private ChatNetworkClient _client;
 
+        // [추가] 방 프로필 이미지 썸네일 캐시/로더 — RoomRow.OnPaint()가
+        // GetThumbnail()로 조회한다. ChatClientForm.Media.cs의
+        // _avatarImageCache/RequestAvatarImage()와 같은 "URL 하나당 한 번만
+        // 받아서 캐시" 패턴이지만, 이 패널은 별도 클래스라 그쪽 캐시를
+        // 직접 공유할 수 없어서 자체적으로 하나 더 둔다(같은 URL이면
+        // 메모리상 이미지가 두 벌 뜨는 셈이지만, 방 아바타는 개수도 적고
+        // 흔한 조작도 아니라 실익 대비 복잡도가 안 맞는다고 판단).
+        private static readonly HttpClient _thumbnailHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        private readonly Dictionary<string, Image> _thumbnailCache = new Dictionary<string, Image>();
+        // [수정 — 버그] 예전엔 HashSet<string>(진행 중 여부만 표시)이었고,
+        // 완료 콜백도 "그 fetch를 시작한 딱 한 RoomRow 인스턴스"만 다시
+        // 그리게 돼 있었다 — 로딩 도중에 목록이 새로고침되면(로그인 직후
+        // 자동 재입장처럼 흔한 타이밍) 그 행 자체가 폐기(Dispose)되고,
+        // 같은 URL을 요청한 새 행은 "이미 진행 중"이라 아예 등록도 안 되니
+        // fetch가 끝나도 영원히 기본 아바타로 남았다(ChatClientForm의
+        // 아바타 캐시와 완전히 같은 버그 패턴). 이제 URL마다 "지금 이
+        // 이미지를 기다리는 행들의 목록"을 들고 있다가, 로딩이 끝나면
+        // 아직 살아있는(Disposed 아닌) 행 전부를 다시 그리게 한다.
+        private readonly Dictionary<string, List<RoomRow>> _thumbnailPendingRows = new Dictionary<string, List<RoomRow>>();
+
         // [추가] "방 만들기"로 생성한 직후엔 아직 목록에 그 방이 없어서
         // OnRoomEnterResultReceived()가 이름을 못 찾는다 — 응답이 올 때까지
         // 방금 입력한 이름을 잠깐 기억해뒀다가 폴백으로 쓴다.
@@ -113,6 +245,61 @@ namespace ChatApp
         //        ActiveImageChanged와 동일한 위임 패턴).
         //***************************************************************************
         public event Action<RoomListItemData> RoomEntered;
+
+        //***************************************************************************
+        // @brief [추가] 지금 이 패널이 들고 있는 목록 캐시에서 roomId의 방
+        //        정보를 동기적으로 찾아 돌려준다(없으면 null). 서버 왕복
+        //        없이 즉시 답한다.
+        // @details ChatClientForm.OnRoomEnterResultReceived()가 방 입장
+        //          응답을 받는 즉시(비동기 RoomEntered 이벤트를 기다리지
+        //          않고) 이름/방장/이미지를 채우는 데 쓴다 — 안 그러면
+        //          RoomEnterResultReceived를 구독한 두 핸들러(ChatClientForm
+        //          자신과 이 패널) 중 먼저 실행되는 쪽이 아직 안 채워진
+        //          값으로 UpdateRoomStatusUI()를 돌려버리는 경합이 있었다
+        //          (방 프로필 이미지가 DB엔 있는데 처음엔 기본 아바타로
+        //          보이던 버그의 원인).
+        //***************************************************************************
+        public RoomListItemData TryGetCachedRoomInfo(int roomId)
+        {
+            foreach (Control control in _flowRooms.Controls)
+            {
+                if (control is RoomRow row && row.Item.RoomId == roomId)
+                    return row.Item;
+            }
+            return null;
+        }
+
+        //***************************************************************************
+        // @brief [추가] 내 닉네임 — 각 방 행에서 "내가 그 방의 방장인지"
+        //        (Item.OwnerNickname과 비교) 판단해 관리(⚙) 버튼을 보일지
+        //        정하는 데 쓴다. ChatClientForm이 로그인 성공 시점과
+        //        닉네임 변경 시점마다 갱신해준다. 값이 바뀌면 목록을 다시
+        //        그려서 방장 버튼 표시가 즉시 반영되게 한다.
+        //***************************************************************************
+        public string MyNickname
+        {
+            get => _myNickname;
+            set
+            {
+                if (_myNickname == value)
+                    return;
+                _myNickname = value;
+                foreach (Control control in _flowRooms.Controls)
+                {
+                    if (control is RoomRow row)
+                        row.ConfigureManageButton(row.Item.OwnerNickname == _myNickname);
+                }
+            }
+        }
+        private string _myNickname;
+
+        //***************************************************************************
+        // @brief [추가] 관리 메뉴의 "프로필 이미지 변경" 클릭 시 발생 —
+        //        업로드 토큰 발급+파일 서버 업로드가 필요해서 이 패널이
+        //        직접 처리하지 못하고 ChatClientForm에 위임한다
+        //        (UploadRoomImage(int roomId) 참고).
+        //***************************************************************************
+        public event Action<int> RoomImageEditRequested;
 
         public RoomListPanel()
         {
@@ -234,7 +421,116 @@ namespace ChatApp
             _client.CreateRoomResultReceived += OnCreateRoomResultReceived;
             _client.RoomEnterResultReceived += OnRoomEnterResultReceived;
 
+            // [추가] 관리(⚙) 메뉴의 이름변경/삭제/이미지변경 요청 결과 —
+            // 성공하면 목록을 다시 불러와서 바뀐 내용을 반영한다. 이
+            // 패널을 거치지 않고(예: 지금 그 방에 들어가 있는 상태에서
+            // 대화 탭의 버튼으로) 같은 종류의 요청을 보냈을 때도 이
+            // 핸들러가 똑같이 불리지만, 여기서는 그냥 목록을 새로고침만
+            // 하므로(다른 상태를 덮어쓰지 않음) 문제되지 않는다 —
+            // ChatClientForm.Events.cs의 CreateRoom 관련 경쟁 상태 설명과
+            // 달리, 이쪽은 부작용이 "새로고침"뿐이라 중복돼도 안전하다.
+            _client.RenameRoomResultReceived += OnManageActionResultReceived;
+            _client.DeleteRoomResultReceived += OnManageActionResultReceived;
+            _client.SetRoomImageResultReceived += OnManageActionResultReceived;
+
             RefreshList();
+        }
+
+        //***************************************************************************
+        // @brief [추가] 이름변경/삭제/이미지변경 요청이 성공하면 목록을
+        //        다시 불러온다. 세 이벤트의 데이터 타입이 달라서
+        //        (RenameRoomResData/DeleteRoomResData/SetRoomImageResData)
+        //        각각 오버로드로 받되, 전부 Success/Reason 필드는 동일한
+        //        모양이라 로직은 한곳에 모았다.
+        //***************************************************************************
+        //***************************************************************************
+        // @brief [수정 — 버그] 이 세 오버로드 전부 다른 핸들러(OnRoomEnterResultReceived
+        //        등)와 달리 BeginInvoke() 없이 바로 실행되고 있었다 —
+        //        ChatNetworkClient의 이벤트는 네트워크 수신 스레드에서
+        //        발생하므로, 그 스레드에서 곧바로 RefreshList()(내부적으로
+        //        _flowRooms.Controls.Clear() 등 UI 컨트롤을 건드림)를 호출하면
+        //        크로스스레드 예외가 나서 조용히 실패한다 — "채팅방 목록에서
+        //        방 이미지를 설정했는데 목록에 반영 안 됨" 버그의 원인이었다.
+        //***************************************************************************
+        private void OnManageActionResultReceived(RenameRoomResData data)
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            BeginInvoke((MethodInvoker)delegate
+            {
+                if (data.Success)
+                    RefreshList();
+            });
+        }
+
+        private void OnManageActionResultReceived(DeleteRoomResData data)
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            BeginInvoke((MethodInvoker)delegate
+            {
+                if (data.Success)
+                    RefreshList();
+            });
+        }
+
+        private void OnManageActionResultReceived(SetRoomImageResData data)
+        {
+            if (IsDisposed || !IsHandleCreated)
+                return;
+
+            BeginInvoke((MethodInvoker)delegate
+            {
+                if (data.Success)
+                    RefreshList();
+            });
+        }
+
+        //***************************************************************************
+        // @brief [추가] 방 목록 행의 관리(⚙) 메뉴 — "이름 변경". 새 이름을
+        //        물어보고 RenameRoomReq를 보낸다. 서버가 요청자가 실제
+        //        방장인지 다시 검증하므로, 여기서는 별도로 재확인하지
+        //        않는다(관리 버튼 자체가 방장에게만 보이긴 하지만, 그
+        //        사이 방장이 바뀌었을 수도 있는 경합은 서버가 걸러준다).
+        //***************************************************************************
+        private void RequestRenameRoomFromList(int roomId, string currentName)
+        {
+            if (_client == null)
+                return;
+
+            string newName = PromptForText(FindForm(), "방 이름 변경", "새 방 이름을 입력하세요:", currentName ?? "");
+            if (string.IsNullOrWhiteSpace(newName))
+                return;
+
+            _client.RequestRenameRoom(roomId, newName.Trim());
+        }
+
+        //***************************************************************************
+        // @brief [추가] 관리 메뉴 — "방 삭제". 확인 대화상자 후 DeleteRoomReq.
+        //***************************************************************************
+        private void RequestDeleteRoomFromList(int roomId, string roomName)
+        {
+            if (_client == null)
+                return;
+
+            if (MessageBox.Show(FindForm(), $"'{roomName}' 방을 삭제할까요?\n방에 있던 모든 사람이 로비로 이동됩니다.",
+                "방 삭제", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+            {
+                return;
+            }
+
+            _client.RequestDeleteRoom(roomId);
+        }
+
+        //***************************************************************************
+        // @brief [추가] 관리 메뉴 — "프로필 이미지 변경". 업로드 절차가
+        //        필요해서 직접 처리하지 못하고 ChatClientForm에 위임한다.
+        //***************************************************************************
+        private void RequestRoomImageEditFromList(int roomId)
+        {
+            RoomImageEditRequested?.Invoke(roomId);
         }
 
         //***************************************************************************
@@ -248,12 +544,102 @@ namespace ChatApp
                 _client.RoomListEndReceived -= OnListEndReceived;
                 _client.CreateRoomResultReceived -= OnCreateRoomResultReceived;
                 _client.RoomEnterResultReceived -= OnRoomEnterResultReceived;
+                _client.RenameRoomResultReceived -= OnManageActionResultReceived;
+                _client.DeleteRoomResultReceived -= OnManageActionResultReceived;
+                _client.SetRoomImageResultReceived -= OnManageActionResultReceived;
                 _client = null;
             }
+
+            _pendingEnterRoomId = null;
+            _pendingCreatedRoomName = null;
 
             _flowRooms.Controls.Clear();
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "서버에 접속하면 방 목록을 볼 수 있습니다.";
+        }
+
+        //***************************************************************************
+        // @brief [수정 — 버그] RoomRow.OnPaint()가 호출 — url의 썸네일이
+        //        캐시에 있으면 즉시 돌려준다. 없으면 이 row를 "기다리는
+        //        목록"에 등록만 해두고(이미 다른 row가 같은 URL을 기다리는
+        //        중이면 새로 fetch를 또 시작하지 않음), 일단 null을
+        //        돌려준다(그 사이엔 RoomRow가 기본 아바타로 대신 그린다).
+        //        로딩이 끝나면 그 URL을 기다리던 (아직 살아있는) row 전부를
+        //        다시 그리게 한다.
+        //***************************************************************************
+        private Image GetThumbnail(string url, RoomRow row)
+        {
+            if (string.IsNullOrEmpty(url))
+                return null;
+
+            bool startFetch = false;
+
+            lock (_thumbnailCache)
+            {
+                if (_thumbnailCache.TryGetValue(url, out Image cached))
+                    return cached;
+
+                if (_thumbnailPendingRows.TryGetValue(url, out List<RoomRow> waiters))
+                {
+                    if (!waiters.Contains(row))
+                        waiters.Add(row);
+                }
+                else
+                {
+                    _thumbnailPendingRows[url] = new List<RoomRow> { row };
+                    startFetch = true;
+                }
+            }
+
+            if (startFetch)
+                _ = FetchThumbnailAsync(url);
+
+            return null;
+        }
+
+        private async Task FetchThumbnailAsync(string url)
+        {
+            try
+            {
+                byte[] imageBytes = await _thumbnailHttpClient.GetByteArrayAsync(url);
+                if (imageBytes == null || imageBytes.Length == 0)
+                    return;
+
+                using (var ms = new MemoryStream(imageBytes))
+                using (var original = Image.FromStream(ms))
+                {
+                    lock (_thumbnailCache)
+                    {
+                        _thumbnailCache[url] = new Bitmap(original);
+                    }
+                }
+            }
+            catch
+            {
+                // 네트워크 오류, 잘못된 URL, 이미지 디코딩 실패 등 — 조용히
+                // 무시한다(그 방은 계속 기본 아바타로 보임).
+            }
+            finally
+            {
+                List<RoomRow> waiters;
+                lock (_thumbnailCache)
+                {
+                    _thumbnailPendingRows.TryGetValue(url, out waiters);
+                    _thumbnailPendingRows.Remove(url);
+                }
+
+                if (waiters != null && !IsDisposed && IsHandleCreated)
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        foreach (RoomRow row in waiters)
+                        {
+                            if (!row.IsDisposed)
+                                row.Invalidate();
+                        }
+                    });
+                }
+            }
         }
 
         //***************************************************************************
@@ -294,8 +680,9 @@ namespace ChatApp
 
             BeginInvoke((MethodInvoker)delegate
             {
-                var row = new RoomRow { Item = data };
+                var row = new RoomRow { Item = data, Owner = this };
                 row.Click += (s, e) => TryEnterRoom(data);
+                row.ConfigureManageButton(data.OwnerNickname == _myNickname);
                 _flowRooms.Controls.Add(row);
             });
         }
@@ -313,6 +700,11 @@ namespace ChatApp
             });
         }
 
+        // [추가] 이 패널이 직접 RequestRoomEnter를 보낸 방 ID — 응답이
+        // 왔을 때 "이게 정말 내가 보낸 요청에 대한 응답인지" 확인하는
+        // 용도. 자세한 이유는 OnRoomEnterResultReceived() 참고.
+        private int? _pendingEnterRoomId;
+
         private void TryEnterRoom(RoomListItemData item)
         {
             if (_client == null)
@@ -320,6 +712,7 @@ namespace ChatApp
 
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "입장 중...";
+            _pendingEnterRoomId = item.RoomId;
             _client.RequestRoomEnter(item.RoomId);
         }
 
@@ -366,6 +759,7 @@ namespace ChatApp
 
                 _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
                 _lblStatus.Text = "방을 만들었습니다. 입장 중...";
+                _pendingEnterRoomId = data.RoomId;
                 _client.RequestRoomEnter(data.RoomId);
             });
         }
@@ -376,6 +770,18 @@ namespace ChatApp
         //        찾아 넘긴다(RoomEnterResPacket 자체엔 이름/방장이 없어서
         //        이 패널이 보완). 방금 만든 방이라 목록에 아직 없으면
         //        이름만이라도 최소한으로 채운다.
+        // @details [수정 — 버그] RoomEnterResultReceived는 채팅 탭의 "방 목록"
+        //          버튼(BtnRoomList_Click, 그냥 탭 전환만 함)이나 "방 만들기"
+        //          지름길처럼 이 패널을 거치지 않은 입장에도 똑같이 불린다.
+        //          예전엔 그 경우에도 여기서 무조건 처리해서, 목록에 그
+        //          방이 없으면(당연히 없음 — 이 패널이 관여 안 한 입장이니
+        //          목록을 조회한 적도 없음) _pendingCreatedRoomName(이 패널
+        //          자신의 것, 당연히 비어있음)로 폴백해 "(새 방)"을
+        //          ChatClientForm에 덮어씌우는 버그가 있었다(방장 화면에
+        //          방 이름이 "(새 방)"으로 보이던 원인). 이제 _pendingEnterRoomId로
+        //          "이 응답이 내가 보낸 요청에 대한 것인지"부터 확인하고,
+        //          아니면 조용히 무시한다 — 내가 시작한 입장이 아니면 이
+        //          패널이 관여할 일이 없다.
         //***************************************************************************
         private void OnRoomEnterResultReceived(RoomEnterResPacketData data)
         {
@@ -384,6 +790,11 @@ namespace ChatApp
 
             BeginInvoke((MethodInvoker)delegate
             {
+                if (_pendingEnterRoomId != data.RoomId)
+                    return; // 이 패널이 보낸 요청에 대한 응답이 아님 — 관여하지 않음
+
+                _pendingEnterRoomId = null;
+
                 if (!data.Success)
                 {
                     _lblStatus.ForeColor = ChatTheme.Current.Danger;

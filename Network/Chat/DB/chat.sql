@@ -1,8 +1,6 @@
 -- ***************************************************************************
--- create_chat_db.sql : 채팅 서버 회원 DB 스키마 생성 스크립트 (MySQL)
+-- chat.sql : 채팅 서버 회원 DB 스키마 생성 스크립트 (MySQL)
 --
--- AccountDBHandler.cpp / ChangeNicknameDBHandler.cpp가 가정하는 스키마와
--- 정확히 일치합니다:
 --   - uid(내부 전용, AUTO_INCREMENT)를 PRIMARY KEY로 사용
 --   - public_id(16바이트 무작위값을 16진 소문자 32자로 인코딩해 저장)를 외부 노출용 안정 식별자로 사용
 --     (닉네임 변경과 무관하게 고정 — Redis 키/클라이언트 로컬 토큰 파일이
@@ -129,8 +127,9 @@ CREATE TABLE rooms
 	room_id         INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY COMMENT '방 고유 번호(프로토콜의 roomId와 동일)',
 	name            VARCHAR(50)  NOT NULL COMMENT '방 이름(표시용, 방장이 변경 가능)',
 	owner_public_id CHAR(32)     NOT NULL COMMENT '방장 계정 — users.public_id 참조. 방장이 나가면 서버가 자동으로 다른 멤버에게 이양',
+	image_ref       VARCHAR(500) NULL COMMENT '방 프로필 이미지 참조. NULL이면 기본 이미지(클라이언트가 방 이름 기반 아바타로 대체 표시)',
 	created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '방 생성 시각',
-
+ 
 	INDEX idx_rooms_owner_public_id (owner_public_id),
 	CONSTRAINT fk_rooms_owner
 		FOREIGN KEY (owner_public_id) REFERENCES users (public_id)
