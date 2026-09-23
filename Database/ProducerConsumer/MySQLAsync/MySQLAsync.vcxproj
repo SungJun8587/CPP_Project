@@ -108,6 +108,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="DBAsyncHandler.cpp" />
+    <ClCompile Include="DBServerConfig.cpp" />
     <ClCompile Include="MySQLAsync.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -151,7 +152,8 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="DBAsyncStruct.h" />
-    <ClInclude Include="DbServiceManager.h" />
+    <ClInclude Include="DBServerConfig.h" />
+    <ClInclude Include="DBServiceManager.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>

@@ -75,7 +75,8 @@ using namespace std;
 #include <DB/ADO/AdoConnPool.h>
 #include <DB/ADO/AdoAsyncSrv.h>
 
-#include "DbServiceManager.h"
+#include "DBServerConfig.h"
+#include "DBServiceManager.h"
 #include "DBAsyncStruct.h"
 
 #endif //PCH_H

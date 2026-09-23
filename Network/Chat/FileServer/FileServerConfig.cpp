@@ -11,15 +11,10 @@
 // @brief CFileServerConfig 클래스의 생성자
 //***************************************************************************
 CFileServerConfig::CFileServerConfig()
-	: _nServerPort(0), _nMaxSessionCount(0), _nWorkerThreadCnt(0)
-	, _nRedisPoolSize(0), _nMaxUploadBytes(0)
+	: _nRedisPoolSize(0), _nMaxUploadBytes(0)
 {
-	memset(_tszServerName, 0, sizeof(_tszServerName));
-	memset(_tszIP, 0, sizeof(_tszIP));
 	memset(_tszStorageDir, 0, sizeof(_tszStorageDir));
 	memset(_tszPublicBaseUrl, 0, sizeof(_tszPublicBaseUrl));
-
-	Clear();
 }
 
 //***************************************************************************
@@ -27,11 +22,13 @@ CFileServerConfig::CFileServerConfig()
 //***************************************************************************
 CFileServerConfig::~CFileServerConfig()
 {
-	Clear();
 }
 
 //***************************************************************************
 // @brief JSON 설정 파일로부터 파일 서버 구성 정보를 읽어와 초기화합니다.
+// @details ServiceName/DisplayName/GroupId/ChannelId/KeepAliveSec/
+//          ServerNode/DBNode는 파일 서버 개념에 없으므로 읽지 않는다 —
+//          그 필드들은 상속만 받고 기본값 그대로 남는다.
 //***************************************************************************
 bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 {
@@ -52,8 +49,7 @@ bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 	// 템플릿 기반 변환 연산자를 제공한다는 가정 하에(다른 필드들과 동일한
 	// 패턴) int64로도 그대로 대입이 될 것으로 예상하지만, 실제
 	// CRapidJSONUtil 구현을 못 봐서 100% 확신은 못한다 — 컴파일 에러가
-	// 나면 이 줄만 value[_T("MaxUploadBytes")].GetInt64()처럼 명시적으로
-	// 바꾸면 된다.
+	// 나면 이 줄만 명시적으로 int64로 받는 식으로 바꾸면 된다.
 	_nMaxUploadBytes = jsonUtil[_T("MaxUploadBytes")];
 
 	if( _nMaxUploadBytes <= 0 )
@@ -65,14 +61,6 @@ bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 	_redisNodeVec = jsonUtil.Deserialize<CVector<CRedisNode>>(_T("RedisNode"));
 
 	return true;
-}
-
-//***************************************************************************
-// @brief 내부 동적 컨테이너 데이터를 소거하여 초기화합니다.
-//***************************************************************************
-void CFileServerConfig::Clear()
-{
-	_redisNodeVec.clear();
 }
 
 //***************************************************************************

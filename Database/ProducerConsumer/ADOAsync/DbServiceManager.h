@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// DbServiceManager.h : interface for the CDbServiceManager class.
+// DBServiceManager.h : interface for the CDBServiceManager class.
 //
 //***************************************************************************
 
@@ -11,28 +11,28 @@
 #include <memory>
 
 //***************************************************************************
-// @class CDbServiceManager
+// @class CDBServiceManager
 // @brief 멤버/게임/로그 등 도메인별 CAdoAsyncSrv 인스턴스를 소유하고 이름 있는 접근자로 노출하는 프로세스 전역 매니저.
 // @details
 // [초기화 순서] 이 매니저 자체는 "최초 사용 시점 생성"(Instance() 최초 호출 시 생성)이라 다른 정적 초기화식과의 순서 경쟁에서 자유롭다.
 // 다만 각 CAdoAsyncSrv 인스턴스는 생성만 될 뿐 StartService()가 자동으로 불리지는 않는다.
 // 실제 DB 접속/워커 스레드 기동은 호출부에서 명시적으로 MemberDB().StartService(...) 등을 호출해야 한다.
 //***************************************************************************
-class CDbServiceManager
+class CDBServiceManager
 {
 public:
 	//***************************************************************************
 	// @brief 프로세스 전역 매니저 인스턴스를 반환합니다(최초 사용 시점 생성).
-	// @return CDbServiceManager& 프로세스 싱글턴 인스턴스 참조
+	// @return CDBServiceManager& 프로세스 싱글턴 인스턴스 참조
 	//***************************************************************************
-	static CDbServiceManager& Instance()
+	static CDBServiceManager& Instance()
 	{
-		static CDbServiceManager instance;
+		static CDBServiceManager instance;
 		return instance;
 	}
 
-	CDbServiceManager(const CDbServiceManager&) = delete;
-	CDbServiceManager& operator=(const CDbServiceManager&) = delete;
+	CDBServiceManager(const CDBServiceManager&) = delete;
+	CDBServiceManager& operator=(const CDBServiceManager&) = delete;
 
 	//***************************************************************************
 	// @brief 멤버 DB 서비스 객체 참조를 반환합니다.
@@ -59,13 +59,13 @@ public:
 
 private:
 	//***************************************************************************
-	// @brief CDbServiceManager 생성자
+	// @brief CDBServiceManager 생성자
 	//***************************************************************************
-	CDbServiceManager()
+	CDBServiceManager()
 		: _memberDB(std::make_unique<CAdoAsyncSrv>())
 	{
 	}
-	~CDbServiceManager() = default;
+	~CDBServiceManager() = default;
 
 	//***************************************************************************
 	// @brief DB 관련 요청(멤버, 게임, 로그 DB 등)을 비동기로 처리하는 서비스 객체
@@ -77,13 +77,13 @@ private:
 };
 
 //***************************************************************************
-// @brief CDbServiceManager::Instance().MemberDB()의 축약형.
+// @brief CDBServiceManager::Instance().MemberDB()의 축약형.
 // @details 매크로이므로 헤더가 include된 모든 번역 단위에 이름이 그대로 노출된다
 // 다른 곳에 MEMBER_DB_ASYNC 라는 이름의 매크로/심볼이 이미 있다면 충돌하니 주의할 것.
 // (예시) 도메인이 늘어나면 아래처럼 같은 패턴으로 추가하면 된다:
-//   #define GAME_DB_ASYNC (CDbServiceManager::Instance().GameDB())
-//   #define LOG_DB_ASYNC (CDbServiceManager::Instance().LogDB())
+//   #define GAME_DB_ASYNC (CDBServiceManager::Instance().GameDB())
+//   #define LOG_DB_ASYNC (CDBServiceManager::Instance().LogDB())
 //***************************************************************************
-#define MEMBER_DB_ASYNC (CDbServiceManager::Instance().MemberDB())
+#define MEMBER_DB_ASYNC (CDBServiceManager::Instance().MemberDB())
 
 #endif // ndef UC_DBSERVICEMANAGER_H

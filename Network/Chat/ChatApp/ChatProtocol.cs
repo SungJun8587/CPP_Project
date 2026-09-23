@@ -5,9 +5,9 @@
 //
 // [중요] 아래 상수/필드 순서/크기는 C++ ChatPacket.h와 반드시 1:1로
 // 일치해야 한다. 서버가 #pragma pack(push,1)로 패딩 없이 정의하므로,
-// 여기서도 필드 순서 그대로, 패딩 없이 직렬화한다.
-// BinaryWriter/BinaryReader는 기본적으로 리틀 엔디안으로 동작하는데,
-// x86/x64는 전부 리틀 엔디안이라 서버(Windows/MSVC, x86/x64)와 그대로 호환된다.
+// 여기서도 필드 순서 그대로, 패딩 없이 직렬화한다. BinaryWriter/
+// BinaryReader는 기본적으로 리틀 엔디안으로 동작하는데, x86/x64는 전부
+// 리틀 엔디안이라 서버(Windows/MSVC, x86/x64)와 그대로 호환된다.
 //***************************************************************************
 
 using System;
@@ -558,6 +558,7 @@ namespace ChatApp
     //***************************************************************************
     public class ChatHistoryItemData
     {
+        public int RoomId;    // [추가] 이 기록이 어느 방 것인지 — 늦게 도착한 기록을 걸러내는 용도
         public long MessageId;
         public string SenderNickname;
         public string SenderProfileImageUrl;
@@ -674,6 +675,15 @@ namespace ChatApp
         public RoomResult Reason;
         public int RoomId;
         public int RoomUserCount;   // Success==true일 때만 유효
+
+        // [추가] 성공했고 로비가 아니면 서버가 이 방의 지금 이름/방장/
+        // 이미지를 같이 실어 보낸다(RoomEnterHandler.cpp가
+        // CChatServerMain::RequestGetRoomInfo()로 채움) — 별도로 방 목록
+        // 캐시를 참조하거나 그 캐시가 준비될 때까지 기다릴 필요가 없다.
+        // 로비 입장이거나 실패면 전부 빈 문자열.
+        public string RoomName;
+        public string RoomOwnerNickname;
+        public string RoomImageUrl;
     }
 
     public class RoomLeaveResPacketData
@@ -783,6 +793,7 @@ namespace ChatApp
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
+                int roomId = br.ReadInt32();
                 long messageId = br.ReadInt64();
                 string nickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
                 string profileImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
@@ -790,6 +801,7 @@ namespace ChatApp
                 long timestampMs = br.ReadInt64();
                 return new ChatHistoryItemData
                 {
+                    RoomId = roomId,
                     MessageId = messageId,
                     SenderNickname = nickname,
                     SenderProfileImageUrl = profileImageUrl,
@@ -1120,12 +1132,22 @@ namespace ChatApp
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
+                bool success = br.ReadByte() != 0;
+                RoomResult reason = (RoomResult)br.ReadByte();
+                int roomId = br.ReadInt32();
+                int roomUserCount = br.ReadInt32();
+                string roomName = Utf8FromFixed(br.ReadBytes(ProtocolConstants.RoomNameBytes));
+                string roomOwnerNickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
+                string roomImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
                 return new RoomEnterResPacketData
                 {
-                    Success = br.ReadByte() != 0,
-                    Reason = (RoomResult)br.ReadByte(),
-                    RoomId = br.ReadInt32(),
-                    RoomUserCount = br.ReadInt32(),
+                    Success = success,
+                    Reason = reason,
+                    RoomId = roomId,
+                    RoomUserCount = roomUserCount,
+                    RoomName = roomName,
+                    RoomOwnerNickname = roomOwnerNickname,
+                    RoomImageUrl = roomImageUrl,
                 };
             }
         }

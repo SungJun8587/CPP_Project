@@ -25,6 +25,12 @@
 #include <iostream>
 #include <conio.h>
 
+//***************************************************************************
+// @brief CDBServerConfig의 싱글톤 포인터에 접근합니다.
+// @return CDBServerConfig* 서버 설정 싱글톤 포인터
+//***************************************************************************
+#define DB_SERVER_CONFIG						CDBServerConfig::GetSingletonPtr()
+
 // 전역 변수 및 상수 정의
 const size_t MAX_QUEUE_CAPACITY = 10000;				// 큐 최대 허용 크기 (Back-pressure 제어용 임계값)
 
@@ -302,8 +308,8 @@ void MainClose()
 	}
 
 	// 2. DB 비동기 서비스 정리 — 반드시 BaseGlobal::Destroy()보다 먼저 호출
-	CDbServiceManager::Instance().ShutdownAll();
-	SERVER_CONFIG->ReleaseInstance();
+	CDBServiceManager::Instance().ShutdownAll();
+	DB_SERVER_CONFIG->ReleaseInstance();
 	BaseGlobal::Destroy();
 }
 
@@ -329,16 +335,16 @@ int main()
 
 	// 4. 서버 DB 설정 파일 로드
 	_sntprintf_s(tszTempArgv, FULLPATH_STRLEN, _TRUNCATE, _T("..\\Config\\server_config_mysql.json"));
-	if( false == SERVER_CONFIG->Init(tszTempArgv) )
+	if( false == DB_SERVER_CONFIG->Init(tszTempArgv) )
 	{
-		LOG_ERROR(_T("SERVER_CONFIG->Init Fail. (Path: %s)"), tszTempArgv);
+		LOG_ERROR(_T("DB_SERVER_CONFIG->Init Fail. (Path: %s)"), tszTempArgv);
 
 		MainClose();
 		return -1;
 	}
 
 	// 5. 설정 파일 내 DB 노드 정보 존재 여부 검증
-	const auto& dbNodeVec = SERVER_CONFIG->GetDBNodeVec();
+	const auto& dbNodeVec = DB_SERVER_CONFIG->GetDBNodeVec();
 	if( dbNodeVec.empty() )
 	{
 		LOG_ERROR(_T("DBNode configuration is empty. (Path: %s)"), tszTempArgv);

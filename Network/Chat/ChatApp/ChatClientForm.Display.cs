@@ -769,9 +769,29 @@ namespace ChatApp
         //        넘겨서 지금 시각을 쓰지만(기존 동작 그대로), 과거 대화
         //        기록(OnChatHistoryItemReceived())은 실제 발신 시각을 그대로
         //        넘겨서 날짜 구분선이 그 시점 기준으로 정확히 나뉘게 한다.
+        // @details [수정 — 버그] messageId != 0(서버가 부여한 실제 ID —
+        //          실시간/기록 메시지 전부 해당, 로컬 에코만 0)이면 이미
+        //          같은 ID의 항목이 리스트박스에 있는지 먼저 확인하고,
+        //          있으면 조용히 건너뛴다. 두 가지 경쟁 상태를 막기 위함:
+        //          1) 방 입장 처리(MoveToRoom, 멤버 등록)와 방 정보/기록
+        //             조회(비동기 DB) 사이의 짧은 틈에 다른 사람이 보낸
+        //             메시지가 실시간 브로드캐스트로 먼저 오고, 뒤이어
+        //             오는 기록 조회에도 같은 메시지가 포함될 수 있다.
+        //          2) 방을 빠르게 두 번 클릭하는 등으로 같은 방에 대한
+        //             기록 스트리밍이 두 번 시작되면, 모든 메시지가
+        //             통째로 중복 추가될 수 있다.
         //***************************************************************************
         private void AppendChat(string senderName, string senderProfileImageUrl, string message, bool isMyMessage, long messageId = 0, DateTime? timestamp = null)
         {
+            if (messageId != 0)
+            {
+                foreach (object existing in _listBoxChat.Items)
+                {
+                    if (existing is ChatBubbleItem existingItem && existingItem.MessageId == messageId)
+                        return; // 이미 있는 메시지 — 중복 추가하지 않음
+                }
+            }
+
             DateTime effectiveTimestamp = timestamp ?? DateTime.Now;
 
             // [추가] 마지막 메시지와 날짜(일 단위)가 다르면(또는 첫 메시지면)

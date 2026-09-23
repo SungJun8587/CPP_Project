@@ -1,5 +1,4 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // ChatServerMain.h : interface for the CChatServerMain class.
 //
 //***************************************************************************
@@ -13,9 +12,9 @@
 #include <Redis/RedisService.h>
 #include <Redis/RedisServerHeartbeat.h>
 #include <DB/OdbcAsyncSrv.h>
-#include "ChatPacket.h"
-#include "DBListProfileImagesRequest.h"
-#include "DBListRoomsRequest.h"
+#include "ChatPacket.h"		// kPublicIdBytes
+#include "DBListProfileImagesRequest.h"	// SProfileImageEntry
+#include "DBListRoomsRequest.h"	// SRoomListEntry
 
 #include <string>
 #include <memory>
@@ -56,6 +55,25 @@ class CChatSession;
 //     _iocpCore/_jobQueue → _redisService → MEMBER_DB_ASYNC(CDbServiceManager가
 //     소유 — 이 클래스는 StartService()만 호출하고 소유권을 갖지 않음) →
 //     _service(IOCP) → _heartbeat
+//
+// [추가 — 구현 파일 분리] 클래스 하나가 너무 커져서, 멤버 함수 구현을
+// 기능 영역별로 4개 .cpp 파일에 나눠 담았다(선언은 이 헤더 하나에 그대로
+// 모여있고, 정의만 나뉜다 — C++은 한 클래스의 멤버 함수를 여러 번역
+// 단위에 나눠 정의해도 문제없다, 접근 제어는 소스 스코프가 아니라 클래스
+// 선언 기준이므로 private 멤버도 이 헤더를 include한 어떤 .cpp에서든
+// 그대로 쓸 수 있다):
+//     - ChatServerMain.cpp        : 생애주기(Start/Stop), 로그인 상태(Redis),
+//                                   전체 브로드캐스트, 프로필/방 이미지
+//                                   URL 저장/표시 변환 유틸(ToStorableImageRef/
+//                                   ToDisplayImageUrl — 계정/방 양쪽이 같이
+//                                   쓰므로 core에 둠)
+//     - ChatServerMainAccount.cpp : 회원가입/재접속, 닉네임 변경, 프로필
+//                                   이미지(URL 설정/목록/대표지정/삭제),
+//                                   파일 서버 업로드 토큰 발급
+//     - ChatServerMainRoom.cpp    : 방 이동(로비 포함)/생성/삭제/이름변경/
+//                                   이미지 설정/방장 자동 이양/DB 초기 로딩
+//     - ChatServerMainChat.cpp    : 채팅 메시지 ID 발급/삭제 검증, 방 대화
+//                                   기록(Redis) 저장/삭제/조회
 //***************************************************************************
 class CChatServerMain
 {
@@ -327,15 +345,9 @@ public:
 	//***************************************************************************
 	std::string ToDisplayImageUrl(const std::string& imageRef) const;
 
-	//***************************************************************************
-	// @brief [추가] 채팅 메시지 삭제 결과 사유.
-	//***************************************************************************
-	enum class EDeleteMessageResult : uint8
-	{
-		Ok = 0,
-		NotFound = 1,	// messageId가 추적 창(최근 N개)을 벗어났거나 애초에 존재한 적 없음
-		NotOwner = 2,	// 요청자가 이 메시지의 작성자가 아님
-	};
+	// [수정 — 이동] EDeleteMessageResult는 이제 ChatPacketTypes.h에 있다
+	// (ChatPacket.h가 그 헤더를 include하므로 이 파일에서 그대로 쓸 수 있다) —
+	// 와이어 프로토콜 값이라 ERoomResult/ELoginResult와 같은 자리로 옮겼다.
 
 	//***************************************************************************
 	// @brief [추가] 새로 브로드캐스트할 채팅 메시지에 부여할 다음 고유 ID를
@@ -497,6 +509,20 @@ public:
 		std::function<void(ERoomResult result)> onComplete);
 
 	//***************************************************************************
+	// @brief [추가] 방 하나(roomId)의 이름/방장 닉네임/이미지를 조회합니다.
+	// @details RoomEnterHandler.cpp가 방 입장 성공 직후 호출해서, 그
+	//          결과를 RoomEnterResPacket에 바로 실어 보낸다 — 클라이언트가
+	//          별도의 방 목록 캐시(RoomListPanel)에 기대지 않고 입장
+	//          응답 하나로 방 정보를 전부 받게 하기 위함(캐시가 아직
+	//          로딩되기 전에 입장하는 타이밍 문제를 근본적으로 없앤다).
+	//          imageUrl은 완전한 URL로 복원해서 콜백에 넘긴다(ToDisplayImageUrl()).
+	//***************************************************************************
+	void RequestGetRoomInfo(
+		std::shared_ptr<CChatSession> session,
+		int32 roomId,
+		std::function<void(bool found, const SRoomListEntry& info)> onComplete);
+
+	//***************************************************************************
 	// @brief [추가] 1인당 생성 가능한 방 개수 상한(설정 파일의
 	//        MaxRoomsPerOwner)을 반환합니다. RequestCreateRoom() 내부가
 	//        DB 요청(ST_CREATE_ROOM_REQ::maxRoomsPerOwner)에 그대로 실어
@@ -632,6 +658,20 @@ private:
 
 	// [추가] 1인당 생성 가능한 방 개수 상한 — SetMaxRoomsPerOwner() 참고.
 	int32		_maxRoomsPerOwner = 0;
+
+	//***************************************************************************
+	// @brief [수정 — 파일 분리] PushDBAsyncRequest()의 백프레셔 임계값.
+	//        예전엔 ChatServerMain.cpp 안의 이름 없는 네임스페이스 상수였는데,
+	//        구현을 ChatServerMain.cpp/ChatServerMainAccount.cpp/
+	//        ChatServerMainRoom.cpp/ChatServerMainChat.cpp 네 파일로 나누면서
+	//        전부 이 값을 쓰므로(각 Request*() 메서드마다 PushDBAsyncRequest()
+	//        호출 시 그대로 넘김) 클래스 정적 멤버로 올렸다 — 파일마다 따로
+	//        정의해 값이 어긋날 여지를 없앴다. 이 이상 쌓여 있으면 새 요청
+	//        게시 자체를 거부(DbError)한다 — COdbcAsyncSrv의
+	//        MAX_WARNING_QUERY_QUEUE_SIZE(100000, 경고 로그용 임계값)보다
+	//        훨씬 보수적으로 낮게 잡았다.
+	//***************************************************************************
+	static constexpr size_t kMaxDbQueueCapacity = 5000;
 };
 
 #endif // ndef UC_CHATSERVERMAIN_H

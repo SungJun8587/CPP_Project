@@ -1,5 +1,4 @@
-﻿
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -11,6 +10,9 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+// [수정 — 컴파일 오류] 이 프로젝트 설정(암시적 using 등)에서 System.Net.Mime.MediaTypeNames에도
+// Font/Image라는 이름의 클래스가 있어서, System.Drawing.Font/Image와 이름이 겹쳐 모호한
+// 참조 오류가 났다. 타입 별칭으로 System.Drawing 쪽을 명시적으로 고정한다.
 using Font = System.Drawing.Font;
 using Image = System.Drawing.Image;
 
@@ -155,30 +157,32 @@ namespace ChatApp
             {
                 if (res.Success)
                 {
+                    // [추가 — 진단용] 같은 방에 대해 RoomEnterRes가 중복으로
+                    // 오는지 확인 — 재접속 시 대화 기록이 중간에 끊기는
+                    // 현상의 유력한 원인(응답이 두 번 오면 _listBoxChat.Items.Clear()도
+                    // 두 번 실행돼서, 기록 스트리밍 도중에 화면이 다시
+                    // 지워질 수 있음). 이전 _currentRoomId와 비교해서
+                    // 이미 같은 방에 있었는지도 같이 찍는다.
+                    AppendSystemLog($"[디버그] RoomEnterRes 수신 (roomId={res.RoomId}, 이전방={_currentRoomId}) - 리스트박스 비움", ColorSystemDebug);
+
                     _currentRoomId = res.RoomId;
                     _txtRoomUserCount.Text = res.RoomUserCount.ToString();
 
-                    // [수정 — 버그] UpdateRoomStatusUI()를 부르기 전에 방
-                    // 이름/방장/이미지를 여기서 동기적으로 먼저 채운다.
-                    // 예전엔 이 값들을 RoomListPanel.RoomEntered(비동기 이벤트)
-                    // 에만 맡겼는데, RoomEnterResultReceived를 구독한 두
-                    // 핸들러(이 함수와 RoomListPanel 자신) 중 이 함수가 먼저
-                    // 실행되다 보니, UpdateRoomStatusUI()가 아직 안 채워진
-                    // (이전 방의 잔재이거나 빈) 값으로 먼저 돌아버리는 경합이
-                    // 있었다 — 방 프로필 이미지가 DB엔 있는데 방금 들어갔을
-                    // 때는 기본 아바타로 보이던 버그의 원인. RoomListPanel이
-                    // 갖고 있는 목록 캐시를 서버 왕복 없이 즉시 동기 조회해서
-                    // 이 문제를 없앤다 — 캐시에 없으면(막 만든 방이라 아직
-                    // 목록에 없는 경우 등) 기존 값을 그대로 둔다
-                    // (OnCreateRoomResultReceived()가 이미 채워놨거나,
-                    // 나중에 RoomListPanel.RoomEntered가 보완해준다).
-                    var cachedInfo = _roomListPanel.TryGetCachedRoomInfo(res.RoomId);
-                    if (cachedInfo != null)
-                    {
-                        _currentRoomName = cachedInfo.Name;
-                        _currentRoomOwnerNickname = cachedInfo.OwnerNickname;
-                        _currentRoomImageUrl = cachedInfo.ImageUrl;
-                    }
+                    // [수정 — 근본 해결] 예전엔 방 이름/방장/이미지를
+                    // RoomListPanel.RoomEntered(비동기 이벤트)나 그 목록
+                    // 캐시의 동기 조회(TryGetCachedRoomInfo())에 의존했는데,
+                    // 둘 다 "그 시점에 목록이 이미 로드돼 있어야" 정확했다 —
+                    // 로그인 직후 곧바로 마지막 방에 자동 재입장하는 것처럼
+                    // 목록이 채 로딩되기도 전에 입장하면 캐시가 비어있어
+                    // 방 이름/방장/이미지가 기본값으로 보이는 문제가 있었다.
+                    // 이제 서버가 RoomEnterRes 자체에 그 방의 지금 이름/방장/
+                    // 이미지를 실어서 보내주므로(RoomEnterHandler.cpp가
+                    // CChatServerMain::RequestGetRoomInfo()로 채움), 이 응답
+                    // 하나로 전부 확정된다 — 클라이언트 쪽 캐시나 타이밍에
+                    // 더 이상 의존하지 않는다.
+                    _currentRoomName = res.RoomName;
+                    _currentRoomOwnerNickname = res.RoomOwnerNickname;
+                    _currentRoomImageUrl = res.RoomImageUrl;
 
                     UpdateRoomStatusUI();
                     AppendSystemLog($"[시스템] {res.RoomId}번 방 입장 성공 (인원 {res.RoomUserCount}명)", ColorSystemOk);
@@ -605,12 +609,20 @@ namespace ChatApp
         //        대화 탭이 항상 구독 중인 OnRoomEnterResultReceived()가
         //        이미 갱신했을 것이므로 여기서 다시 건드리지 않는다.
         //***************************************************************************
+        //***************************************************************************
+        // @brief 방 목록(RoomListPanel)에서 방 입장에 성공했을 때 발생하는
+        //        이벤트 — 대화 탭으로 전환하는 것만 담당한다.
+        // @details [수정 — 정리] 예전엔 여기서 room.Name/OwnerNickname/ImageUrl로
+        //          _currentRoomName 등을 직접 채웠는데, 그 값이 RoomListPanel의
+        //          목록 캐시(아직 로딩 전이면 부정확/빈 값일 수 있음)에서 온
+        //          것이라 타이밍에 따라 부정확할 위험이 있었다. 이제 그 값들은
+        //          OnRoomEnterResultReceived()가 서버의 RoomEnterRes 응답으로
+        //          직접(캐시 경유 없이) 확정하므로, 이 함수는 그 이벤트가 이미
+        //          다 채워놓은 상태에서 탭만 전환해주면 된다 — 이중으로 값을
+        //          설정하면 어느 쪽이 최종값인지 헷갈릴 여지만 생긴다.
+        //***************************************************************************
         private void OnRoomListPanelRoomEntered(RoomListItemData room)
         {
-            _currentRoomName = room.Name;
-            _currentRoomOwnerNickname = room.OwnerNickname;
-            _currentRoomImageUrl = room.ImageUrl;
-            UpdateRoomStatusUI();
             _tabControl.SelectedIndex = 0; // 대화 탭으로 전환
         }
 
@@ -856,19 +868,7 @@ namespace ChatApp
             Invoke((MethodInvoker)delegate
             {
                 if (!data.Success)
-                {
                     AppendSystemLog("[시스템] 방 프로필 이미지 설정 실패 - " + DescribeRoomResult(data.Reason), ColorSystemError);
-                }
-                else
-                {
-                    // [추가 — 진단용] 요청자 본인에게 온 "설정 성공" 응답을
-                    // 받았는지 확인 — 이게 안 찍히면 SetRoomImageReq 자체가
-                    // 실패했거나 응답이 안 온 것이므로 DB 반영 자체를 의심해야
-                    // 한다. 이게 찍혔는데도 방 아바타가 안 바뀌면, 뒤이어 오는
-                    // RoomImageChangedNotify(OnRoomImageChangedNotified 로그
-                    // 참고)에 문제가 있다는 뜻이다.
-                    AppendSystemLog("[디버그] SetRoomImageRes 성공 응답 수신 — 곧 RoomImageChangedNotify가 와야 함", ColorSystemDebug);
-                }
             });
         }
 
@@ -880,16 +880,8 @@ namespace ChatApp
         {
             Invoke((MethodInvoker)delegate
             {
-                // [추가 — 진단용] 이 알림 자체가 도착했는지부터 확인.
-                // roomId가 안 맞아서 무시되는 건지, 아예 서버가 안 보낸
-                // 건지(=서버가 방 인원수를 0으로 찍었을 것) 구분하기 위함.
-                AppendSystemLog($"[디버그] RoomImageChangedNotify 수신 (roomId={data.RoomId}, 현재방={_currentRoomId}, url={data.ImageUrl})", ColorSystemDebug);
-
                 if (data.RoomId != _currentRoomId)
-                {
-                    AppendSystemLog("[디버그] 지금 있는 방이 아니라서 무시함", ColorSystemDebug);
                     return;
-                }
 
                 _currentRoomImageUrl = data.ImageUrl;
                 ApplyRoomAvatarImage(_currentRoomImageUrl);
@@ -906,10 +898,29 @@ namespace ChatApp
         //        ChatListBox_MouseClick의 기존 판정 로직이 IsMyMessage만
         //        보고 그대로 동작함).
         //***************************************************************************
+        //***************************************************************************
+        // @brief [수정 — 버그] roomId가 지금 보고 있는 방과 다르면 조용히
+        //        버린다. 방 기록은 최대 1000개까지 패킷 여러 개로 나눠서
+        //        오기 때문에 시간이 좀 걸리는데, 그 사이 사용자가 다른
+        //        방으로 빠르게 옮기면(목록에서 다른 방 클릭 등) 이전 방의
+        //        늦게 도착한 기록이 새로 들어간 방 화면에 섞여 보이는
+        //        문제가 있었다 — ChatHistoryEndRes는 원래도 roomId로
+        //        걸러내고 있었는데, 항목 하나하나(ChatHistoryItemRes)엔
+        //        그 필드 자체가 없어서 걸러낼 방법이 없었다.
+        //***************************************************************************
         private void OnChatHistoryItemReceived(ChatHistoryItemData data)
         {
             Invoke((MethodInvoker)delegate
             {
+                if (data.RoomId != _currentRoomId)
+                {
+                    // [추가 — 진단용] roomId 불일치로 버려지는 항목이
+                    // 있는지 확인 — 있다면 그 사이 _currentRoomId가
+                    // 바뀌었다는 뜻(중복 RoomEnterReq 등의 경합).
+                    AppendSystemLog($"[디버그] ChatHistoryItemRes 버려짐 (온roomId={data.RoomId}, 지금roomId={_currentRoomId}, msg={data.Message})", ColorSystemDebug);
+                    return;
+                }
+
                 bool isMyMessage = data.SenderNickname == _currentNickname;
                 DateTime timestamp = DateTimeOffset.FromUnixTimeMilliseconds(data.TimestampMs).LocalDateTime;
 
@@ -926,6 +937,11 @@ namespace ChatApp
         {
             Invoke((MethodInvoker)delegate
             {
+                // [추가 — 진단용] 이 끝 알림 자체가 몇 번 오는지, roomId가
+                // 맞는지 확인 — 방 입장/기록 스트림이 중복으로 시작됐다면
+                // 이게 두 번 이상 찍힐 것이다.
+                AppendSystemLog($"[디버그] ChatHistoryEndRes 수신 (roomId={data.RoomId}, 지금roomId={_currentRoomId}, 개수={data.TotalCount})", ColorSystemDebug);
+
                 if (data.RoomId != _currentRoomId)
                     return;
 

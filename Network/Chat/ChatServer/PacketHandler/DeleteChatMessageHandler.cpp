@@ -32,16 +32,16 @@ namespace
 			return;
 
 		int32 roomId = 0;
-		const CChatServerMain::EDeleteMessageResult result = server->TryDeleteMessage(packet->messageId, session.GetPublicId(), roomId);
+		const EDeleteMessageResult result = server->TryDeleteMessage(packet->messageId, session.GetPublicId(), roomId);
 
 		DeleteChatMessageResPacket res{};
 		res.size = sizeof(res);
 		res.type = static_cast<uint16>(EChatPacketType::DeleteChatMessageRes);
-		res.success = (result == CChatServerMain::EDeleteMessageResult::Ok) ? 1 : 0;
+		res.success = (result == EDeleteMessageResult::Ok) ? 1 : 0;
 		res.reason = static_cast<uint8>(result);
 		session.Send(&res, sizeof(res));
 
-		if( result != CChatServerMain::EDeleteMessageResult::Ok )
+		if( result != EDeleteMessageResult::Ok )
 			return;
 
 		// [추가] 대화 기록(Redis)에서도 이 메시지를 제거한다 — 로비면

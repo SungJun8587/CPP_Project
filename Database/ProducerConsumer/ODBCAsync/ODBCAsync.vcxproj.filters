@@ -55,6 +55,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
       <Filter>UtilCore\Thread</Filter>
     </ClCompile>
+    <ClCompile Include="DBServerConfig.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -161,10 +162,11 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="DbServiceManager.h" />
+    <ClInclude Include="DBServiceManager.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h">
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
+    <ClInclude Include="DBServerConfig.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

@@ -7,45 +7,29 @@
 #ifndef UC_FILESERVERCONFIG_H
 #define UC_FILESERVERCONFIG_H
 
-#include <ServerConnectInfo.h>
+#include "ServerConfig.h"
 
 //***************************************************************************
 // @brief 파일 서버 설정 정보 관리 클래스
 // @details JSON 기반의 설정(바인드 IP/포트, Redis 노드, 저장 경로, 공개 URL,
 //          업로드 크기 제한 등)을 로드하고 관리합니다.
+// @details [수정 — 리팩터링] CServerConfig는 이제 필드+게터만 제공하고
+//          (ServerConfig.h 상단 설명 참고), Init()/ToJSON()/FromJSON()/
+//          PrintServerSettingInfo()는 이 클래스가 직접 구현한다. 이
+//          클래스는 베이스 필드 중 ServerName/IP/Port/MaxSessionCount/
+//          WorkerThreadCnt/RedisNodeVec만 실제로 읽고 쓴다 — ServiceName/
+//          DisplayName/GroupId/ChannelId/KeepAliveSec/ServerNodeVec/
+//          DBNodeVec은 파일 서버 개념에 없는 값이라 아예 건드리지 않는다
+//          (그 필드들은 상속은 받지만 항상 기본값 그대로 남는다). 그래서
+//          파일 서버 JSON 설정엔 그 키들이 없어도 된다.
 //***************************************************************************
-class CFileServerConfig : public CSingleton<CFileServerConfig>
+class CFileServerConfig : public CServerConfig, public CSingleton<CFileServerConfig>
 {
 public:
 	CFileServerConfig();
 	virtual ~CFileServerConfig();
 
 	bool Init(const TCHAR* tszServerInfo);
-
-	//***************************************************************************
-	// @brief 서버 이름을 반환합니다(로그/하트비트 표시용).
-	//***************************************************************************
-	TCHAR* GetServerName() { return _tszServerName; }
-
-	//***************************************************************************
-	// @brief 이 서버가 바인드할 IP 주소를 반환합니다.
-	//***************************************************************************
-	TCHAR* GetServerIP() { return _tszIP; }
-
-	//***************************************************************************
-	// @brief 이 서버가 바인드할 포트 번호의 참조를 반환합니다.
-	//***************************************************************************
-	uint16& GetServerPort() { return _nServerPort; }
-
-	//***************************************************************************
-	// @brief 최대 동시 접속(HTTP 연결) 수를 반환합니다.
-	//***************************************************************************
-	int32 GetMaxSessionCount() { return _nMaxSessionCount; }
-
-	//***************************************************************************
-	// @brief 워커 스레드 수를 반환합니다.
-	//***************************************************************************
-	int32 GetWorkerThreadCnt() { return _nWorkerThreadCnt; }
 
 	//***************************************************************************
 	// @brief Redis 연결 풀 크기를 반환합니다.
@@ -63,8 +47,8 @@ public:
 	// @details 예: "http://192.168.0.10:8081" — 이 뒤에 "/images/{path}"를
 	//          붙여서 클라이언트에게 돌려줄 최종 URL을 만든다
 	//          (FileServerMain::BuildPublicUrl() 참고). 이 값과 채팅 서버
-	//          설정(ServerConfig.h::FileServerUrl)에 클라이언트가 실제로
-	//          접속할 주소를 같게 맞춰야 한다.
+	//          설정(CChatServerConfig::GetFileServerUrl())에 클라이언트가
+	//          실제로 접속할 주소를 같게 맞춰야 한다.
 	//***************************************************************************
 	TCHAR* GetPublicBaseUrl() { return _tszPublicBaseUrl; }
 
@@ -76,18 +60,11 @@ public:
 	//***************************************************************************
 	int64 GetMaxUploadBytes() { return _nMaxUploadBytes; }
 
-	//***************************************************************************
-	// @brief Redis 노드 목록을 반환합니다.
-	//***************************************************************************
-	CVector<CRedisNode>& GetRedisNodeVec() { return _redisNodeVec; }
-
-	//***************************************************************************
-	// @brief 지정한 ID의 Redis 노드 참조를 반환합니다.
-	//***************************************************************************
-	CRedisNode& GetRedisNode(int16& nID) { return _redisNodeVec[nID - 1]; }
-
 	void PrintServerSettingInfo();
 
+	//***************************************************************************
+	// @brief 서버 설정 객체를 JSON 형태로 직렬화합니다.
+	//***************************************************************************
 	void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
 	{
 		value.SetObject();
@@ -102,6 +79,9 @@ public:
 		value.AddMember(_T("MaxUploadBytes"), static_cast<int64>(_nMaxUploadBytes), allocator);
 	}
 
+	//***************************************************************************
+	// @brief JSON 객체로부터 서버 설정 정보를 역직렬화합니다.
+	//***************************************************************************
 	void FromJSON(const _tValue& value)
 	{
 		_tcsncpy_s(_tszServerName, _countof(_tszServerName), value[_T("Name")].GetString(), _TRUNCATE);
@@ -115,25 +95,12 @@ public:
 		_nMaxUploadBytes = value[_T("MaxUploadBytes")].GetInt64();
 	}
 
-protected:
-	void Clear();
-
 private:
-	TCHAR					_tszServerName[HOSTNAME_STRLEN];		// 서버 이름(로그/하트비트 표시용)
-
-	TCHAR					_tszIP[HOSTNAME_STRLEN];				// 바인드 IP
-	uint16					_nServerPort;							// 바인드 포트
-
-	int32					_nMaxSessionCount;						// 최대 동시 HTTP 연결 수
-	int32					_nWorkerThreadCnt;						// IOCP 워커 스레드 수
-
 	int32					_nRedisPoolSize;						// Redis 커넥션 풀 크기
 
 	TCHAR					_tszStorageDir[MAX_BUFFER_SIZE];		// 로컬 저장 경로
 	TCHAR					_tszPublicBaseUrl[MAX_BUFFER_SIZE];		// 클라이언트에게 돌려줄 URL의 기본 주소
 	int64					_nMaxUploadBytes;						// 업로드 최대 크기(바이트) — int64(2GB를 넘는 대용량 업로드 지원 목적)
-
-	CVector<CRedisNode>		_redisNodeVec;							// Redis 노드 목록
 };
 
 #endif // ndef UC_FILESERVERCONFIG_H

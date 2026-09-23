@@ -218,6 +218,13 @@
     <ClCompile Include="PacketHandler\SetRoomImageHandler.cpp">
       <Filter>PacketHandler</Filter>
     </ClCompile>
+    <ClCompile Include="ChatServerMainAccount.cpp" />
+    <ClCompile Include="ChatServerMainChat.cpp" />
+    <ClCompile Include="ChatServerMainRoom.cpp" />
+    <ClCompile Include="DBHandler\GetRoomInfoDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="ChatServerConfig.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -493,6 +500,8 @@
     <ClInclude Include="DBRenameRoomRequest.h" />
     <ClInclude Include="DBTransferRoomOwnerRequest.h" />
     <ClInclude Include="DBSetRoomImageRequest.h" />
+    <ClInclude Include="DBGetRoomInfoRequest.h" />
+    <ClInclude Include="ChatServerConfig.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

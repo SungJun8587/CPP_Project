@@ -86,6 +86,7 @@ using namespace std;
 
 #include <Redis/RedisCommon.h>
 
+#include "ChatServerConfig.h"
 #include "ChatPacketTypes.h"
 #include "ChatPacket.h"
 #include "ChatPacketDispatcher.h"
@@ -100,6 +101,7 @@ using namespace std;
 #include "DBCreateRoomRequest.h"
 #include "DBDeleteRoomRequest.h"
 #include "DBRenameRoomRequest.h"
+#include "DBGetRoomInfoRequest.h"
 #include "DBListRoomsRequest.h"
 #include "DBTransferRoomOwnerRequest.h"
 #include "ChatSession.h"

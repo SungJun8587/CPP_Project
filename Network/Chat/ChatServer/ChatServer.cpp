@@ -8,7 +8,6 @@
 #include "ChatServerMain.h"
 #include "DbServiceManager.h"
 #include <ServerConnectInfo.h>
-#include <ServerConfig.h>
 #include <iostream>
 
 namespace
@@ -49,6 +48,12 @@ namespace
 		if( ptsz == nullptr ) return std::string();
 		return TStringToString(ptsz);
 	}
+
+	//***************************************************************************
+	// @brief CChatServerConfig의 싱글톤 포인터에 접근합니다.
+	// @return CChatServerConfig* 서버 설정 싱글톤 포인터
+	//***************************************************************************
+	#define CHAT_SERVER_CONFIG						CChatServerConfig::GetSingletonPtr()
 }
 
 //***************************************************************************
@@ -64,7 +69,7 @@ void MainClose()
 	CDbServiceManager::Instance().ShutdownAll();
 
 	// 2. 서버 설정 싱글턴 해제
-	SERVER_CONFIG->ReleaseInstance();
+	CHAT_SERVER_CONFIG->ReleaseInstance();
 
 	// 3. 전역 프레임워크(메모리 풀 등) 정리
 	BaseGlobal::Destroy();
@@ -100,11 +105,11 @@ int main()
 	// 6. 서버 설정 파일(JSON) 로드
 	// 6-1. 설정 파일 경로 지정
 	TCHAR tszConfigPath[FULLPATH_STRLEN];
-	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("Config\\chatserver_config_mysql.json"));
+	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("..\\Config\\chatserver_config_mysql.json"));
 
 	// 6-2. 설정 파일 파싱 — 실패 시 여기까지 초기화된 자원(BaseGlobal 등)을
 	//      MainClose()로 정리하고 종료
-	if( false == SERVER_CONFIG->Init(tszConfigPath) )
+	if( false == CHAT_SERVER_CONFIG->Init(tszConfigPath) )
 	{
 		LOG_ERROR(_T("SERVER_CONFIG->Init Fail. (Path: %s)"), tszConfigPath);
 		MainClose();
@@ -113,7 +118,7 @@ int main()
 
 	// 6-3. 필수 설정값 검증 — DB 노드 목록이 비어있으면 서버가 의미 있게
 	//      동작할 수 없으므로 여기서 조기에 걸러낸다.
-	const auto& dbNodeVec = SERVER_CONFIG->GetDBNodeVec();
+	const auto& dbNodeVec = CHAT_SERVER_CONFIG->GetDBNodeVec();
 	if( dbNodeVec.empty() )
 	{
 		LOG_ERROR(_T("DBNode configuration is empty. (Path: %s)"), tszConfigPath);
@@ -122,7 +127,7 @@ int main()
 	}
 
 	// 6-4. 로드된 설정 정보를 로그로 출력(운영 중 확인용)
-	SERVER_CONFIG->PrintServerSettingInfo();
+	CHAT_SERVER_CONFIG->PrintServerSettingInfo();
 
 	// 7. 서버 시작
 	// 7-1. CChatServerMain::Start() 호출 — IOCP/Redis/DB/하트비트를 전부
@@ -132,13 +137,13 @@ int main()
 	//      상수로 고정할 필요 없음 — 서버 재시작 없이 설정 파일만
 	//      바꿔 튜닝 가능).
 	const bool started = server.Start(
-		SERVER_CONFIG->GetServerIP(), SERVER_CONFIG->GetServerPort(),
-		SERVER_CONFIG->GetRedisNodeVec(), SERVER_CONFIG->GetRedisPoolSize(),
-		SERVER_CONFIG->GetDBNodeVec(), SERVER_CONFIG->GetDbWorkerThreadCnt(),
-		TCharToString(SERVER_CONFIG->GetServerName()),
-		std::to_string(SERVER_CONFIG->GetServerGroupId()), std::to_string(SERVER_CONFIG->GetServerChannelId()),
-		SERVER_CONFIG->GetMaxSessionCount(), SERVER_CONFIG->GetWorkerThreadCnt(),
-		SERVER_CONFIG->GetHeartbeatTtlSec(), SERVER_CONFIG->GetHeartbeatIntervalSec()
+		CHAT_SERVER_CONFIG->GetServerIP(), CHAT_SERVER_CONFIG->GetServerPort(),
+		CHAT_SERVER_CONFIG->GetRedisNodeVec(), CHAT_SERVER_CONFIG->GetRedisPoolSize(),
+		CHAT_SERVER_CONFIG->GetDBNodeVec(), CHAT_SERVER_CONFIG->GetDbWorkerThreadCnt(),
+		TCharToString(CHAT_SERVER_CONFIG->GetServerName()),
+		std::to_string(CHAT_SERVER_CONFIG->GetServerGroupId()), std::to_string(CHAT_SERVER_CONFIG->GetServerChannelId()),
+		CHAT_SERVER_CONFIG->GetMaxSessionCount(), CHAT_SERVER_CONFIG->GetWorkerThreadCnt(),
+		CHAT_SERVER_CONFIG->GetHeartbeatTtlSec(), CHAT_SERVER_CONFIG->GetHeartbeatIntervalSec()
 	);
 
 	// 7-2. 시작 실패 시 정리 후 종료
@@ -154,11 +159,11 @@ int main()
 	// 파일에 없으면 빈 문자열이 그대로 전달되고, 그 경우 클라이언트는
 	// 업로드 기능을 못 쓴다는 걸 응답(success=0)으로 알게 된다
 	// (ChatServerMain::RequestUploadToken() 참고).
-	server.SetFileServerUrl(TCharToString(SERVER_CONFIG->GetFileServerUrl()));
+	server.SetFileServerUrl(TCharToString(CHAT_SERVER_CONFIG->GetFileServerUrl()));
 
 	// 7-4. 1인당 생성 가능한 방 개수 상한 설정 — CreateRoomReq 처리
 	// 시(CChatServerMain::RequestCreateRoom()) 그대로 쓰인다.
-	server.SetMaxRoomsPerOwner(SERVER_CONFIG->GetMaxRoomsPerOwner());
+	server.SetMaxRoomsPerOwner(CHAT_SERVER_CONFIG->GetMaxRoomsPerOwner());
 
 	std::cout << "ChatServer started. Press Ctrl+C to stop." << std::endl;
 

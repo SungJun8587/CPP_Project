@@ -74,8 +74,9 @@ constexpr BYTE kDbCallIdent_DeleteRoom = 207;			// DBDeleteRoomRequest.h — 방
 constexpr BYTE kDbCallIdent_RenameRoom = 208;			// DBRenameRoomRequest.h — 방 이름 변경
 constexpr BYTE kDbCallIdent_ListRooms = 209;			// DBListRoomsRequest.h — 방 목록 조회
 constexpr BYTE kDbCallIdent_TransferRoomOwner = 210;	// DBTransferRoomOwnerRequest.h — 방장 자동 이양(서버 내부 전용)
-constexpr BYTE kDbCallIdent_SetRoomImage = 211;		// DBSetRoomImageRequest.h — 방 프로필 이미지 설정/교체/해제
-// 다음 새 값은 212부터 시작할 것.
+constexpr BYTE kDbCallIdent_SetRoomImage = 211;			// DBSetRoomImageRequest.h — 방 프로필 이미지 설정/교체/해제
+constexpr BYTE kDbCallIdent_GetRoomInfo = 212;			// DBGetRoomInfoRequest.h — 방 하나의 이름/방장/이미지 조회(방 입장 응답에 바로 실어 보내기 위함)
+// 다음 새 값은 213부터 시작할 것.
 
 //***************************************************************************
 // @brief 로비 및 룸 식별 상수
@@ -117,6 +118,21 @@ enum class ERoomResult : uint8_t
 	RoomLimitExceeded = 4,	// [추가] 1인당 생성 가능한 방 개수 상한 초과
 	InvalidName = 5,		// [추가] 방 이름 형식 위반(빈 문자열/길이 초과 등)
 	DbError = 6,			// [추가] DB 처리 오류
+};
+
+//***************************************************************************
+// @brief [추가 — 이동] 채팅 메시지 삭제 결과 사유.
+// @details [수정] DeleteChatMessageResPacket::reason 필드에 설정되는 값이라
+//          원래는 CChatServerMain의 중첩 타입이었는데(서버 내부 클래스에
+//          와이어 프로토콜 값이 갇혀있던 셈), ERoomResult/ELoginResult처럼
+//          클라이언트·서버가 같이 합의해야 하는 "응답 사유" enum들과 성격이
+//          같아서 이 파일로 옮겼다.
+//***************************************************************************
+enum class EDeleteMessageResult : uint8_t
+{
+	Ok = 0,
+	NotFound = 1,	// messageId가 추적 창(최근 N개)을 벗어났거나 애초에 존재한 적 없음
+	NotOwner = 2,	// 요청자가 이 메시지의 작성자가 아님
 };
 
 //***************************************************************************

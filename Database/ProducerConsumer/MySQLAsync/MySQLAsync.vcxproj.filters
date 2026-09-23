@@ -84,6 +84,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
       <Filter>UtilCore\Thread</Filter>
     </ClCompile>
+    <ClCompile Include="DBServerConfig.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
@@ -193,7 +194,8 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="DbServiceManager.h" />
+    <ClInclude Include="DBServiceManager.h" />
+    <ClInclude Include="DBServerConfig.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">

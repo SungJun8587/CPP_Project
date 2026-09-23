@@ -116,6 +116,16 @@ struct RoomEnterResPacket : PacketHeader
 	uint8	reason;			// ERoomResult
 	int32	roomId;			// 요청했던 roomId 그대로 반환
 	int32	roomUserCount;	// 입장 후 해당 방의 인원수
+
+	// [추가] 성공했고 로비가 아니면(roomId != kLobbyRoomId) 그 방의 지금
+	// 이름/방장 닉네임/이미지를 같이 실어 보낸다 — 클라이언트가 별도로
+	// 방 목록 캐시를 참조하거나 그 캐시가 준비될 때까지 기다릴 필요 없이,
+	// 이 응답 하나로 방 정보를 전부 받게 하기 위함(RoomEnterHandler.cpp가
+	// CChatServerMain::RequestGetRoomInfo()로 채운다). 로비 입장이거나
+	// 실패면 전부 빈 문자열.
+	char	roomName[kRoomNameBytes];
+	char	roomOwnerNickname[kNicknameBytes];
+	char	roomImageUrl[kProfileImageUrlBytes];
 };
 
 //***************************************************************************
@@ -284,12 +294,12 @@ struct DeleteChatMessageReqPacket : PacketHeader
 
 //***************************************************************************
 // @brief [추가] 채팅 메시지 삭제 응답 구조체 (Server -> Client, 요청자에게만).
-// @details reason은 CChatServerMain::EDeleteMessageResult 값이다.
+// @details reason은 EDeleteMessageResult(ChatPacketTypes.h) 값이다.
 //***************************************************************************
 struct DeleteChatMessageResPacket : PacketHeader
 {
 	uint8	success;	// 1: 성공, 0: 실패
-	uint8	reason;		// CChatServerMain::EDeleteMessageResult
+	uint8	reason;		// EDeleteMessageResult(ChatPacketTypes.h)
 };
 
 //***************************************************************************
@@ -475,6 +485,8 @@ struct RoomImageChangedNotifyPacket : PacketHeader
 //***************************************************************************
 struct ChatHistoryItemResPacket : PacketHeader
 {
+	int32	roomId;								// [추가] 이 기록이 어느 방 것인지 — 클라이언트가 방을
+	// 빠르게 전환했을 때 늦게 도착한 기록을 걸러내는 용도
 	int64	messageId;							// DeleteChatMessageReq에 그대로 쓸 수 있는 실제 메시지 ID
 	char	nickname[kNicknameBytes];			// 발신 당시 닉네임(스냅샷)
 	char	profileImageUrl[kProfileImageUrlBytes];	// 발신 당시 프로필 이미지 URL(스냅샷)

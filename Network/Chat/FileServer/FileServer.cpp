@@ -54,7 +54,7 @@ namespace
 	// @brief CFileServerConfig의 싱글톤 포인터에 접근합니다.
 	// @return CFileServerConfig* 서버 설정 싱글톤 포인터
 	//***************************************************************************
-	#define FILESERVER_CONFIG						CFileServerConfig::GetSingletonPtr()
+	#define FILE_SERVER_CONFIG						CFileServerConfig::GetSingletonPtr()
 }
 
 //***************************************************************************
@@ -65,7 +65,7 @@ namespace
 void MainClose()
 {
 	// 1. 파일 서버 설정 싱글턴 해제
-	FILESERVER_CONFIG->ReleaseInstance();
+	FILE_SERVER_CONFIG->ReleaseInstance();
 
 	// 2. 전역 프레임워크(메모리 풀 등) 정리
 	BaseGlobal::Destroy();
@@ -100,7 +100,7 @@ int main()
 	TCHAR tszConfigPath[FULLPATH_STRLEN];
 	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("Config\\fileserver_config_mysql.json"));
 
-	if( false == FILESERVER_CONFIG->Init(tszConfigPath) )
+	if( false == FILE_SERVER_CONFIG->Init(tszConfigPath) )
 	{
 		LOG_ERROR(_T("CFileServerConfig::Init Fail. (Path: %s)"), tszConfigPath);
 		MainClose();
@@ -109,7 +109,7 @@ int main()
 
 	// 6-1. 필수 설정값 검증 — Redis 노드 목록이 비어있으면 업로드 토큰
 	// 검증이 불가능해 서버가 의미 있게 동작할 수 없다.
-	const auto& redisNodeVec = FILESERVER_CONFIG->GetRedisNodeVec();
+	const auto& redisNodeVec = FILE_SERVER_CONFIG->GetRedisNodeVec();
 	if( redisNodeVec.empty() )
 	{
 		LOG_ERROR(_T("RedisNode configuration is empty. (Path: %s)"), tszConfigPath);
@@ -117,16 +117,16 @@ int main()
 		return -1;
 	}
 
-	FILESERVER_CONFIG->PrintServerSettingInfo();
+	FILE_SERVER_CONFIG->PrintServerSettingInfo();
 
 	// 7. 서버 시작
 	const bool started = server.Start(
-		FILESERVER_CONFIG->GetServerIP(), FILESERVER_CONFIG->GetServerPort(),
-		FILESERVER_CONFIG->GetRedisNodeVec(), FILESERVER_CONFIG->GetRedisPoolSize(),
-		FILESERVER_CONFIG->GetMaxSessionCount(), FILESERVER_CONFIG->GetWorkerThreadCnt(),
-		FILESERVER_CONFIG->GetStorageDir(),
-		TCharToString(FILESERVER_CONFIG->GetPublicBaseUrl()),
-		FILESERVER_CONFIG->GetMaxUploadBytes()
+		FILE_SERVER_CONFIG->GetServerIP(), FILE_SERVER_CONFIG->GetServerPort(),
+		FILE_SERVER_CONFIG->GetRedisNodeVec(), FILE_SERVER_CONFIG->GetRedisPoolSize(),
+		FILE_SERVER_CONFIG->GetMaxSessionCount(), FILE_SERVER_CONFIG->GetWorkerThreadCnt(),
+		FILE_SERVER_CONFIG->GetStorageDir(),
+		TCharToString(FILE_SERVER_CONFIG->GetPublicBaseUrl()),
+		FILE_SERVER_CONFIG->GetMaxUploadBytes()
 	);
 
 	if( !started )
