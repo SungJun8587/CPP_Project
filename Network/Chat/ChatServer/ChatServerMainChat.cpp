@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 //***************************************************************************
 // @brief 새로 브로드캐스트할 채팅 메시지에 부여할 다음 고유 ID를 반환하고,
@@ -83,6 +84,84 @@ namespace
 
 	std::string BuildRoomChatOrderKey(int32 roomId) { return "RoomChatOrder:" + std::to_string(roomId); }
 	std::string BuildRoomChatMsgKey(int32 roomId) { return "RoomChatMsg:" + std::to_string(roomId); }
+
+	//***************************************************************************
+	// @brief [추가 — 버그 수정] Redis 명령을 보내고, 응답이 "일시적 연결
+	//        오류"(CRedisClient::SendCommand()가 자체적으로 만들어 보내는
+	//        에러 값 — 예: "ERR connection closed")면 지정한 횟수만큼
+	//        자동으로 재시도한다.
+	// @details 진단 결과, 대화 기록이 간헐적으로 안 불러와지던 현상의
+	//          실제 원인은 서버 코드 버그가 아니라 "그 순간 HMGET을 맡은
+	//          커넥션이 마침 끊겨 있었던" 것이었다(Docker Desktop 환경의
+	//          네트워크 계층이 Redis의 idle 타임아웃 설정과 무관하게 조용히
+	//          연결을 끊는 것으로 추정). 커넥션 풀 자체는 이미 자동
+	//          재연결을 처리하지만, 끊기는 바로 그 순간 이미 그 커넥션에
+	//          올라타 있던 요청 하나는 재연결을 기다려주지 않고 그 자리에서
+	//          실패로 끝난다.
+	// @details [수정 — 버그 수정: DoTimer 미동작] 처음엔 jobQueue->DoTimer()로
+	//          지연을 걸었는데, 실제 재현에서 예약 로그("재시도 예약")만
+	//          찍히고 그 뒤로 영원히 아무 일도 안 일어나는 게 확인됐다.
+	//          CJobQueue::DoTimer()는 CJobTimer::Reserve()로 우선순위 큐에
+	//          작업을 넣기만 할 뿐, 그걸 실제로 꺼내서 실행하는
+	//          CJobTimer::Distribute()를 어딘가(전용 스레드)에서 주기적으로
+	//          불러줘야 한다 — 채팅 서버 쪽에 그 배선이 실제로 돌고 있는지
+	//          확인이 안 됐고(gpJobTimer 자체는 BaseGlobal::Init()에서
+	//          생성되지만, Distribute() 호출 루프가 없으면 예약된 작업이
+	//          큐에 영원히 갇혀있게 된다), 검증 안 된 전역 배선에 재시도
+	//          기능 전체가 기대게 만드는 건 위험하다고 판단했다. 대신 짧게
+	//          sleep하는 detached 스레드를 하나 띄운 뒤, 그 안에서
+	//          jobQueue->DoAsync()로 되돌아오는 방식으로 바꿨다 —
+	//          DoAsync()는 이미 이 함수의 정상 흐름(HMGET 응답 처리 등)에서
+	//          검증된 경로라 안전하게 재사용할 수 있다. 재시도는 에러가 난
+	//          경우에만(드물게) 일어나므로 스레드 하나 띄우는 비용은
+	//          무시할 수준이다.
+	// @param redisService 명령을 보낼 서비스
+	// @param jobQueue 재시도 결과를 원래 스레드 문맥으로 되돌리는 데 쓸 큐
+	//        (nRetryDelayMs > 0일 때만 사용됨)
+	// @param args Redis 명령어 및 인자
+	// @param nMaxRetry 최대 재시도 횟수(0이면 재시도 없이 한 번만 시도)
+	// @param nRetryDelayMs 재시도 사이에 둘 지연(밀리초). 0이면 지연 없이
+	//        즉시 재시도.
+	// @param onResult 최종 결과 콜백 — 재시도를 다 써도 계속 에러면 그
+	//        마지막 에러 값 그대로 전달된다(호출부가 기존과 동일하게
+	//        "에러/빈 응답"으로 처리하면 됨).
+	//***************************************************************************
+	void SendCommandWithRetry(CRedisService* redisService, CJobQueueRef jobQueue, const CVector<std::string>& args, int32 nMaxRetry, int32 nRetryDelayMs, std::function<void(const RedisValue&)> onResult)
+	{
+		auto fnSend = std::make_shared<std::function<void(int32)>>();
+		*fnSend = [redisService, jobQueue, args, onResult, fnSend, nRetryDelayMs](int32 nRetryLeft)
+			{
+				redisService->SendCommand(args, [redisService, jobQueue, args, onResult, nRetryLeft, fnSend, nRetryDelayMs](const RedisValue& res)
+					{
+						if( res.eType == ERedisType::Error && nRetryLeft > 0 )
+						{
+							LOG_ERROR(_T("SendCommandWithRetry: 일시적 연결 오류로 재시도 예약 (남은재시도=%d, 지연=%dms, err=%hs)"),
+								nRetryLeft, nRetryDelayMs, res.strVal.c_str());
+
+							if( jobQueue && nRetryDelayMs > 0 )
+							{
+								// [수정] DoTimer() 대신 detached 스레드에서
+								// sleep 후 DoAsync()로 복귀 — 위 설명 참고.
+								std::thread([jobQueue, fnSend, nRetryLeft, nRetryDelayMs]()
+									{
+										std::this_thread::sleep_for(std::chrono::milliseconds(nRetryDelayMs));
+										jobQueue->DoAsync([fnSend, nRetryLeft]()
+											{
+												(*fnSend)(nRetryLeft - 1);
+											});
+									}).detach();
+							}
+							else
+							{
+								(*fnSend)(nRetryLeft - 1);
+							}
+							return;
+						}
+						onResult(res);
+					});
+			};
+		(*fnSend)(nMaxRetry);
+	}
 }
 
 //***************************************************************************
@@ -214,7 +293,33 @@ void CChatServerMain::RequestRoomChatHistory(
 	// [추가 — 진단용] ZREVRANGE를 실제로 보내는지 확인.
 	LOG_INFO(_T("RequestRoomChatHistory: ZREVRANGE 요청 전송 (key=%hs)"), orderKey.c_str());
 
-	_redisService->SendCommand(zrevrangeArgs, [this, jobQueue, onComplete, msgKey, roomId](const RedisValue& orderRes)
+	// [수정 — 버그 수정] SendCommand() 대신 SendCommandWithRetry()를 쓴다 —
+	// 최대 1회 재시도(원요청 포함 최대 2번 시도)로, 그 순간 이 명령을
+	// 맡은 커넥션이 마침 끊겨 있었던(=일시적) 경우를 흡수한다. 위 헬퍼
+	// 설명 참고 — 이게 "대화 기록이 간헐적으로 안 불러와지던" 현상의
+	// 실제 원인이었다.
+	// [수정] 1 -> 2. 재시도 로그를 보니 재시도로 새로 받은 커넥션마저
+	// 마침 끊겨있던 경우가 실제로 관측됐다 — Docker Desktop 환경에서
+	// 풀의 여러 커넥션이 거의 동시에(네트워크 계층의 일괄 정리 등으로)
+	// 끊길 수 있다는 뜻이므로, 한 번 더 여유를 둔다.
+	// [수정] 2회/500ms(최대 약 1초 대기)로는 부족했다 — 실제 재현에서
+	// 최소 1초 이상 지속되면서 풀의 여러 커넥션을 한꺼번에 덮치는
+	// "일괄 장애 구간"이 있었다(Docker Desktop 환경의 네트워크 계층이
+	// 주기적으로 전체 경로를 흔드는 것으로 추정 — 개별 커넥션의 idle
+	// 끊김과는 다른 패턴). 4회/800ms로 늘려 최대 약 3.2초까지 버틴다.
+	// 그래도 남는 근본 문제(왜 이런 일괄 장애가 나는지)는 코드 쪽
+	// 재시도만으로 완전히 없앨 수 없다 — Docker Desktop/WSL2 네트워크
+	// 계층 자체를 봐야 한다.
+	constexpr int32 kChatHistoryMaxRetry = 4;
+
+	// [추가] 재시도 사이의 지연 — CRedisConnectionPool::ReconnectLoop()의
+	// 스윕 주기(기본 3초)보다 짧지만, 즉시 재시도보다는 재연결이 끝날
+	// 시간을 벌어주는 정도로 잡았다. 방 입장 응답 자체가 최악의 경우
+	// 이 지연×재시도 횟수만큼(지금 설정으로 최대 3.2초) 늦어질 수 있음을
+	// 감안한 값이다.
+	constexpr int32 kChatHistoryRetryDelayMs = 800;
+
+	SendCommandWithRetry(_redisService.get(), jobQueue, zrevrangeArgs, kChatHistoryMaxRetry, kChatHistoryRetryDelayMs, [this, jobQueue, onComplete, msgKey, roomId](const RedisValue& orderRes)
 		{
 			CRedisResultSet orderSet(orderRes);
 
@@ -252,10 +357,17 @@ void CChatServerMain::RequestRoomChatHistory(
 			// [추가 — 진단용] HMGET을 실제로 보내는지 확인.
 			LOG_INFO(_T("RequestRoomChatHistory: HMGET 요청 전송 (roomId=%d, 필드수=%d)"), roomId, static_cast<int>(messageIds.size()));
 
-			_redisService->SendCommand(hmgetArgs, [jobQueue, onComplete, messageIds, roomId](const RedisValue& hmgetRes)
+			SendCommandWithRetry(_redisService.get(), jobQueue, hmgetArgs, kChatHistoryMaxRetry, kChatHistoryRetryDelayMs, [jobQueue, onComplete, messageIds, roomId](const RedisValue& hmgetRes)
 				{
-					// [추가 — 진단용] HMGET 응답이 실제로 왔는지 확인.
-					LOG_INFO(_T("RequestRoomChatHistory: HMGET 응답 수신 (roomId=%d)"), roomId);
+					// [추가 — 진단용] HMGET 응답이 실제로 왔는지, 그리고 어떤
+					// 타입인지 확인 — 지금까지는 "응답 수신" 로그만 있어서
+					// 그게 진짜 빈 배열(Array, 원소 0개 또는 전부 null)인지,
+					// 아니면 에러 값(예: 커넥션 문제로 인한 "ERR connection
+					// closed")인지 구분이 안 됐다. CRedisResultSet이 에러
+					// 타입을 조용히 "빈 결과"로 처리해버릴 가능성을 배제하기
+					// 위해 원본 타입을 직접 찍는다.
+					LOG_INFO(_T("RequestRoomChatHistory: HMGET 응답 수신 (roomId=%d, eType=%d, strVal=%hs)"),
+						roomId, static_cast<int>(hmgetRes.eType), hmgetRes.strVal.c_str());
 
 					CRedisResultSet hmgetSet(hmgetRes);
 
