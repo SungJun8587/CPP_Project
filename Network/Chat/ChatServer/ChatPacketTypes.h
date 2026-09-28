@@ -76,7 +76,9 @@ constexpr BYTE kDbCallIdent_ListRooms = 209;			// DBListRoomsRequest.h — 방 �
 constexpr BYTE kDbCallIdent_TransferRoomOwner = 210;	// DBTransferRoomOwnerRequest.h — 방장 자동 이양(서버 내부 전용)
 constexpr BYTE kDbCallIdent_SetRoomImage = 211;			// DBSetRoomImageRequest.h — 방 프로필 이미지 설정/교체/해제
 constexpr BYTE kDbCallIdent_GetRoomInfo = 212;			// DBGetRoomInfoRequest.h — 방 하나의 이름/방장/이미지 조회(방 입장 응답에 바로 실어 보내기 위함)
-// 다음 새 값은 213부터 시작할 것.
+constexpr BYTE kDbCallIdent_ListRoomsPage = 213;		// DBListRoomsPageRequest.h — 방 목록 페이지 조회(전체/내가 참여한 방, 이름 검색)
+constexpr BYTE kDbCallIdent_RecordRoomJoin = 214;		// DBRecordRoomJoinRequest.h — 방 입장 기록(내가 참여한 방 목록의 근거)
+// 다음 새 값은 215부터 시작할 것.
 
 //***************************************************************************
 // @brief 로비 및 룸 식별 상수
@@ -89,6 +91,24 @@ constexpr BYTE kDbCallIdent_GetRoomInfo = 212;			// DBGetRoomInfoRequest.h — �
 //***************************************************************************
 constexpr int32_t kLobbyRoomId = 0;
 constexpr int32_t kMaxRoomId = 10;
+
+//***************************************************************************
+// @brief 방 목록 조회 범위.
+// @details ListRoomsReqPacket::scope에 실려온다.
+//          All    : 존재하는 모든 방(최신 생성순)
+//          Joined : 요청자가 입장한 적이 있는 방(최근 입장순) — room_members 테이블 기준
+//***************************************************************************
+enum class ERoomListScope : uint8_t
+{
+	All = 0,
+	Joined = 1,
+};
+
+//***************************************************************************
+// @brief 방 목록 한 페이지의 최대 크기. 클라이언트가 더 큰 값을 요청해도
+//        서버가 이 값으로 줄여서 처리한다(응답 패킷 폭주 방지).
+//***************************************************************************
+constexpr int32_t kMaxRoomPageSize = 50;
 
 //***************************************************************************
 // @brief 로그인 처리 결과 열거형
@@ -179,9 +199,9 @@ enum class EChatPacketType : uint16_t
 	RenameRoomReq = 34,						// Client -> Server, 방 이름 변경 요청(방장만 가능)
 	RenameRoomRes = 35,						// Server -> Client, 방 이름 변경 결과 응답(요청자에게만)
 	RenameRoomNotify = 36,					// Server -> Client(Broadcast), 방 이름 변경 시 그 방 멤버 전원에게
-	ListRoomsReq = 37,						// Client -> Server, 존재하는 모든 방 목록 조회 요청
+	ListRoomsReq = 37,						// Client -> Server, 방 목록 한 페이지 조회 요청(범위/페이지/검색어)
 	ListRoomsItemRes = 38,					// Server -> Client, 방 목록 항목 단건 응답(가변 개수 스트리밍)
-	ListRoomsEndRes = 39,					// Server -> Client, 방 목록 전송 완료 및 총 개수 통지
+	ListRoomsEndRes = 39,					// Server -> Client, 방 목록 한 페이지 전송 완료(조건에 맞는 전체 개수/페이지 번호 통지)
 	RoomOwnerChangedNotify = 40,			// Server -> Client(Broadcast), 방장이 나가서 다른 멤버에게 자동 이양됐을 때 그 방 멤버 전원에게
 
 	// [추가] 방 프로필 이미지 설정/교체/해제(방장 전용) + 변경 알림.

@@ -397,21 +397,36 @@ struct RenameRoomNotifyPacket : PacketHeader
 };
 
 //***************************************************************************
-// @brief [추가] 방 목록 조회 요청 구조체 (Client -> Server).
-// @details 바디 없음 — 로그인한 사용자면 누구나 전체 방 목록을 볼 수 있다
-//          (계정별 필터링 없음). ListProfileImagesReqPacket과 동일한 패턴.
+// @brief 방 목록 조회 요청 구조체 (Client -> Server).
+// @details 범위(scope)/페이지/검색어로 방 목록의 한 페이지를 요청한다.
+//          scope     : ERoomListScope (All=전체 방, Joined=내가 참여한 방)
+//          pageSize  : 한 페이지 항목 수. 서버가 1~kMaxRoomPageSize로 보정한다.
+//          page      : 0부터 시작하는 페이지 번호. 마지막 페이지를 넘으면
+//                      서버가 마지막 페이지로 보정하고, 실제로 돌려준 페이지
+//                      번호는 ListRoomsEndResPacket::page에 담긴다.
+//          requestId : 클라이언트가 붙이는 요청 식별자. 응답 패킷(Item/End)이
+//                      그대로 되돌려주므로, 클라이언트는 이미 다른 요청으로
+//                      넘어간 뒤 늦게 도착한 응답을 걸러낼 수 있다.
+//          keyword   : 방 이름 검색어(UTF-8). 빈 문자열이면 검색 조건 없음.
 //***************************************************************************
 struct ListRoomsReqPacket : PacketHeader
 {
+	int32	requestId;
+	uint8_t	scope;
+	int32	page;
+	int32	pageSize;
+	char	keyword[kRoomNameBytes];
 };
 
 //***************************************************************************
-// @brief [추가] 방 목록 항목 단건 응답 구조체 (Server -> Client).
-// @details [수정] imageUrl 필드 추가 — 방 프로필 이미지. 비어있으면 기본
-//          이미지(클라이언트가 방 이름 기반 아바타로 대체 표시)를 뜻한다.
+// @brief 방 목록 항목 단건 응답 구조체 (Server -> Client).
+// @details imageUrl이 비어있으면 기본 이미지(클라이언트가 방 이름 기반
+//          아바타로 대체 표시)를 뜻한다. requestId는 요청의 값을 그대로
+//          되돌려준다.
 //***************************************************************************
 struct ListRoomsItemResPacket : PacketHeader
 {
+	int32	requestId;
 	int32	roomId;
 	char	name[kRoomNameBytes];
 	char	ownerNickname[kNicknameBytes];	// 방장의 "지금" 닉네임(DB 조회 시점 스냅샷)
@@ -420,11 +435,18 @@ struct ListRoomsItemResPacket : PacketHeader
 };
 
 //***************************************************************************
-// @brief [추가] 방 목록 전송 완료 응답 구조체 (Server -> Client).
+// @brief 방 목록 한 페이지 전송 완료 응답 구조체 (Server -> Client).
+// @details totalCount는 이 페이지에 담긴 개수가 아니라 조건(scope/keyword)에
+//          맞는 전체 방 수다. page/pageSize는 서버가 보정한 뒤 실제로
+//          적용한 값이다.
 //***************************************************************************
 struct ListRoomsEndResPacket : PacketHeader
 {
+	int32	requestId;
+	uint8_t	scope;
 	int32	totalCount;
+	int32	page;
+	int32	pageSize;
 };
 
 //***************************************************************************

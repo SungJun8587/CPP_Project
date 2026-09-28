@@ -68,9 +68,9 @@ namespace ChatApp
         RenameRoomReq = 34,             // Client -> Server, 방 이름 변경 요청(방장만 가능)
         RenameRoomRes = 35,             // Server -> Client, 방 이름 변경 결과 응답(요청자에게만)
         RenameRoomNotify = 36,          // Server -> Client, 방 이름 변경 시 그 방 멤버 전원에게
-        ListRoomsReq = 37,              // Client -> Server, 존재하는 모든 방 목록 조회 요청
+        ListRoomsReq = 37,              // Client -> Server, 방 목록 한 페이지 조회 요청(범위/페이지/검색어)
         ListRoomsItemRes = 38,          // Server -> Client, 방 목록 항목 단건 응답(가변 개수 스트리밍)
-        ListRoomsEndRes = 39,           // Server -> Client, 방 목록 전송 완료
+        ListRoomsEndRes = 39,           // Server -> Client, 방 목록 한 페이지 전송 완료(조건에 맞는 전체 개수/페이지 번호)
         RoomOwnerChangedNotify = 40,    // Server -> Client, 방장이 나가서 다른 멤버에게 자동 이양됐을 때 그 방 멤버 전원에게
 
         // [추가] 방 프로필 이미지 설정/교체/해제(방장 전용) + 변경 알림.
@@ -95,6 +95,14 @@ namespace ChatApp
         RoomLimitExceeded = 4,
         InvalidName = 5,
         DbError = 6,
+    }
+
+    // ListRoomsReqPacket::scope — 서버 ChatPacketTypes.h::ERoomListScope와
+    // 정확히 같은 값을 유지해야 한다.
+    public enum RoomListScope : byte
+    {
+        All = 0,        // 존재하는 모든 방(최신 생성순)
+        Joined = 1,     // 내가 입장한 적이 있는 방(최근 입장순)
     }
 
     // LoginResPacket::reason / ChangeNicknameResPacket::reason 공용.
@@ -419,16 +427,28 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief [추가] 존재하는 모든 방 목록 조회 요청. 바디 없음 — 로그인한
-        //        사용자면 누구나 조회 가능.
+        // @brief 방 목록 한 페이지 조회 요청. 로그인한 사용자면 누구나 조회 가능.
+        // @param requestId 응답(Item/End)이 그대로 되돌려주는 요청 식별자. 이미
+        //        다른 요청으로 넘어간 뒤 늦게 도착한 응답을 걸러내는 데 쓴다
+        // @param scope All=전체 방, Joined=내가 참여한 방
+        // @param page 0부터 시작하는 페이지 번호(서버가 범위를 넘으면 마지막
+        //        페이지로 보정한다)
+        // @param pageSize 한 페이지 항목 수(서버가 1~50으로 보정한다)
+        // @param keyword 방 이름 검색어. 비어있으면 검색 조건 없음
         //***************************************************************************
-        public static byte[] BuildListRoomsReq()
+        public static byte[] BuildListRoomsReq(int requestId, RoomListScope scope, int page, int pageSize, string keyword)
         {
             using (var ms = new MemoryStream())
             using (var bw = new BinaryWriter(ms))
             {
-                bw.Write((ushort)ProtocolConstants.HeaderBytes);
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(int) + sizeof(byte) + sizeof(int) + sizeof(int) + ProtocolConstants.RoomNameBytes);
+                bw.Write(size);
                 bw.Write((ushort)PacketType.ListRoomsReq);
+                bw.Write(requestId);
+                bw.Write((byte)scope);
+                bw.Write(page);
+                bw.Write(pageSize);
+                bw.Write(FixedUtf8(keyword ?? string.Empty, ProtocolConstants.RoomNameBytes));
                 return ms.ToArray();
             }
         }
@@ -627,6 +647,7 @@ namespace ChatApp
     //***************************************************************************
     public class RoomListItemData
     {
+        public int RequestId;      // 이 항목이 속한 목록 요청의 식별자(늦게 도착한 응답 걸러내기용)
         public int RoomId;
         public string Name;
         public string OwnerNickname;
@@ -635,11 +656,18 @@ namespace ChatApp
     }
 
     //***************************************************************************
-    // @brief [추가] 방 목록 전송 완료.
+    // @brief 방 목록 한 페이지 전송 완료.
+    // @details TotalCount는 이 페이지의 항목 수가 아니라 조건(범위/검색어)에
+    //          맞는 전체 방 수다. Page/PageSize는 서버가 보정한 뒤 실제로
+    //          적용한 값이다.
     //***************************************************************************
     public class ListRoomsEndResData
     {
+        public int RequestId;
+        public RoomListScope Scope;
         public int TotalCount;
+        public int Page;
+        public int PageSize;
     }
 
     //***************************************************************************
@@ -1057,12 +1085,13 @@ namespace ChatApp
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
+                int requestId = br.ReadInt32();
                 int roomId = br.ReadInt32();
                 string name = Utf8FromFixed(br.ReadBytes(ProtocolConstants.RoomNameBytes));
                 string ownerNickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
                 int userCount = br.ReadInt32();
                 string imageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
-                return new RoomListItemData { RoomId = roomId, Name = name, OwnerNickname = ownerNickname, UserCount = userCount, ImageUrl = imageUrl };
+                return new RoomListItemData { RequestId = requestId, RoomId = roomId, Name = name, OwnerNickname = ownerNickname, UserCount = userCount, ImageUrl = imageUrl };
             }
         }
 
@@ -1099,7 +1128,7 @@ namespace ChatApp
         }
 
         //***************************************************************************
-        // @brief [추가] 방 목록 전송 완료 파싱.
+        // @brief 방 목록 한 페이지 전송 완료 파싱.
         //***************************************************************************
         public static ListRoomsEndResData ParseListRoomsEndRes(byte[] buffer)
         {
@@ -1107,7 +1136,12 @@ namespace ChatApp
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
-                return new ListRoomsEndResData { TotalCount = br.ReadInt32() };
+                int requestId = br.ReadInt32();
+                var scope = (RoomListScope)br.ReadByte();
+                int totalCount = br.ReadInt32();
+                int page = br.ReadInt32();
+                int pageSize = br.ReadInt32();
+                return new ListRoomsEndResData { RequestId = requestId, Scope = scope, TotalCount = totalCount, Page = page, PageSize = pageSize };
             }
         }
 

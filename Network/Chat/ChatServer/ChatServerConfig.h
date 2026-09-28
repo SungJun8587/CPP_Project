@@ -8,6 +8,7 @@
 #define UC_CHATSERVERCONFIG_H
 
 #include <ServerConfig.h>
+#include <Memory/Singleton.h>
 
 //***************************************************************************
 // @brief 채팅 서버 설정 정보 관리 클래스.

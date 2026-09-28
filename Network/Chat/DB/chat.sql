@@ -1,4 +1,4 @@
--- ***************************************************************************
+s-- ***************************************************************************
 -- chat.sql : 채팅 서버 회원 DB 스키마 생성 스크립트 (MySQL)
 --
 --   - uid(내부 전용, AUTO_INCREMENT)를 PRIMARY KEY로 사용
@@ -141,17 +141,50 @@ COLLATE = utf8mb4_unicode_ci
 COMMENT = '동적으로 생성/삭제되는 이름 있는 채팅방';
 
 -- ---------------------------------------------------------------------------
+-- room_members : 사용자가 입장한 적이 있는 방의 기록("내가 참여한 방" 목록의 근거).
+--   - 방에 입장할 때마다 서버가 기록한다(RecordRoomJoinDBHandler.cpp) — 처음
+--     입장이면 행이 추가되고, 이미 있으면 last_entered_at만 갱신된다.
+--   - "참여한 방" 목록은 last_entered_at 내림차순(최근 입장순)으로 보여준다.
+--   - 방이 삭제되거나(rooms) 계정이 삭제되면(users) 그 행도 함께 삭제된다.
+--   - 이 테이블은 "입장한 적이 있다"만 기록한다. 지금 그 방에 접속해 있는지는
+--     서버 메모리(방 멤버 목록)가 유일한 출처다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS room_members
+(
+	room_id          INT UNSIGNED NOT NULL COMMENT '방 번호 — rooms.room_id 참조',
+	user_public_id   CHAR(32)     NOT NULL COMMENT '사용자 계정 — users.public_id 참조',
+	first_joined_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '이 방에 처음 입장한 시각',
+	last_entered_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '이 방에 마지막으로 입장한 시각',
+ 
+	PRIMARY KEY (room_id, user_public_id),
+	INDEX idx_room_members_user (user_public_id, last_entered_at),
+	CONSTRAINT fk_room_members_room
+		FOREIGN KEY (room_id) REFERENCES rooms (room_id)
+		ON DELETE CASCADE,
+	CONSTRAINT fk_room_members_user
+		FOREIGN KEY (user_public_id) REFERENCES users (public_id)
+		ON DELETE CASCADE
+)
+ENGINE = InnoDB
+DEFAULT CHARSET = utf8mb4
+COLLATE = utf8mb4_unicode_ci
+COMMENT = '사용자별 방 입장 기록';
+
+-- ---------------------------------------------------------------------------
 -- (선택) 애플리케이션 접속 계정 생성 — demo(ChatServer.cpp)의 CDBNode 설정과
 -- 맞추려면 아래 계정 정보를 그대로 쓰거나, 실제 운영 값으로 바꿔서 실행하세요.
 -- 이미 계정이 있다면 이 블록은 건너뛰어도 됩니다. DB 관리자 권한 필요.
 -- ---------------------------------------------------------------------------
 -- CREATE USER IF NOT EXISTS 'chat_user'@'%' IDENTIFIED BY 'chat_password';
--- GRANT SELECT, INSERT, UPDATE, DELETE ON chat_db.users TO 'chat_user'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON chat. users TO 'chat_user'@'%';
 -- FLUSH PRIVILEGES;
 
 -- ---------------------------------------------------------------------------
 -- (마이그레이션) 이미 users/user_profile_images 테이블이 있는 기존 DB에
 -- rooms 기능만 추가하려면 위 CREATE TABLE rooms 블록만 그대로 실행하고,
 -- 아래 GRANT도 추가하세요:
---   GRANT SELECT, INSERT, UPDATE, DELETE ON chat_db.rooms TO 'chat_user'@'%';
+--   GRANT SELECT, INSERT, UPDATE, DELETE ON chat. rooms TO 'chat_user'@'%';
 -- ---------------------------------------------------------------------------
+
+-- 접속 계정에 권한이 필요하면(이미 chat. * 전체 권한이면 불필요):
+--   GRANT SELECT, INSERT, UPDATE, DELETE ON chat. room_members TO 'chat_user'@'%';

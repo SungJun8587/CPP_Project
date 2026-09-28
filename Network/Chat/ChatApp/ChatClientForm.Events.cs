@@ -1,4 +1,5 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -10,9 +11,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-// [수정 — 컴파일 오류] 이 프로젝트 설정(암시적 using 등)에서 System.Net.Mime.MediaTypeNames에도
-// Font/Image라는 이름의 클래스가 있어서, System.Drawing.Font/Image와 이름이 겹쳐 모호한
-// 참조 오류가 났다. 타입 별칭으로 System.Drawing 쪽을 명시적으로 고정한다.
 using Font = System.Drawing.Font;
 using Image = System.Drawing.Image;
 
@@ -157,14 +155,6 @@ namespace ChatApp
             {
                 if (res.Success)
                 {
-                    // [추가 — 진단용] 같은 방에 대해 RoomEnterRes가 중복으로
-                    // 오는지 확인 — 재접속 시 대화 기록이 중간에 끊기는
-                    // 현상의 유력한 원인(응답이 두 번 오면 _listBoxChat.Items.Clear()도
-                    // 두 번 실행돼서, 기록 스트리밍 도중에 화면이 다시
-                    // 지워질 수 있음). 이전 _currentRoomId와 비교해서
-                    // 이미 같은 방에 있었는지도 같이 찍는다.
-                    AppendSystemLog($"[디버그] RoomEnterRes 수신 (roomId={res.RoomId}, 이전방={_currentRoomId}) - 리스트박스 비움", ColorSystemDebug);
-
                     _currentRoomId = res.RoomId;
                     _txtRoomUserCount.Text = res.RoomUserCount.ToString();
 
@@ -913,13 +903,7 @@ namespace ChatApp
             Invoke((MethodInvoker)delegate
             {
                 if (data.RoomId != _currentRoomId)
-                {
-                    // [추가 — 진단용] roomId 불일치로 버려지는 항목이
-                    // 있는지 확인 — 있다면 그 사이 _currentRoomId가
-                    // 바뀌었다는 뜻(중복 RoomEnterReq 등의 경합).
-                    AppendSystemLog($"[디버그] ChatHistoryItemRes 버려짐 (온roomId={data.RoomId}, 지금roomId={_currentRoomId}, msg={data.Message})", ColorSystemDebug);
                     return;
-                }
 
                 bool isMyMessage = data.SenderNickname == _currentNickname;
                 DateTime timestamp = DateTimeOffset.FromUnixTimeMilliseconds(data.TimestampMs).LocalDateTime;
@@ -937,11 +921,6 @@ namespace ChatApp
         {
             Invoke((MethodInvoker)delegate
             {
-                // [추가 — 진단용] 이 끝 알림 자체가 몇 번 오는지, roomId가
-                // 맞는지 확인 — 방 입장/기록 스트림이 중복으로 시작됐다면
-                // 이게 두 번 이상 찍힐 것이다.
-                AppendSystemLog($"[디버그] ChatHistoryEndRes 수신 (roomId={data.RoomId}, 지금roomId={_currentRoomId}, 개수={data.TotalCount})", ColorSystemDebug);
-
                 if (data.RoomId != _currentRoomId)
                     return;
 

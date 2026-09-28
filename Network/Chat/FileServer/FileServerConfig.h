@@ -7,7 +7,8 @@
 #ifndef UC_FILESERVERCONFIG_H
 #define UC_FILESERVERCONFIG_H
 
-#include "ServerConfig.h"
+#include <ServerConfig.h>
+#include <Memory/Singleton.h>
 
 //***************************************************************************
 // @brief 파일 서버 설정 정보 관리 클래스

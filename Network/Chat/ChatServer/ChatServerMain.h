@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // ChatServerMain.h : interface for the CChatServerMain class.
 //
 //***************************************************************************
@@ -12,9 +13,9 @@
 #include <Redis/RedisService.h>
 #include <Redis/RedisServerHeartbeat.h>
 #include <DB/OdbcAsyncSrv.h>
-#include "ChatPacket.h"		// kPublicIdBytes
-#include "DBListProfileImagesRequest.h"	// SProfileImageEntry
-#include "DBListRoomsRequest.h"	// SRoomListEntry
+#include "ChatPacket.h"
+#include "DBListProfileImagesRequest.h"
+#include "DBListRoomsRequest.h"
 
 #include <string>
 #include <memory>
@@ -482,11 +483,33 @@ public:
 		std::function<void(ERoomResult result)> onComplete);
 
 	//***************************************************************************
-	// @brief [추가] 존재하는 모든 방을 조회합니다(로그인한 사용자면 누구나).
+	// @brief 방 목록의 한 페이지를 조회합니다(로그인한 사용자면 누구나).
+	// @param scope All이면 모든 방(최신 생성순), Joined면 requesterPublicId가
+	//        입장한 적이 있는 방(최근 입장순)
+	// @param requesterPublicId 요청자 계정. Joined일 때만 조회 조건으로 쓰인다
+	// @param keyword 방 이름 검색어(UTF-8). 빈 문자열이면 검색 조건 없음
+	// @param page 0부터 시작하는 페이지 번호. 범위를 넘으면 마지막 페이지로
+	//        보정되며, 실제로 조회된 페이지 번호가 onComplete의 page로 돌아온다
+	// @param pageSize 한 페이지 항목 수. 1~kMaxRoomPageSize로 보정된다
+	// @param onComplete totalCount는 조건에 맞는 전체 방 수. JobQueue에서 호출된다
 	//***************************************************************************
 	void RequestListRooms(
 		std::shared_ptr<CChatSession> session,
-		std::function<void(ELoginResult result, const std::vector<SRoomListEntry>& rooms)> onComplete);
+		ERoomListScope scope,
+		const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+		const std::string& keyword,
+		int32 page,
+		int32 pageSize,
+		std::function<void(ELoginResult result, int32 totalCount, int32 page, const std::vector<SRoomListEntry>& rooms)> onComplete);
+
+	//***************************************************************************
+	// @brief 사용자가 방에 입장했음을 기록합니다("내가 참여한 방" 목록의 근거).
+	// @details 결과를 기다릴 필요가 없는 기록성 요청이라 콜백이 없다. 실패하면
+	//          로그만 남기고, 입장 자체에는 영향을 주지 않는다.
+	//***************************************************************************
+	void RequestRecordRoomJoin(
+		int32 roomId,
+		const std::array<BYTE, kPublicIdBytes>& requesterPublicId);
 
 	//***************************************************************************
 	// @brief [추가] 방 프로필 이미지를 설정/교체/해제합니다. requesterPublicId가

@@ -225,6 +225,12 @@
       <Filter>DBHandler</Filter>
     </ClCompile>
     <ClCompile Include="ChatServerConfig.cpp" />
+    <ClCompile Include="DBHandler\ListRoomsPageDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\RecordRoomJoinDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -502,6 +508,8 @@
     <ClInclude Include="DBSetRoomImageRequest.h" />
     <ClInclude Include="DBGetRoomInfoRequest.h" />
     <ClInclude Include="ChatServerConfig.h" />
+    <ClInclude Include="DBListRoomsPageRequest.h" />
+    <ClInclude Include="DBRecordRoomJoinRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

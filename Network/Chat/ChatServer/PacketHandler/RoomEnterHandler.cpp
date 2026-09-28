@@ -9,45 +9,8 @@
 #include "ChatServerMain.h"
 #include "ChatPacketDispatcher.h"
 
-#include <unordered_set>
-#include <mutex>
-
 namespace
 {
-	//***************************************************************************
-	// @brief [추가 — 진단용] 세션별로 "방 입장 비동기 체인(RequestGetRoomInfo +
-	//        RequestRoomChatHistory)이 지금 진행 중인지"를 추적한다.
-	// @details 같은 세션에 대해 첫 RoomEnterReq의 비동기 체인이 채 끝나기도
-	//          전에(응답 전송 + 대화 기록 스트리밍까지 완료되기 전에) 두 번째
-	//          RoomEnterReq가 처리되면(같은 방 재입장, 로비를 거치지 않고 방
-	//          직행 전환 등으로 재현되는 것으로 보임) 이 맵에 걸린다. IOCP는
-	//          같은 세션의 연속된 수신도 서로 다른 워커 스레드에 배정할 수
-	//          있어서, 클라이언트가 이전 처리 완료를 기다리지 않고 두 번째
-	//          요청을 빨리 보내면 HandleRoomEnterReq 자체가 같은 세션에 대해
-	//          두 스레드에서 동시에 실행될 수 있다는 가설을 검증하기 위한
-	//          코드다. 지금은 동작을 바꾸지 않고 로그만 남긴다 — 확인되면
-	//          실제 방어 로직(두 번째 요청 거부/대기)으로 바꿀 것.
-	//***************************************************************************
-	std::mutex g_roomEnterInFlightLock;
-	std::unordered_set<const void*> g_roomEnterInFlightSessions;
-
-	void MarkRoomEnterBegin(const void* sessionPtr, int32 roomId)
-	{
-		std::lock_guard<std::mutex> lock(g_roomEnterInFlightLock);
-		if( g_roomEnterInFlightSessions.find(sessionPtr) != g_roomEnterInFlightSessions.end() )
-		{
-			LOG_ERROR(_T("HandleRoomEnterReq: [경합 발견] session=%p 에 대해 이전 방 입장 비동기 체인이 아직 안 끝났는데 roomId=%d 요청이 또 처리 시작됨"), sessionPtr, roomId);
-		}
-		g_roomEnterInFlightSessions.insert(sessionPtr);
-	}
-
-	void MarkRoomEnterEnd(const void* sessionPtr, int32 roomId)
-	{
-		std::lock_guard<std::mutex> lock(g_roomEnterInFlightLock);
-		g_roomEnterInFlightSessions.erase(sessionPtr);
-		LOG_INFO(_T("HandleRoomEnterReq: session=%p roomId=%d 비동기 체인 완료(대화 기록까지 전송 끝)"), sessionPtr, roomId);
-	}
-
 	//***************************************************************************
 	// @brief 방 입장 요청 처리. 로그인 상태여야 하고, roomId가 실제로
 	//        존재하는(생성된) 방이어야 한다(로비로는 이 요청으로 못
@@ -73,12 +36,6 @@ namespace
 		const RoomEnterReqPacket* packet = reinterpret_cast<const RoomEnterReqPacket*>(header);
 		const int32 roomId = packet->roomId;
 
-		// [추가 — 진단용] 같은 세션에서 RoomEnterReq가 중복으로 오는지
-		// 서버 쪽에서도 교차 확인 — 클라이언트가 정말 두 번 보내는 건지,
-		// 아니면 클라이언트는 한 번만 보냈는데 응답 처리 쪽에서 문제가
-		// 나는 건지 구분하기 위함.
-		LOG_INFO(_T("HandleRoomEnterReq: roomId=%d 요청 수신"), roomId);
-
 		CChatServerMain* server = session.GetServer();
 		if( server == nullptr )
 			return;
@@ -101,6 +58,10 @@ namespace
 		int32 newUserCount = 0;
 		server->MoveToRoom(sessionRef, roomId, newUserCount);
 
+		// 방에 입장했다는 사실을 남긴다 — "내가 참여한 방" 목록의 근거가 된다.
+		// 로비 입장은 기록하지 않고(함수 안에서 걸러짐), 결과를 기다리지도 않는다.
+		server->RequestRecordRoomJoin(roomId, session.GetPublicId());
+
 		// 로비는 이름/방장/이미지 개념이 없으니 조회 없이 바로 응답한다.
 		if( roomId == kLobbyRoomId )
 		{
@@ -116,18 +77,13 @@ namespace
 		}
 
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
-		const void* sessionPtr = sessionRef.get();
-		MarkRoomEnterBegin(sessionPtr, roomId);
 
 		server->RequestGetRoomInfo(sessionRef, roomId,
-			[server, sessionWeak, roomId, newUserCount, sessionPtr](bool found, const SRoomListEntry& info)
+			[server, sessionWeak, roomId, newUserCount](bool found, const SRoomListEntry& info)
 			{
 				auto session = sessionWeak.lock();
 				if( session == nullptr )
-				{
-					MarkRoomEnterEnd(sessionPtr, roomId);
 					return;
-				}
 
 				RoomEnterResPacket res{};
 				res.size = sizeof(res);
@@ -160,14 +116,11 @@ namespace
 				// 자동으로 스트리밍해준다 — 카카오톡/디스코드처럼 방에
 				// 들어가자마자 과거 대화가 보이게.
 				server->RequestRoomChatHistory(session, roomId,
-					[sessionWeak, roomId, sessionPtr](const std::vector<CChatServerMain::SChatHistoryEntry>& history)
+					[sessionWeak, roomId](const std::vector<CChatServerMain::SChatHistoryEntry>& history)
 					{
 						auto session = sessionWeak.lock();
 						if( session == nullptr )
-						{
-							MarkRoomEnterEnd(sessionPtr, roomId);
 							return;
-						}
 
 						for( const CChatServerMain::SChatHistoryEntry& entry : history )
 						{
@@ -196,8 +149,6 @@ namespace
 						endRes.roomId = roomId;
 						endRes.totalCount = static_cast<int32>(history.size());
 						session->Send(&endRes, sizeof(endRes));
-
-						MarkRoomEnterEnd(sessionPtr, roomId);
 					});
 			});
 	}

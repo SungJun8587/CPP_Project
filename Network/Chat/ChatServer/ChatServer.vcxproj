@@ -148,6 +148,8 @@
     <ClCompile Include="DBHandler\GetRoomInfoDBHandler.cpp" />
     <ClCompile Include="DBHandler\ListProfileImagesDBHandler.cpp" />
     <ClCompile Include="DBHandler\ListRoomsDBHandler.cpp" />
+    <ClCompile Include="DBHandler\ListRoomsPageDBHandler.cpp" />
+    <ClCompile Include="DBHandler\RecordRoomJoinDBHandler.cpp" />
     <ClCompile Include="DBHandler\RenameRoomDBHandler.cpp" />
     <ClCompile Include="DBHandler\SelectProfileImageDBHandler.cpp" />
     <ClCompile Include="DBHandler\SetProfileImageUrlDBHandler.cpp" />
@@ -257,7 +259,9 @@
     <ClInclude Include="DBDeleteRoomRequest.h" />
     <ClInclude Include="DBGetRoomInfoRequest.h" />
     <ClInclude Include="DBListProfileImagesRequest.h" />
+    <ClInclude Include="DBListRoomsPageRequest.h" />
     <ClInclude Include="DBListRoomsRequest.h" />
+    <ClInclude Include="DBRecordRoomJoinRequest.h" />
     <ClInclude Include="DBRenameRoomRequest.h" />
     <ClInclude Include="DBSelectProfileImageRequest.h" />
     <ClInclude Include="DBSetProfileImageUrlRequest.h" />

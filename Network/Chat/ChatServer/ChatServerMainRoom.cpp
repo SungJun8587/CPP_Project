@@ -2,9 +2,6 @@
 //***************************************************************************
 // ChatServerMainRoom.cpp : CChatServerMain 구현 — 방(로비 포함) 관련
 //
-// [분리] ChatServerMain.h 상단의 "구현 파일 분리" 설명 참고. 여기엔 방
-// 이동(로비 포함)/생성/삭제/이름변경/이미지 설정/방장 자동 이양/서버
-// 시작 시 DB 초기 로딩이 모여있다.
 //***************************************************************************
 
 #include "pch.h"
@@ -16,6 +13,8 @@
 #include "DBDeleteRoomRequest.h"
 #include "DBRenameRoomRequest.h"
 #include "DBListRoomsRequest.h"
+#include "DBListRoomsPageRequest.h"
+#include "DBRecordRoomJoinRequest.h"
 #include "DBTransferRoomOwnerRequest.h"
 #include "DBSetRoomImageRequest.h"
 #include "DBGetRoomInfoRequest.h"
@@ -441,42 +440,57 @@ void CChatServerMain::RequestRenameRoom(
 }
 
 //***************************************************************************
-// @brief 존재하는 모든 방을 조회합니다. RequestListProfileImages()와
-//        완전히 동일한 구조(부수효과 없음 — 순수 조회).
+// @brief 방 목록의 한 페이지를 조회합니다(부수효과 없는 순수 조회).
+// @details pageSize는 여기서 1~kMaxRoomPageSize로 한 번 더 보정한다 — 호출부가
+//          검증하더라도 DB 핸들러에 잘못된 값이 넘어가지 않게 하는 안전장치다.
 //***************************************************************************
 void CChatServerMain::RequestListRooms(
 	std::shared_ptr<CChatSession> session,
-	std::function<void(ELoginResult result, const std::vector<SRoomListEntry>& rooms)> onComplete)
+	ERoomListScope scope,
+	const std::array<BYTE, kPublicIdBytes>& requesterPublicId,
+	const std::string& keyword,
+	int32 page,
+	int32 pageSize,
+	std::function<void(ELoginResult result, int32 totalCount, int32 page, const std::vector<SRoomListEntry>& rooms)> onComplete)
 {
 	if( session == nullptr )
 		return;
 
+	if( pageSize < 1 )
+		pageSize = 1;
+	if( pageSize > kMaxRoomPageSize )
+		pageSize = kMaxRoomPageSize;
+
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
+	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomListEntry>& rooms)
 		{
 			if( jobQueue == nullptr )
 				return;
 
-			// [추가] 항목마다 image_ref가 상대 경로로 저장돼 있으면 완전한
-			// URL로 복원한다 — RequestListProfileImages()와 동일한 이유
-			// (ToDisplayImageUrl() 참고).
+			// 항목마다 image_ref가 상대 경로로 저장돼 있으면 완전한 URL로
+			// 복원한다(ToDisplayImageUrl() 참고).
 			std::vector<SRoomListEntry> displayRooms = rooms;
 			for( SRoomListEntry& entry : displayRooms )
 				entry.imageRef = ToDisplayImageUrl(entry.imageRef);
 
-			jobQueue->DoAsync([onComplete, result, displayRooms]()
+			jobQueue->DoAsync([onComplete, result, totalCount, resultPage, displayRooms]()
 				{
 					if( onComplete )
-						onComplete(result, displayRooms);
+						onComplete(result, totalCount, resultPage, displayRooms);
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOMS_REQ>(
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOMS_PAGE_REQ>(
 		MEMBER_DB_ASYNC,
-		kDbCallIdent_ListRooms,
-		[dispatchToJobQueue](ST_LIST_ROOMS_REQ* req)
+		kDbCallIdent_ListRoomsPage,
+		[scope, requesterPublicId, keyword, page, pageSize, dispatchToJobQueue](ST_LIST_ROOMS_PAGE_REQ* req)
 		{
+			req->scope = scope;
+			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			req->keyword = keyword;
+			req->page = page;
+			req->pageSize = pageSize;
 			req->onComplete = dispatchToJobQueue;
 		},
 		kMaxDbQueueCapacity);
@@ -484,8 +498,32 @@ void CChatServerMain::RequestListRooms(
 	if( !pushed )
 	{
 		if( onComplete )
-			onComplete(ELoginResult::DbError, std::vector<SRoomListEntry>());
+			onComplete(ELoginResult::DbError, 0, 0, std::vector<SRoomListEntry>());
 	}
+}
+
+//***************************************************************************
+// @brief 사용자가 방에 입장했음을 기록합니다.
+//***************************************************************************
+void CChatServerMain::RequestRecordRoomJoin(
+	int32 roomId,
+	const std::array<BYTE, kPublicIdBytes>& requesterPublicId)
+{
+	if( roomId == kLobbyRoomId )
+		return;
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_RECORD_ROOM_JOIN_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_RecordRoomJoin,
+		[roomId, requesterPublicId](ST_RECORD_ROOM_JOIN_REQ* req)
+		{
+			req->roomId = roomId;
+			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+		LOG_ERROR(_T("RequestRecordRoomJoin: DB 요청 큐가 가득 차서 입장 기록을 건너뜀 (roomId=%d)"), roomId);
 }
 
 //***************************************************************************

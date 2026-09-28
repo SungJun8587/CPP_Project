@@ -116,7 +116,21 @@ namespace ChatApp
         public void RequestCreateRoom(string roomName) => SendRaw(PacketBuilder.BuildCreateRoomReq(roomName));
         public void RequestDeleteRoom(int roomId) => SendRaw(PacketBuilder.BuildDeleteRoomReq(roomId));
         public void RequestRenameRoom(int roomId, string newName) => SendRaw(PacketBuilder.BuildRenameRoomReq(roomId, newName));
-        public void RequestListRooms() => SendRaw(PacketBuilder.BuildListRoomsReq());
+
+        private int _listRoomsRequestSeq;
+
+        //***************************************************************************
+        // @brief 방 목록 한 페이지를 요청하고, 이 요청의 식별자를 돌려준다.
+        // @details 응답 패킷(RoomListItemReceived/RoomListEndReceived)이 이 식별자를
+        //          그대로 되돌려주므로, 호출부는 마지막으로 보낸 요청의 식별자와
+        //          비교해 그보다 오래된 요청의 늦은 응답을 버릴 수 있다.
+        //***************************************************************************
+        public int RequestListRooms(RoomListScope scope, int page, int pageSize, string keyword)
+        {
+            int requestId = System.Threading.Interlocked.Increment(ref _listRoomsRequestSeq);
+            SendRaw(PacketBuilder.BuildListRoomsReq(requestId, scope, page, pageSize, keyword));
+            return requestId;
+        }
 
         // [추가] 방 프로필 이미지 설정/교체/해제 요청.
         public void RequestSetRoomImage(int roomId, string imageUrl) => SendRaw(PacketBuilder.BuildSetRoomImageReq(roomId, imageUrl));

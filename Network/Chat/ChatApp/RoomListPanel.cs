@@ -1,15 +1,7 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // RoomListPanel.cs : 채팅방 목록 패널 — ProfileImageGalleryPanel.cs와 동일한
 //                    설계 패턴을 따르는 탭 내장 UserControl.
-//
-// [설계] 모달 팝업(Form) 대신 갤러리 탭과 같은 방식으로 메인 탭 하나를
-// 차지한다 — AttachClient()/DetachClient()로 서버 연결 생명주기를 따라가고,
-// RefreshTheme()으로 스킨 전환에 대응하며, RefreshList()로 탭 전환 시마다
-// 최신 목록을 다시 받아온다. 실제 네트워크 요청(RequestListRooms/
-// RequestCreateRoom/RequestRoomEnter)은 이 패널이 직접 보내지만, "입장에
-// 성공해서 메인 화면(현재 방 이름/방장 표시, 대화 탭으로 전환)을 갱신"하는
-// 책임은 ChatClientForm에 남겨둔다 — RoomEntered 이벤트로 위임한다
-// (ProfileImageGalleryPanel의 ActiveImageChanged와 같은 역할).
 //***************************************************************************
 
 using System;
@@ -17,7 +9,9 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Globalization;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -238,6 +232,25 @@ namespace ChatApp
         private FlowLayoutPanel _flowRooms;
         private Label _lblStatus;
 
+        // 목록 조회 조건과 페이징 상태. 서버는 한 번에 한 페이지만 돌려주므로,
+        // 이 패널은 항상 "지금 보고 있는 페이지"의 항목만 들고 있다.
+        private const int PageSize = 10;
+        private RoomListScope _scope = RoomListScope.All;
+        private string _keyword = string.Empty;
+        private int _page;                  // 서버가 확정해서 돌려준 현재 페이지(0부터)
+        private int _totalPages = 1;
+        private int _lastRequestId;         // 마지막으로 보낸 목록 요청의 식별자 — 그보다 오래된 요청의 늦은 응답은 버린다
+
+        private Button _btnScopeAll;
+        private Button _btnScopeJoined;
+        private const int ControlHeight = 30;     // 범위 버튼/검색창/검색 버튼이 모두 같은 높이를 쓴다
+        private Panel _searchBoxHost;               // 검색 TextBox를 감싸 테두리를 직접 그리는 패널
+        private TextBox _txtSearch;
+        private Button _btnSearch;
+        private Button _btnPrev;
+        private Button _btnNext;
+        private Label _lblPage;
+
         //***************************************************************************
         // @brief 이 패널 안에서 방 입장에 성공했을 때 발생 — 호출부
         //        (ChatClientForm)가 현재 방 이름/방장 상태를 갱신하고 대화
@@ -354,9 +367,192 @@ namespace ChatApp
                 BackColor = ChatTheme.Blue.PageBack,
             };
 
+            // 범위 전환(전체 방 / 내 방) + 이름 검색 줄. 세 컨트롤(범위 버튼, 검색창,
+            // 검색 버튼)이 모두 ControlHeight로 같은 높이가 되도록 맞춘다.
+            var filterPanel = new Panel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(10, 7, 10, 7) };
+
+            // 오른쪽 검색 영역과의 간격(8)을 포함해 폭을 잡는다.
+            var scopePanel = new Panel { Dock = DockStyle.Left, Width = 178 };
+            _btnScopeJoined = new Button { Text = "내 방", Left = 0, Top = 0, Width = 80, Height = ControlHeight };
+            _btnScopeAll = new Button { Text = "전체 방", Left = 86, Top = 0, Width = 80, Height = ControlHeight };
+            _btnScopeAll.Click += (s, e) => SwitchScope(RoomListScope.All);
+            _btnScopeJoined.Click += (s, e) => SwitchScope(RoomListScope.Joined);
+            scopePanel.Controls.AddRange(new Control[] { _btnScopeJoined, _btnScopeAll });
+            UpdateScopeButtons();
+
+            // 검색창은 단일 행 TextBox가 글꼴 높이로 고정되어 버튼과 높이를 맞출 수
+            // 없으므로, 흰 배경 패널(ControlHeight)이 테두리를 그리고 그 안에서
+            // 테두리 없는 TextBox를 세로 가운데에 둔다. 표 레이아웃의 한 행에
+            // 검색창과 검색 버튼을 Fill로 넣어 두 컨트롤의 높이가 항상 같다.
+            _searchBoxHost = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 0, 8, 0),
+                BackColor = Color.White,
+            };
+            _txtSearch = new TextBox
+            {
+                BorderStyle = BorderStyle.None,
+                BackColor = Color.White,
+                PlaceholderText = "방 이름 검색",
+                MaxLength = 30,
+            };
+            _searchBoxHost.Controls.Add(_txtSearch);
+            _searchBoxHost.Resize += (s, e) => LayoutSearchBox();
+            _searchBoxHost.Click += (s, e) => _txtSearch.Focus();
+            _searchBoxHost.Paint += (s, e) =>
+            {
+                // 테두리 색은 그릴 때마다 현재 스킨에서 읽는다 — 스킨을 바꾸면
+                // RefreshTheme()가 Invalidate만 해주면 반영된다. 입력 중일 때는
+                // 강조색으로 표시한다.
+                Color borderColor = _txtSearch.Focused ? ChatTheme.Current.Accent : ChatTheme.Current.Border;
+                using (var pen = new Pen(borderColor))
+                    e.Graphics.DrawRectangle(pen, 0, 0, _searchBoxHost.Width - 1, _searchBoxHost.Height - 1);
+            };
+            _txtSearch.Enter += (s, e) => _searchBoxHost.Invalidate();
+            _txtSearch.Leave += (s, e) => _searchBoxHost.Invalidate();
+            _txtSearch.KeyDown += (s, e) =>
+            {
+                if (e.KeyCode == Keys.Enter)
+                {
+                    e.SuppressKeyPress = true;
+                    ApplySearch();
+                }
+            };
+
+            _btnSearch = new Button { Text = "검색", Dock = DockStyle.Fill, Margin = Padding.Empty };
+            StyleDynamicButton(_btnSearch);
+            _btnSearch.Click += (s, e) => ApplySearch();
+
+            var searchTable = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                Margin = Padding.Empty,
+                Padding = Padding.Empty,
+            };
+            searchTable.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            searchTable.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72f));
+            searchTable.RowStyles.Add(new RowStyle(SizeType.Absolute, ControlHeight));
+            searchTable.Controls.Add(_searchBoxHost, 0, 0);
+            searchTable.Controls.Add(_btnSearch, 1, 0);
+
+            filterPanel.Controls.Add(searchTable);
+            filterPanel.Controls.Add(scopePanel);
+
+            // 페이지 이동 줄
+            var pagerPanel = new Panel { Dock = DockStyle.Bottom, Height = 36 };
+            _btnPrev = new Button { Text = "◀ 이전", Width = 80, Height = 28 };
+            _btnNext = new Button { Text = "다음 ▶", Width = 80, Height = 28 };
+            _lblPage = new Label
+            {
+                Text = "1 / 1",
+                Width = 90,
+                Height = 28,
+                TextAlign = ContentAlignment.MiddleCenter,
+                Font = new Font(Font.FontFamily, 9f, FontStyle.Bold),
+            };
+            StyleDynamicButton(_btnPrev);
+            StyleDynamicButton(_btnNext);
+            _btnPrev.Enabled = false;
+            _btnNext.Enabled = false;
+            _btnPrev.Click += (s, e) => RequestPage(_page - 1);
+            _btnNext.Click += (s, e) => RequestPage(_page + 1);
+            pagerPanel.Controls.AddRange(new Control[] { _btnPrev, _lblPage, _btnNext });
+            pagerPanel.Resize += (s, e) => LayoutPager(pagerPanel);
+            LayoutPager(pagerPanel);
+
+            // Dock는 마지막에 추가한 컨트롤부터 바깥쪽에 배치된다 — Fill(목록)을
+            // 가장 먼저 넣고, 위/아래 줄들은 바깥쪽이 될 것을 나중에 넣는다.
             Controls.Add(_flowRooms);
+            Controls.Add(pagerPanel);
+            Controls.Add(filterPanel);
             Controls.Add(_lblStatus);
             Controls.Add(topPanel);
+        }
+
+        //***************************************************************************
+        // @brief 검색창 안의 TextBox를 좌우 여백을 두고 세로 가운데에 배치한다.
+        //***************************************************************************
+        private void LayoutSearchBox()
+        {
+            if (_searchBoxHost == null || _txtSearch == null)
+                return;
+
+            const int horizontalPadding = 8;
+            _txtSearch.Left = horizontalPadding;
+            _txtSearch.Width = Math.Max(10, _searchBoxHost.ClientSize.Width - horizontalPadding * 2);
+            _txtSearch.Top = Math.Max(0, (_searchBoxHost.ClientSize.Height - _txtSearch.Height) / 2);
+        }
+
+        //***************************************************************************
+        // @brief 페이지 이동 줄의 [이전][페이지 표시][다음]을 가운데 정렬한다.
+        //***************************************************************************
+        private void LayoutPager(Panel pagerPanel)
+        {
+            int totalWidth = _btnPrev.Width + _lblPage.Width + _btnNext.Width + 16;
+            int left = Math.Max(0, (pagerPanel.ClientSize.Width - totalWidth) / 2);
+            int top = Math.Max(0, (pagerPanel.ClientSize.Height - _btnPrev.Height) / 2);
+            _btnPrev.Location = new Point(left, top);
+            _lblPage.Location = new Point(left + _btnPrev.Width + 8, top);
+            _btnNext.Location = new Point(left + _btnPrev.Width + 8 + _lblPage.Width + 8, top);
+        }
+
+        //***************************************************************************
+        // @brief 범위 전환 버튼의 활성(선택됨) 표시를 갱신한다.
+        //***************************************************************************
+        private void UpdateScopeButtons()
+        {
+            StyleActionButton(_btnScopeAll, filled: _scope == RoomListScope.All);
+            StyleActionButton(_btnScopeJoined, filled: _scope == RoomListScope.Joined);
+        }
+
+        //***************************************************************************
+        // @brief 전체 방 / 내 방을 전환한다. 검색어는 유지하고 첫 페이지부터 다시
+        //        조회한다.
+        //***************************************************************************
+        private void SwitchScope(RoomListScope scope)
+        {
+            if (_scope == scope)
+                return;
+
+            _scope = scope;
+            UpdateScopeButtons();
+            RequestPage(0);
+        }
+
+        //***************************************************************************
+        // @brief 검색창의 내용으로 검색한다. 빈 검색어면 검색 조건을 해제한다.
+        //***************************************************************************
+        private void ApplySearch()
+        {
+            _keyword = LimitUtf8Bytes(_txtSearch.Text.Trim(), ProtocolConstants.RoomNameBytes - 1);
+            RequestPage(0);
+        }
+
+        //***************************************************************************
+        // @brief 패킷의 고정 길이 필드에 들어갈 수 있도록 문자열을 UTF-8 기준
+        //        maxBytes 이내로 줄인다. 글자(텍스트 요소) 중간에서 자르지 않는다.
+        //***************************************************************************
+        private static string LimitUtf8Bytes(string text, int maxBytes)
+        {
+            if (string.IsNullOrEmpty(text) || Encoding.UTF8.GetByteCount(text) <= maxBytes)
+                return text;
+
+            var sb = new StringBuilder();
+            int bytes = 0;
+            TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(text);
+            while (elements.MoveNext())
+            {
+                string element = (string)elements.Current;
+                int elementBytes = Encoding.UTF8.GetByteCount(element);
+                if (bytes + elementBytes > maxBytes)
+                    break;
+                sb.Append(element);
+                bytes += elementBytes;
+            }
+            return sb.ToString();
         }
 
         //***************************************************************************
@@ -553,6 +749,13 @@ namespace ChatApp
             _pendingEnterRoomId = null;
             _pendingCreatedRoomName = null;
 
+            _page = 0;
+            _totalPages = 1;
+            _lastRequestId = 0;
+            _lblPage.Text = "1 / 1";
+            _btnPrev.Enabled = false;
+            _btnNext.Enabled = false;
+
             _flowRooms.Controls.Clear();
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "서버에 접속하면 방 목록을 볼 수 있습니다.";
@@ -654,23 +857,44 @@ namespace ChatApp
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
 
             StyleActionButton(_btnCreateRoom, filled: true);
+            UpdateScopeButtons();
+            RefreshDynamicButtonColors(_btnSearch);
+            _searchBoxHost.Invalidate();
             RefreshDynamicButtonColors(_btnRefresh);
+            RefreshDynamicButtonColors(_btnPrev);
+            RefreshDynamicButtonColors(_btnNext);
 
             Invalidate(true);
         }
 
         //***************************************************************************
-        // @brief 방 목록을 서버에 다시 요청한다. 탭을 열 때마다 호출된다.
+        // @brief 지금 보고 있는 조건(범위/검색어/페이지)으로 방 목록을 서버에서
+        //        다시 받아온다. 탭을 열 때와 방 관리 작업이 성공했을 때 호출된다.
         //***************************************************************************
         public void RefreshList()
+        {
+            RequestPage(_page);
+        }
+
+        //***************************************************************************
+        // @brief 지정한 페이지를 서버에 요청한다. 응답이 올 때까지 페이지 이동
+        //        버튼을 비활성화해 연속 클릭으로 요청이 쌓이는 것을 막는다.
+        //***************************************************************************
+        private void RequestPage(int page)
         {
             if (_client == null)
                 return;
 
+            if (page < 0)
+                page = 0;
+
             _flowRooms.Controls.Clear();
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
             _lblStatus.Text = "불러오는 중...";
-            _client.RequestListRooms();
+            _btnPrev.Enabled = false;
+            _btnNext.Enabled = false;
+
+            _lastRequestId = _client.RequestListRooms(_scope, page, PageSize, _keyword);
         }
 
         private void OnItemReceived(RoomListItemData data)
@@ -680,6 +904,11 @@ namespace ChatApp
 
             BeginInvoke((MethodInvoker)delegate
             {
+                // 그 사이 다른 페이지/조건으로 다시 요청했다면 이전 요청의 늦은
+                // 응답이므로 버린다.
+                if (data.RequestId != _lastRequestId)
+                    return;
+
                 var row = new RoomRow { Item = data, Owner = this };
                 row.Click += (s, e) => TryEnterRoom(data);
                 row.ConfigureManageButton(data.OwnerNickname == _myNickname);
@@ -694,9 +923,31 @@ namespace ChatApp
 
             BeginInvoke((MethodInvoker)delegate
             {
-                _lblSectionTitle.Text = $"채팅방 목록  {data.TotalCount}개";
+                if (data.RequestId != _lastRequestId)
+                    return;
+
+                // 서버가 범위를 벗어난 페이지를 마지막 페이지로 보정했을 수 있으므로
+                // 요청한 값이 아니라 응답의 값을 현재 페이지로 삼는다.
+                int pageSize = data.PageSize > 0 ? data.PageSize : PageSize;
+                _page = data.Page;
+                _totalPages = Math.Max(1, (data.TotalCount + pageSize - 1) / pageSize);
+
+                string scopeName = data.Scope == RoomListScope.Joined ? "내 방" : "채팅방";
+                _lblSectionTitle.Text = $"{scopeName}  {data.TotalCount}개";
+
+                _lblPage.Text = $"{_page + 1} / {_totalPages}";
+                _btnPrev.Enabled = _page > 0;
+                _btnNext.Enabled = _page + 1 < _totalPages;
+
                 _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
-                _lblStatus.Text = data.TotalCount == 0 ? "아직 만들어진 방이 없습니다." : "방을 클릭하면 입장합니다.";
+                if (data.TotalCount > 0)
+                    _lblStatus.Text = "방을 클릭하면 입장합니다.";
+                else if (_keyword.Length > 0)
+                    _lblStatus.Text = $"'{_keyword}'에 해당하는 방이 없습니다.";
+                else if (data.Scope == RoomListScope.Joined)
+                    _lblStatus.Text = "아직 참여한 방이 없습니다. 전체 방에서 입장해 보세요.";
+                else
+                    _lblStatus.Text = "아직 만들어진 방이 없습니다.";
             });
         }
 
