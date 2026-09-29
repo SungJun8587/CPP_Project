@@ -74,23 +74,17 @@ constexpr BYTE kDbCallIdent_DeleteRoom = 207;			// DBDeleteRoomRequest.h — 방
 constexpr BYTE kDbCallIdent_RenameRoom = 208;			// DBRenameRoomRequest.h — 방 이름 변경
 constexpr BYTE kDbCallIdent_ListRooms = 209;			// DBListRoomsRequest.h — 방 목록 조회
 constexpr BYTE kDbCallIdent_TransferRoomOwner = 210;	// DBTransferRoomOwnerRequest.h — 방장 자동 이양(서버 내부 전용)
-constexpr BYTE kDbCallIdent_SetRoomImage = 211;			// DBSetRoomImageRequest.h — 방 프로필 이미지 설정/교체/해제
+constexpr BYTE kDbCallIdent_SetRoomImage = 211;		// DBSetRoomImageRequest.h — 방 프로필 이미지 설정/교체/해제
 constexpr BYTE kDbCallIdent_GetRoomInfo = 212;			// DBGetRoomInfoRequest.h — 방 하나의 이름/방장/이미지 조회(방 입장 응답에 바로 실어 보내기 위함)
 constexpr BYTE kDbCallIdent_ListRoomsPage = 213;		// DBListRoomsPageRequest.h — 방 목록 페이지 조회(전체/내가 참여한 방, 이름 검색)
 constexpr BYTE kDbCallIdent_RecordRoomJoin = 214;		// DBRecordRoomJoinRequest.h — 방 입장 기록(내가 참여한 방 목록의 근거)
-// 다음 새 값은 215부터 시작할 것.
+constexpr BYTE kDbCallIdent_ListRoomMembersPage = 215;	// DBListRoomMembersPageRequest.h — 방의 입장 이력이 있는 유저 목록 페이지 조회(접속 상태는 DB가 아니라 서버 메모리에서 붙임)
+// 다음 새 값은 216부터 시작할 것.
 
 //***************************************************************************
 // @brief 로비 및 룸 식별 상수
-// @details [수정] 방이 동적으로 생성/삭제되면서 kMaxRoomId(고정 상한)는
-//          더 이상 "유효한 방 번호 범위"를 뜻하지 않는다 — 이제 방
-//          존재 여부는 CChatServerMain::RoomExists()(DB rooms 테이블 기반
-//          인메모리 레지스트리)로 판단한다. 이 상수 자체는 하위 호환을
-//          위해 남겨뒀을 뿐 더 이상 RoomEnterHandler.cpp 등에서 참조하지
-//          않는다.
 //***************************************************************************
 constexpr int32_t kLobbyRoomId = 0;
-constexpr int32_t kMaxRoomId = 10;
 
 //***************************************************************************
 // @brief 방 목록 조회 범위.
@@ -102,6 +96,24 @@ enum class ERoomListScope : uint8_t
 {
 	All = 0,
 	Joined = 1,
+};
+
+//***************************************************************************
+// @brief 방 멤버 목록 조회 범위.
+// @details RoomMemberListReqPacket::scope에 실려온다.
+//          Present : 지금 실제로 그 방에 접속해 있는 사람(인메모리 스냅샷,
+//                     CChatServerMain::GetRoomMembers() — DB를 거치지 않고
+//                     즉시 응답). 전원이 online=1로 나간다(정의상 지금
+//                     연결돼 있어야만 이 목록에 들어오므로).
+//          History : 그 방에 입장한 적이 있는 전체 유저(DB의 room_members
+//                     기준, CChatServerMain::RequestRoomMemberHistoryPage()).
+//                     online은 "지금 이 방에 있는지"가 아니라 "지금 서버
+//                     어딘가에 로그인해 있는지"를 뜻한다.
+//***************************************************************************
+enum class ERoomMemberListScope : uint8_t
+{
+	Present = 0,
+	History = 1,
 };
 
 //***************************************************************************
@@ -208,6 +220,10 @@ enum class EChatPacketType : uint16_t
 	SetRoomImageReq = 41,					// Client -> Server, 방 프로필 이미지 설정/교체/해제 요청(방장만 가능, 빈 URL이면 해제)
 	SetRoomImageRes = 42,					// Server -> Client, 설정 결과 응답(요청자에게만)
 	RoomImageChangedNotify = 43,			// Server -> Client(Broadcast), 이미지가 바뀌었을 때 그 방 멤버 전원에게
+
+	RoomMemberListReq = 47,					// Client -> Server, 지금 자신이 있는 방(로비 포함)의 멤버 목록 조회 요청
+	RoomMemberListItemRes = 48,				// Server -> Client, 멤버 목록 항목 단건 응답(가변 개수 스트리밍)
+	RoomMemberListEndRes = 49,				// Server -> Client, 멤버 목록 전송 완료 및 총 인원수 통지
 
 	// [추가] 방 입장 시 서버가 자동으로 스트리밍해주는 과거 대화 기록.
 	ChatHistoryItemRes = 44,				// Server -> Client, 기록 항목 단건(가변 개수 스트리밍) — 요청자에게만

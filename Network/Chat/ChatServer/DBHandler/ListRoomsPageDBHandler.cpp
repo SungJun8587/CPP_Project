@@ -176,7 +176,15 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomsPage)
 		? _tstring(_T("ORDER BY m.last_entered_at DESC, r.room_id DESC "))
 		: _tstring(_T("ORDER BY r.created_at DESC, r.room_id DESC "));
 
-	const _tstring pageQuery = _tstring(_T("SELECT r.room_id, r.name, r.owner_public_id, u.nickname, r.image_ref "))
+	// [수정 — Redis로 이관] totalMemberCount(입장 이력이 있는 전체 유저 수)는
+	// 더 이상 여기서 COUNT 서브쿼리로 채우지 않는다 — CChatServerMain::
+	// RequestListRooms()가 이 함수의 결과를 받은 뒤, 방마다 Redis Set
+	// (RoomMembers:{roomId})의 SCARD로 채운다. 페이지마다 매번 room_members에
+	// COUNT 서브쿼리를 날리는 대신, 입장 시점에 이미 갱신해둔 Redis 카운터를
+	// 읽기만 하는 구조로 바꾼 것 — SRoomListEntry::totalMemberCount는 여기서
+	// 기본값(0)인 채로 나가고, 위 함수가 그 자리를 채운다.
+	const _tstring pageQuery = _tstring(_T(
+		"SELECT r.room_id, r.name, r.owner_public_id, u.nickname, r.image_ref "))
 		+ fromWhere
 		+ orderBy
 		+ _T("LIMIT ") + Utf8ToTString(std::to_string(pageSize))
@@ -228,6 +236,9 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomsPage)
 		int32 imageRefBufLen = static_cast<int32>(sizeof(imageRefBuf));
 		const bool hasImageRef = guard->GetData(5, imageRefBuf, imageRefBufLen);
 
+		// totalMemberCount는 여기서 채우지 않는다 — 기본값(0)인 채로 두면
+		// 호출부(CChatServerMain::RequestListRooms())가 Redis SCARD 결과로
+		// 채운다(위 SELECT 절 수정 설명 참고).
 		SRoomListEntry entry;
 		entry.roomId = _ttoi(roomIdBuf);
 		entry.name = TStringToUtf8(_tstring(nameBuf));

@@ -78,6 +78,10 @@ namespace ChatApp
         SetRoomImageRes = 42,           // Server -> Client, 설정 결과 응답(요청자에게만)
         RoomImageChangedNotify = 43,    // Server -> Client, 이미지가 바뀌었을 때 그 방 멤버 전원에게
 
+        RoomMemberListReq = 47,        // Client -> Server, 지금 자신이 있는 방(로비 포함)의 멤버 목록 조회 요청
+        RoomMemberListItemRes = 48,    // Server -> Client, 멤버 목록 항목 단건 응답(가변 개수 스트리밍)
+        RoomMemberListEndRes = 49,     // Server -> Client, 멤버 목록 전송 완료 및 총 인원수 통지
+
         // [추가] 방 입장 시 서버가 자동으로 스트리밍해주는 과거 대화 기록.
         ChatHistoryItemRes = 44,        // Server -> Client, 기록 항목 단건(가변 개수 스트리밍) — 요청자에게만
         ChatHistoryEndRes = 45,         // Server -> Client, 기록 전송 완료 — 요청자에게만
@@ -103,6 +107,14 @@ namespace ChatApp
     {
         All = 0,        // 존재하는 모든 방(최신 생성순)
         Joined = 1,     // 내가 입장한 적이 있는 방(최근 입장순)
+    }
+
+    // RoomMemberListReqPacket::scope — 서버 ChatPacketTypes.h::ERoomMemberListScope와
+    // 정확히 같은 값을 유지해야 한다.
+    public enum RoomMemberListScope : byte
+    {
+        Present = 0,    // 지금 그 방에 실제로 접속해 있는 사람만(전원 온라인)
+        History = 1,    // 그 방에 입장한 적이 있는 전체 유저(접속 상태 별도 표시)
     }
 
     // LoginResPacket::reason / ChangeNicknameResPacket::reason 공용.
@@ -454,6 +466,33 @@ namespace ChatApp
         }
 
         //***************************************************************************
+        // @brief 지금 자신이 있는 방(로비 포함)에 입장한 적이 있는 유저 목록
+        //        (전체 이력)의 한 페이지 조회 요청.
+        // @param requestId 응답(Item/End)이 그대로 되돌려주는 요청 식별자
+        // @param roomId 지금 자신이 있는 방(RoomEnterRes 등으로 이미 알고 있는 값)
+        // @param scope Present=지금 접속 중인 사람만, History=입장 이력 전체
+        // @param page 0부터 시작하는 페이지 번호(서버가 범위를 넘으면 마지막
+        //        페이지로 보정한다)
+        // @param pageSize 한 페이지 항목 수(서버가 1~50으로 보정한다)
+        //***************************************************************************
+        public static byte[] BuildRoomMemberListReq(int requestId, int roomId, RoomMemberListScope scope, int page, int pageSize)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                ushort size = (ushort)(ProtocolConstants.HeaderBytes + sizeof(int) + sizeof(int) + sizeof(byte) + sizeof(int) + sizeof(int));
+                bw.Write(size);
+                bw.Write((ushort)PacketType.RoomMemberListReq);
+                bw.Write(requestId);
+                bw.Write(roomId);
+                bw.Write((byte)scope);
+                bw.Write(page);
+                bw.Write(pageSize);
+                return ms.ToArray();
+            }
+        }
+
+        //***************************************************************************
         // @brief [추가] 방 프로필 이미지 설정/교체/해제 요청. imageUrl이 빈
         //        문자열이면 해제(기본 이미지로 되돌림). 요청자가 그 방의
         //        현재 방장이어야 한다(서버가 검증).
@@ -651,7 +690,8 @@ namespace ChatApp
         public int RoomId;
         public string Name;
         public string OwnerNickname;
-        public int UserCount;
+        public int UserCount;          // 지금 그 방에 접속해 있는 인원수
+        public int TotalMemberCount;   // [추가] 그 방에 입장한 적이 있는 전체 유저 수(접속 여부 무관)
         public string ImageUrl;    // [추가] 방 프로필 이미지. 비어있으면 기본 이미지
     }
 
@@ -665,6 +705,36 @@ namespace ChatApp
     {
         public int RequestId;
         public RoomListScope Scope;
+        public int TotalCount;
+        public int Page;
+        public int PageSize;
+    }
+
+    //***************************************************************************
+    // @brief 방 멤버 목록 항목 단건.
+    // @details PublicId는 로그인 응답으로 이미 받아 저장해둔 자신의 PublicId와
+    //          비교해 "나 자신"을 구분하는 데 쓸 수 있다.
+    //***************************************************************************
+    public class RoomMemberItemData
+    {
+        public int RequestId;
+        public byte[] PublicId;
+        public string Nickname;
+        public string ProfileImageUrl;
+        public bool Online; // 이 유저가 "지금 이 방에 있는지"가 아니라 "지금 서버 어딘가에 로그인해 있는지"
+    }
+
+    //***************************************************************************
+    // @brief 방 멤버(입장 이력) 목록 한 페이지 전송 완료.
+    // @details TotalCount는 이 페이지의 항목 수가 아니라 이 방에 입장 이력이
+    //          있는 전체 유저 수다. Page/PageSize는 서버가 보정한 뒤 실제로
+    //          적용한 값이다.
+    //***************************************************************************
+    public class RoomMemberListEndResData
+    {
+        public int RequestId;
+        public int RoomId;
+        public RoomMemberListScope Scope;
         public int TotalCount;
         public int Page;
         public int PageSize;
@@ -1090,8 +1160,9 @@ namespace ChatApp
                 string name = Utf8FromFixed(br.ReadBytes(ProtocolConstants.RoomNameBytes));
                 string ownerNickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
                 int userCount = br.ReadInt32();
+                int totalMemberCount = br.ReadInt32();
                 string imageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
-                return new RoomListItemData { RequestId = requestId, RoomId = roomId, Name = name, OwnerNickname = ownerNickname, UserCount = userCount, ImageUrl = imageUrl };
+                return new RoomListItemData { RequestId = requestId, RoomId = roomId, Name = name, OwnerNickname = ownerNickname, UserCount = userCount, TotalMemberCount = totalMemberCount, ImageUrl = imageUrl };
             }
         }
 
@@ -1142,6 +1213,43 @@ namespace ChatApp
                 int page = br.ReadInt32();
                 int pageSize = br.ReadInt32();
                 return new ListRoomsEndResData { RequestId = requestId, Scope = scope, TotalCount = totalCount, Page = page, PageSize = pageSize };
+            }
+        }
+
+        //***************************************************************************
+        // @brief 방 멤버(입장 이력) 목록 항목 파싱.
+        //***************************************************************************
+        public static RoomMemberItemData ParseRoomMemberListItemRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                int requestId = br.ReadInt32();
+                byte[] publicId = br.ReadBytes(ProtocolConstants.PublicIdBytes);
+                string nickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
+                string profileImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
+                bool online = br.ReadByte() != 0;
+                return new RoomMemberItemData { RequestId = requestId, PublicId = publicId, Nickname = nickname, ProfileImageUrl = profileImageUrl, Online = online };
+            }
+        }
+
+        //***************************************************************************
+        // @brief 방 멤버(입장 이력) 목록 한 페이지 전송 완료 파싱.
+        //***************************************************************************
+        public static RoomMemberListEndResData ParseRoomMemberListEndRes(byte[] buffer)
+        {
+            using (var br = new BinaryReader(new MemoryStream(buffer)))
+            {
+                br.ReadUInt16();
+                br.ReadUInt16();
+                int requestId = br.ReadInt32();
+                int roomId = br.ReadInt32();
+                var scope = (RoomMemberListScope)br.ReadByte();
+                int totalCount = br.ReadInt32();
+                int page = br.ReadInt32();
+                int pageSize = br.ReadInt32();
+                return new RoomMemberListEndResData { RequestId = requestId, RoomId = roomId, Scope = scope, TotalCount = totalCount, Page = page, PageSize = pageSize };
             }
         }
 

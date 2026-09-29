@@ -2,10 +2,6 @@
 //***************************************************************************
 // ChatServerMainChat.cpp : CChatServerMain 구현 — 채팅 메시지/대화 기록 관련
 //
-// [분리] ChatServerMain.h 상단의 "구현 파일 분리" 설명 참고. 여기엔 채팅
-// 메시지 ID 발급/삭제 검증(RegisterOutgoingMessage/TryDeleteMessage —
-// 인메모리, 최근 N개만 추적)과 방 대화 기록(Redis 저장/삭제/조회)이
-// 모여있다.
 //***************************************************************************
 
 #include "pch.h"
@@ -227,19 +223,34 @@ void CChatServerMain::RemoveRoomChatMessage(int32 roomId, int64 messageId)
 }
 
 //***************************************************************************
-// @brief 방의 대화 기록 전체를 지운다(방 삭제 시 호출).
+// @brief 방과 관련된 Redis 데이터를 전부 지운다(방 삭제 시 호출).
+// @details [수정 — 리네이밍] 원래 이름은 ClearRoomChatHistory였다 — 대화
+//          기록 두 키(RoomChatOrder/RoomChatMsg)만 지웠는데, 방 목록의
+//          totalMemberCount를 위한 입장 이력 집계 Set(RoomMembers)도 방이
+//          없어지면 함께 정리해야 해서 이름을 넓혔다. 지우지 않고 두면
+//          같은 room_id가 재사용될 일은 없지만(AUTO_INCREMENT), 쓸모없는
+//          키가 Redis에 계속 남는다.
 //***************************************************************************
-void CChatServerMain::ClearRoomChatHistory(int32 roomId)
+void CChatServerMain::ClearRoomRedisData(int32 roomId)
 {
 	if( roomId == kLobbyRoomId || _redisService == nullptr )
 		return;
 
-	// DEL은 여러 키를 한 번에 받으므로 한 커맨드로 두 키를 같이 지운다.
+	// DEL은 여러 키를 한 번에 받으므로 한 커맨드로 세 키를 같이 지운다.
 	CVector<std::string> delArgs;
 	delArgs.push_back("DEL");
 	delArgs.push_back(BuildRoomChatOrderKey(roomId));
 	delArgs.push_back(BuildRoomChatMsgKey(roomId));
+	delArgs.push_back(BuildRoomMembersKey(roomId));
 	_redisService->SendCommand(delArgs, [](const RedisValue& /*res*/) {});
+}
+
+//***************************************************************************
+// @brief 방에 입장한 적이 있는 전체 유저 집합을 담는 Redis Set 키를 만든다.
+//***************************************************************************
+std::string CChatServerMain::BuildRoomMembersKey(int32 roomId) const
+{
+	return "RoomMembers:" + std::to_string(roomId);
 }
 
 //***************************************************************************

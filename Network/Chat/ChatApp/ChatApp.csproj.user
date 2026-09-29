@@ -22,5 +22,8 @@
     <Compile Update="RoomListPanel.cs">
       <SubType>UserControl</SubType>
     </Compile>
+    <Compile Update="RoomMemberListPanel.cs">
+      <SubType>Component</SubType>
+    </Compile>
   </ItemGroup>
 </Project>

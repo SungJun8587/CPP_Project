@@ -44,6 +44,9 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+// [수정 — 컴파일 오류] 이 프로젝트 설정(암시적 using 등)에서 System.Net.Mime.MediaTypeNames에도
+// Font/Image라는 이름의 클래스가 있어서, System.Drawing.Font/Image와 이름이 겹쳐 모호한
+// 참조 오류가 났다. 타입 별칭으로 System.Drawing 쪽을 명시적으로 고정한다.
 using Font = System.Drawing.Font;
 using Image = System.Drawing.Image;
 
@@ -212,6 +215,7 @@ namespace ChatApp
 
         private string _currentNickname; // 화면에 별도로 표시하지 않고, 닉네임 변경 다이얼로그에 넘겨줄 용도로만 보관
         private string _myProfileImageUrl = string.Empty; // 서버에 현재 설정돼 있는(=다른 사람에게 보이는) 내 프로필 이미지 URL
+        private byte[] _myPublicId; // 로그인 응답으로 받은 내 PublicId — 방 멤버 목록에서 "나" 표시용
         private string _pendingProfileImageUrlRequest; // SetMyProfileImageUrl()/ClearMyProfileImageUrl()이 요청한 값 — 응답(success/reason만 있음) 처리 시 참고용
         // [추가] 낙관적 업데이트(서버 응답 전에 미리 화면에 반영)가 실패로
         // 판명되면 되돌릴 "요청 직전 값". OnSetProfileImageUrlResultReceived()의
@@ -367,6 +371,8 @@ namespace ChatApp
         // (아바타+방 이름+방장 이름). 로비에서는 숨긴다.
         private Panel _pnlRoomInfo;
         private RoomAvatarPanel _pnlRoomAvatar;
+        private Button _btnRoomMembers;
+        private RoomMemberListPanel _roomMemberListPanel;
         private Label _lblRoomInfoName;
         private Label _lblRoomInfoOwner;
 
@@ -390,7 +396,7 @@ namespace ChatApp
         // 유지해야 한다. Debug/Trace/Warning은 아직 실제로 호출하는 곳이
         // 없지만(현재는 Ok/Error/Info만 씀), 범례에는 항상 다섯 개 전부
         // 표시해서 나중에 로그를 세분화할 때 바로 쓸 수 있게 해뒀다.
-        private static readonly Color ColorSystemDebug = Color.Purple;
+        private static readonly Color ColorSystemDebug = Color.MediumPurple;
         private static readonly Color ColorSystemTrace = Color.Blue;
         private static readonly Color ColorSystemInfo = Color.Green;
         private static readonly Color ColorSystemWarning = Color.Gold; // 순수 Yellow는 흰 배경에서 거의 안 보여서 조금 더 진한 톤을 씀
@@ -555,6 +561,7 @@ namespace ChatApp
             RefreshDynamicButtonColors(_btnDeleteRoom);
             RefreshDynamicButtonColors(_btnSend);
             RefreshDynamicButtonColors(_btnAttachFile);
+            RefreshDynamicButtonColors(_btnRoomMembers);
             if (_btnSkin != null) RefreshDynamicButtonColors(_btnSkin);
 
             AppendSystemLog($"[시스템] 스킨을 '{theme.Name}'(으)로 변경했습니다.", ColorSystemInfo);
@@ -787,7 +794,7 @@ namespace ChatApp
             {
                 Left = 44,
                 Top = 0,
-                Width = 490,
+                Width = 420,
                 Height = 18,
                 AutoEllipsis = true,
                 Font = new Font(Font.FontFamily, 9.5f, FontStyle.Bold),
@@ -797,7 +804,7 @@ namespace ChatApp
             {
                 Left = 44,
                 Top = 18,
-                Width = 490,
+                Width = 420,
                 Height = 16,
                 AutoEllipsis = true,
                 ForeColor = TextMutedColor,
@@ -805,9 +812,20 @@ namespace ChatApp
                 TextAlign = ContentAlignment.MiddleLeft,
             };
 
+            // 지금 이 방에 있는 인원의 프로필 목록을 보여주는 팝업을 연다.
+            _btnRoomMembers = new Button { Text = "멤버", Left = 472, Top = 5, Width = 60, Height = 28 };
+            StyleDynamicButton(_btnRoomMembers);
+            _btnRoomMembers.Click += (s, e) =>
+            {
+                if (_client == null || _currentRoomId < 0)
+                    return;
+                _roomMemberListPanel.Open(_currentRoomId, _myPublicId);
+            };
+
             _pnlRoomInfo.Controls.Add(_pnlRoomAvatar);
             _pnlRoomInfo.Controls.Add(_lblRoomInfoName);
             _pnlRoomInfo.Controls.Add(_lblRoomInfoOwner);
+            _pnlRoomInfo.Controls.Add(_btnRoomMembers);
 
             var lblServerUserCount = new Label { Text = "서버 동접자수 : ", Left = 11, Top = 94, Width = 94, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft };
             _txtServerUserCount = new Label { Left = 105, Top = 94, Width = 40, Height = 15, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = new Font(Font, FontStyle.Bold) };
@@ -886,13 +904,27 @@ namespace ChatApp
             // 파란 배경엔 흰 글씨가 맞지만, 노란 배경엔 대비상 검정 글씨가 맞다.
             RebuildBubbleBrushes();
 
+            // 채팅 목록(_listBoxChat)과 정확히 같은 자리를 덮는 오버레이로
+            // 미리 만들어 얹어둔다(Visible=false로 시작) — 멤버보기 버튼을
+            // 누르면 Open()이 이 패널을 앞으로 꺼내 채팅 목록을 가린다.
+            // 채팅 화면 자체가 고정 좌표 레이아웃이라 옆에 나란히 둘 공간이
+            // 없어서 오버레이 방식을 택했다(RoomMemberListPanel.cs 상단
+            // 설명 참고).
+            _roomMemberListPanel = new RoomMemberListPanel
+            {
+                Left = _listBoxChat.Left,
+                Top = _listBoxChat.Top,
+                Width = _listBoxChat.Width,
+                Height = _listBoxChat.Height,
+            };
+
             groupBox2.Controls.AddRange(new Control[]
             {
                 lblCard2Title,
                 _btnRoomList, _btnCreateRoom, _btnRoomLeave, _btnRenameRoom, _btnDeleteRoom, _pnlRoomInfo,
                 lblServerUserCount, _txtServerUserCount, lblLobbyUserCount, _txtLobbyUserCount,
                 lblRoomUserCount, _txtRoomUserCount, _lblCurrentRoom,
-                _btnAttachFile, _txtMessage, _btnSend, _listBoxChat,
+                _btnAttachFile, _txtMessage, _btnSend, _listBoxChat, _roomMemberListPanel,
             });
 
             // ── 탭 구성: "대화"(기존 화면 전체) / "갤러리"(카카오톡 스타일로

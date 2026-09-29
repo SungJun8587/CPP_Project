@@ -87,6 +87,7 @@ namespace
 						::memcpy(itemRes.ownerNickname, entry.ownerNickname.data(), nicknameCopyLen);
 
 						itemRes.userCount = server->GetRoomUserCount(entry.roomId);
+						itemRes.totalMemberCount = entry.totalMemberCount;
 
 						const size_t imageUrlCopyLen = (std::min)(entry.imageRef.size(), sizeof(itemRes.imageUrl) - 1);
 						::memcpy(itemRes.imageUrl, entry.imageRef.data(), imageUrlCopyLen);

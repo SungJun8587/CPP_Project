@@ -2,12 +2,6 @@
 //***************************************************************************
 // ChatServerMain.cpp: implementation of the CChatServerMain class — core.
 //
-// [분리] ChatServerMain.h 상단의 "구현 파일 분리" 설명 참고. 여기엔
-// 생애주기(Start/Stop), 로그인 상태(Redis), 전체 브로드캐스트, 프로필/방
-// 이미지 URL 저장/표시 변환 유틸(ToStorableImageRef/ToDisplayImageUrl —
-// 계정/방 양쪽이 같이 쓰므로 core에 둠)이 모여있다. 계정/방/채팅 관련
-// 구현은 각각 ChatServerMainAccount.cpp/ChatServerMainRoom.cpp/
-// ChatServerMainChat.cpp 참고.
 //***************************************************************************
 
 #include "pch.h"
@@ -159,6 +153,14 @@ std::string CChatServerMain::BuildUserKey(const std::array<BYTE, kPublicIdBytes>
 //***************************************************************************
 void CChatServerMain::OnUserLogin(const std::array<BYTE, kPublicIdBytes>& publicId)
 {
+	// [추가] 인메모리 온라인 집합에도 등록한다 — Redis 기록(아래)은 비동기라
+	// "지금 이 순간 온라인인지" 즉답이 필요한 요청(방 멤버 이력 조회 등)에는
+	// 못 쓴다.
+	{
+		std::lock_guard<std::mutex> lock(_onlineMutex);
+		_onlinePublicIdsHex.insert(Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size()));
+	}
+
 	if( _redisService == nullptr )
 		return;
 
@@ -173,10 +175,15 @@ void CChatServerMain::OnUserLogin(const std::array<BYTE, kPublicIdBytes>& public
 }
 
 //***************************************************************************
-// @brief 유저 로그인 상태를 Redis에서 제거합니다.
+// @brief 유저 로그인 상태를 Redis 및 인메모리 온라인 집합에서 제거합니다.
 //***************************************************************************
 void CChatServerMain::OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publicId)
 {
+	{
+		std::lock_guard<std::mutex> lock(_onlineMutex);
+		_onlinePublicIdsHex.erase(Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size()));
+	}
+
 	if( _redisService == nullptr )
 		return;
 
@@ -185,6 +192,15 @@ void CChatServerMain::OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publi
 	args.push_back(BuildUserKey(publicId));
 
 	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+}
+
+//***************************************************************************
+// @brief 이 publicId가 지금 서버 어딘가에 로그인해 있는지 조회합니다.
+//***************************************************************************
+bool CChatServerMain::IsUserOnline(const std::array<BYTE, kPublicIdBytes>& publicId) const
+{
+	std::lock_guard<std::mutex> lock(_onlineMutex);
+	return _onlinePublicIdsHex.find(Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size())) != _onlinePublicIdsHex.end();
 }
 
 //***************************************************************************

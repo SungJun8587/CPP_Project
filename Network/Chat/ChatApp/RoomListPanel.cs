@@ -43,6 +43,7 @@ namespace ChatApp
 
             private Button _btnManage;
             private ContextMenuStrip _manageMenu;
+            private Button _btnMembers;
             private bool _isOwnerRow;
 
             public RoomRow()
@@ -51,6 +52,24 @@ namespace ChatApp
                 Cursor = Cursors.Hand;
                 Size = new Size(520, 56);
                 Margin = new Padding(0, 0, 0, 6);
+
+                // [추가] "멤버보기" — 방장 여부와 무관하게 모든 행에 항상 표시된다
+                // (관리 버튼과 달리 조건부가 아님). 지금 그 방에 있지 않아도
+                // 조회 가능하도록 서버 쪽 제약을 풀어뒀다(RoomMemberListHandler.cpp
+                // 참고) — "내가 참여한 방" 탭에서 지금 안 들어가 있는 방의
+                // 멤버도 미리 볼 수 있어야 하기 때문이다.
+                _btnMembers = new Button
+                {
+                    Text = "👥",
+                    Size = new Size(28, 28),
+                    FlatStyle = FlatStyle.Flat,
+                    Cursor = Cursors.Hand,
+                    BackColor = Color.White,
+                };
+                _btnMembers.FlatAppearance.BorderSize = 1;
+                _btnMembers.FlatAppearance.BorderColor = ChatTheme.Current.Border;
+                _btnMembers.Click += (s, e) => Owner?.ShowMemberList(Item.RoomId);
+                Controls.Add(_btnMembers);
             }
 
             //***************************************************************************
@@ -72,6 +91,9 @@ namespace ChatApp
                         _btnManage.Dispose();
                         _btnManage = null;
                     }
+
+                    // 관리 버튼이 없으면 멤버보기 버튼이 그 자리(오른쪽 끝)를 대신 쓴다.
+                    _btnMembers.Location = new Point(Width - 38, (Height - 28) / 2);
                     return;
                 }
 
@@ -91,6 +113,9 @@ namespace ChatApp
                     Controls.Add(_btnManage);
                 }
                 _btnManage.Location = new Point(Width - 38, (Height - 28) / 2);
+
+                // 관리 버튼이 있으면 멤버보기 버튼은 그 왼쪽에 나란히 둔다(간격 4px).
+                _btnMembers.Location = new Point(Width - 38 - 32, (Height - 28) / 2);
             }
 
             //***************************************************************************
@@ -170,8 +195,15 @@ namespace ChatApp
                 // 인원수 배지 — 오른쪽 끝. [수정] 방장 행이면 관리(⚙) 버튼이
                 // 그 자리를 차지하므로, 배지를 그만큼(버튼 폭+여백) 왼쪽으로
                 // 밀어서 겹치지 않게 한다.
-                int rightMargin = _isOwnerRow ? 46 : 10;
-                string countText = $"{Item.UserCount}명";
+                // [수정] 멤버보기 버튼이 항상 있으므로(관리 버튼과 달리 조건부가
+                // 아님) 기본 여백에 그만큼(폭 28 + 간격 8)을 항상 더한다. 방장
+                // 행이면 관리 버튼까지 한 벌 더 있으므로 그만큼 더 밀어낸다.
+                int rightMargin = _isOwnerRow ? 78 : 46;
+                // [수정] "현재 접속자수/전체 참여 인원수" 형태로 표시 — 전자는
+                // 지금 그 방에 있는 인원(서버 메모리 기준, 실시간), 후자는
+                // 입장한 적이 있는 전체 유저 수(DB의 room_members 기준,
+                // 접속 여부 무관)다.
+                string countText = $"{Item.UserCount}/{Item.TotalMemberCount}명";
                 using (var countFont = new Font(Font.FontFamily, 9f, FontStyle.Bold))
                 {
                     SizeF countSize = g.MeasureString(countText, countFont);
@@ -235,7 +267,7 @@ namespace ChatApp
         // 목록 조회 조건과 페이징 상태. 서버는 한 번에 한 페이지만 돌려주므로,
         // 이 패널은 항상 "지금 보고 있는 페이지"의 항목만 들고 있다.
         private const int PageSize = 10;
-        private RoomListScope _scope = RoomListScope.All;
+        private RoomListScope _scope = RoomListScope.Joined; // 기본 선택 탭 — 내 방
         private string _keyword = string.Empty;
         private int _page;                  // 서버가 확정해서 돌려준 현재 페이지(0부터)
         private int _totalPages = 1;
@@ -245,6 +277,9 @@ namespace ChatApp
         private Button _btnScopeJoined;
         private const int ControlHeight = 30;     // 범위 버튼/검색창/검색 버튼이 모두 같은 높이를 쓴다
         private Panel _searchBoxHost;               // 검색 TextBox를 감싸 테두리를 직접 그리는 패널
+        private Panel _filterPanel;                  // 범위 전환/검색 줄 — 멤버보기 열 때 숨김
+        private Panel _pagerPanel;                    // 페이지 이동 줄 — 멤버보기 열 때 숨김
+        private RoomMemberListPanel _memberListPanel; // 특정 방의 멤버보기 오버레이(목록 자리를 대신 채움)
         private TextBox _txtSearch;
         private Button _btnSearch;
         private Button _btnPrev;
@@ -305,6 +340,13 @@ namespace ChatApp
             }
         }
         private string _myNickname;
+
+        //***************************************************************************
+        // @brief [추가] 로그인 응답으로 받은 내 PublicId. 멤버보기 패널을 열 때
+        //        그 방 목록에서 "나"를 강조 표시하는 데 쓴다(ChatClientForm이
+        //        로그인 성공 시점에 설정해준다 — MyNickname과 동일한 패턴).
+        //***************************************************************************
+        public byte[] MyPublicId { get; set; }
 
         //***************************************************************************
         // @brief [추가] 관리 메뉴의 "프로필 이미지 변경" 클릭 시 발생 —
@@ -369,7 +411,7 @@ namespace ChatApp
 
             // 범위 전환(전체 방 / 내 방) + 이름 검색 줄. 세 컨트롤(범위 버튼, 검색창,
             // 검색 버튼)이 모두 ControlHeight로 같은 높이가 되도록 맞춘다.
-            var filterPanel = new Panel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(10, 7, 10, 7) };
+            var filterPanel = _filterPanel = new Panel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(10, 7, 10, 7) };
 
             // 오른쪽 검색 영역과의 간격(8)을 포함해 폭을 잡는다.
             var scopePanel = new Panel { Dock = DockStyle.Left, Width = 178 };
@@ -442,7 +484,7 @@ namespace ChatApp
             filterPanel.Controls.Add(scopePanel);
 
             // 페이지 이동 줄
-            var pagerPanel = new Panel { Dock = DockStyle.Bottom, Height = 36 };
+            var pagerPanel = _pagerPanel = new Panel { Dock = DockStyle.Bottom, Height = 36 };
             _btnPrev = new Button { Text = "◀ 이전", Width = 80, Height = 28 };
             _btnNext = new Button { Text = "다음 ▶", Width = 80, Height = 28 };
             _lblPage = new Label
@@ -463,13 +505,49 @@ namespace ChatApp
             pagerPanel.Resize += (s, e) => LayoutPager(pagerPanel);
             LayoutPager(pagerPanel);
 
+            // 특정 방의 멤버보기 오버레이 — _flowRooms와 정확히 같은 Fill
+            // 영역을 두고 Visible=false로 시작한다(ChatClientForm의 채팅
+            // 목록 위 오버레이와 동일한 아이디어). 목록 쪽 필터/페이저 줄은
+            // 멤버보기가 열려 있는 동안 의미가 없으므로 ShowMemberList()/
+            // HideMemberList()가 같이 숨기고 보여준다.
+            _memberListPanel = new RoomMemberListPanel { Dock = DockStyle.Fill };
+            _memberListPanel.Closed += HideMemberList;
+
             // Dock는 마지막에 추가한 컨트롤부터 바깥쪽에 배치된다 — Fill(목록)을
             // 가장 먼저 넣고, 위/아래 줄들은 바깥쪽이 될 것을 나중에 넣는다.
             Controls.Add(_flowRooms);
+            Controls.Add(_memberListPanel);
             Controls.Add(pagerPanel);
             Controls.Add(filterPanel);
             Controls.Add(_lblStatus);
             Controls.Add(topPanel);
+        }
+
+        //***************************************************************************
+        // @brief RoomRow의 "멤버보기" 버튼 클릭 — 목록/필터/페이저를 숨기고
+        //        그 방의 멤버 패널을 대신 보여준다.
+        //***************************************************************************
+        internal void ShowMemberList(int roomId)
+        {
+            if (_client == null)
+                return;
+
+            _filterPanel.Visible = false;
+            _flowRooms.Visible = false;
+            _pagerPanel.Visible = false;
+
+            _memberListPanel.Open(roomId, MyPublicId);
+        }
+
+        //***************************************************************************
+        // @brief 멤버 패널이 닫혔을 때(RoomMemberListPanel.Closed) 호출 —
+        //        목록/필터/페이저를 원래대로 되돌린다.
+        //***************************************************************************
+        private void HideMemberList()
+        {
+            _filterPanel.Visible = true;
+            _flowRooms.Visible = true;
+            _pagerPanel.Visible = true;
         }
 
         //***************************************************************************
@@ -629,6 +707,13 @@ namespace ChatApp
             _client.DeleteRoomResultReceived += OnManageActionResultReceived;
             _client.SetRoomImageResultReceived += OnManageActionResultReceived;
 
+            _memberListPanel.AttachClient(_client);
+
+            // 접속할 때마다 항상 "내 방" 탭으로 시작한다(직전 세션에서 다른
+            // 탭을 보고 있었더라도).
+            _scope = RoomListScope.Joined;
+            UpdateScopeButtons();
+
             RefreshList();
         }
 
@@ -745,6 +830,9 @@ namespace ChatApp
                 _client.SetRoomImageResultReceived -= OnManageActionResultReceived;
                 _client = null;
             }
+
+            _memberListPanel.DetachClient();
+            HideMemberList();
 
             _pendingEnterRoomId = null;
             _pendingCreatedRoomName = null;

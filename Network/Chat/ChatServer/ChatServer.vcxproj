@@ -147,6 +147,7 @@
     <ClCompile Include="DBHandler\DeleteRoomDBHandler.cpp" />
     <ClCompile Include="DBHandler\GetRoomInfoDBHandler.cpp" />
     <ClCompile Include="DBHandler\ListProfileImagesDBHandler.cpp" />
+    <ClCompile Include="DBHandler\ListRoomMembersPageDBHandler.cpp" />
     <ClCompile Include="DBHandler\ListRoomsDBHandler.cpp" />
     <ClCompile Include="DBHandler\ListRoomsPageDBHandler.cpp" />
     <ClCompile Include="DBHandler\RecordRoomJoinDBHandler.cpp" />
@@ -169,6 +170,7 @@
     <ClCompile Include="PacketHandler\RequestUploadTokenHandler.cpp" />
     <ClCompile Include="PacketHandler\RoomEnterHandler.cpp" />
     <ClCompile Include="PacketHandler\RoomLeaveHandler.cpp" />
+    <ClCompile Include="PacketHandler\RoomMemberListHandler.cpp" />
     <ClCompile Include="PacketHandler\SelectProfileImageHandler.cpp" />
     <ClCompile Include="PacketHandler\ServerUserCountHandler.cpp" />
     <ClCompile Include="PacketHandler\SetProfileImageUrlHandler.cpp" />
@@ -259,6 +261,7 @@
     <ClInclude Include="DBDeleteRoomRequest.h" />
     <ClInclude Include="DBGetRoomInfoRequest.h" />
     <ClInclude Include="DBListProfileImagesRequest.h" />
+    <ClInclude Include="DBListRoomMembersPageRequest.h" />
     <ClInclude Include="DBListRoomsPageRequest.h" />
     <ClInclude Include="DBListRoomsRequest.h" />
     <ClInclude Include="DBRecordRoomJoinRequest.h" />

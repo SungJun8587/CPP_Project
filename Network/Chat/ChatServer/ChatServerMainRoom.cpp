@@ -15,11 +15,14 @@
 #include "DBListRoomsRequest.h"
 #include "DBListRoomsPageRequest.h"
 #include "DBRecordRoomJoinRequest.h"
+#include "DBListRoomMembersPageRequest.h"
 #include "DBTransferRoomOwnerRequest.h"
 #include "DBSetRoomImageRequest.h"
 #include "DBGetRoomInfoRequest.h"
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
 
 //***************************************************************************
 // @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
@@ -179,6 +182,110 @@ int32 CChatServerMain::GetRoomUserCount(int32 roomId) const
 			++count;
 	}
 	return count;
+}
+
+//***************************************************************************
+// @brief 방(로비 포함)에 지금 실제로 접속해 있는 멤버의 프로필을 조회합니다.
+// @details GetRoomUserCount()와 동일하게 _roomMembers를 락 안에서 훑되,
+//          세션마다 shared_ptr을 lock()해 닉네임/프로필 이미지 URL을 그
+//          자리에서 바로 복사해둔다 — 락을 놓은 뒤에는 그 세션이 다른
+//          방으로 옮기거나 끊길 수 있으므로, 락 구간 밖으로 shared_ptr
+//          자체를 들고 나가지 않고 필요한 값만 복사해서 가져나온다.
+//***************************************************************************
+//***************************************************************************
+// @brief 방에 입장한 적이 있는 유저 목록(전체 이력, DB 기준)의 한 페이지를
+//        조회합니다. 각 항목에 IsUserOnline() 기준 접속 상태를 붙입니다.
+// @details DB 조회 자체(ListRoomMembersPageDBHandler.cpp)는 접속 상태를
+//          모른다 — DB 워커 스레드는 인메모리 온라인 집합(_onlineMutex로
+//          보호)에 접근할 이유가 없게 하려고, 그 병합은 여기(JobQueue로
+//          이관된 뒤, 즉 로직 스레드)에서 한다.
+//***************************************************************************
+void CChatServerMain::RequestRoomMemberHistoryPage(
+	int32 roomId,
+	int32 page,
+	int32 pageSize,
+	std::function<void(ELoginResult result, int32 totalCount, int32 page, const std::vector<SRoomMemberHistoryInfo>& members)> onComplete)
+{
+	if( pageSize < 1 )
+		pageSize = 1;
+	if( pageSize > kMaxRoomPageSize )
+		pageSize = kMaxRoomPageSize;
+
+	CJobQueueRef jobQueue = _jobQueue;
+
+	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomMemberHistoryEntry>& entries)
+		{
+			if( jobQueue == nullptr )
+				return;
+
+			// image_ref가 상대 경로로 저장돼 있으면 완전한 URL로 복원하고,
+			// 접속 상태(IsUserOnline())를 이 자리에서 붙인다.
+			std::vector<SRoomMemberHistoryInfo> members;
+			members.reserve(entries.size());
+			for( const SRoomMemberHistoryEntry& entry : entries )
+			{
+				SRoomMemberHistoryInfo info;
+				info.publicId = entry.publicId;
+				info.nickname = entry.nickname;
+				info.profileImageUrl = ToDisplayImageUrl(entry.profileImageUrl);
+				info.online = IsUserOnline(entry.publicId);
+				members.push_back(std::move(info));
+			}
+
+			jobQueue->DoAsync([onComplete, result, totalCount, resultPage, members]()
+				{
+					if( onComplete )
+						onComplete(result, totalCount, resultPage, members);
+				});
+		};
+
+	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOM_MEMBERS_PAGE_REQ>(
+		MEMBER_DB_ASYNC,
+		kDbCallIdent_ListRoomMembersPage,
+		[roomId, page, pageSize, dispatchToJobQueue](ST_LIST_ROOM_MEMBERS_PAGE_REQ* req)
+		{
+			req->roomId = roomId;
+			req->page = page;
+			req->pageSize = pageSize;
+			req->onComplete = dispatchToJobQueue;
+		},
+		kMaxDbQueueCapacity);
+
+	if( !pushed )
+	{
+		if( onComplete )
+			onComplete(ELoginResult::DbError, 0, 0, std::vector<SRoomMemberHistoryInfo>());
+	}
+}
+
+std::vector<SRoomMemberInfo> CChatServerMain::GetRoomMembers(int32 roomId) const
+{
+	std::vector<SRoomMemberInfo> members;
+
+	std::lock_guard<std::mutex> lock(_roomMutex);
+
+	auto it = _roomMembers.find(roomId);
+	if( it == _roomMembers.end() )
+		return members;
+
+	members.reserve(it->second.size());
+	for( const auto& w : it->second )
+	{
+		auto session = w.lock();
+		if( session == nullptr )
+			continue;
+
+		SRoomMemberInfo info;
+		info.publicId = session->GetPublicId();
+		info.nickname = session->GetNickname();
+		info.profileImageUrl = ToDisplayImageUrl(session->GetProfileImageUrl());
+		members.push_back(std::move(info));
+	}
+
+	std::sort(members.begin(), members.end(),
+		[](const SRoomMemberInfo& a, const SRoomMemberInfo& b) { return a.nickname < b.nickname; });
+
+	return members;
 }
 
 //***************************************************************************
@@ -353,7 +460,7 @@ void CChatServerMain::RequestDeleteRoom(
 						// [추가] 방 자체가 삭제됐으니 그 방의 대화 기록도
 						// 같이 지운다 — "방이 없어질 때까지 유지"라는 요구를
 						// 방이 사라지는 이 시점에 자연스럽게 만족시킨다.
-						ClearRoomChatHistory(roomId);
+						ClearRoomRedisData(roomId);
 					}
 
 					if( jobQueue == nullptr )
@@ -463,22 +570,75 @@ void CChatServerMain::RequestListRooms(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [this, jobQueue, onComplete](ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomListEntry>& rooms)
+	// [추가] DB에서 방 목록 한 페이지를 받아온 뒤, 각 방의 totalMemberCount
+	// (입장 이력이 있는 전체 유저 수)를 Redis Set(RoomMembers:{roomId})의
+	// SCARD로 채운다 — DB 쪽 COUNT 서브쿼리 대신 Redis 쪽 카운터로
+	// 옮긴 것. 페이지 하나에 최대 kMaxRoomPageSize(50)개 방이 있을 수
+	// 있으므로, SCARD를 방마다 한 번씩 병렬로 날리고(순차로 하나씩
+	// 기다리면 왕복 지연이 그대로 누적된다) 전부 응답이 와야 최종
+	// 결과를 completion으로 넘긴다. 남은 응답 개수는 std::atomic<int32>로
+	// 세고, 각 콜백은 자기 몫의 인덱스에만 쓰므로(서로 다른 원소) 별도
+	// 락 없이 안전하다.
+	auto finalizeAndDispatch = [this, jobQueue, onComplete](ELoginResult result, int32 totalCount, int32 resultPage,
+		std::shared_ptr<std::vector<SRoomListEntry>> displayRooms)
+		{
+			if( jobQueue == nullptr )
+				return;
+
+			jobQueue->DoAsync([onComplete, result, totalCount, resultPage, displayRooms]()
+				{
+					if( onComplete )
+						onComplete(result, totalCount, resultPage, *displayRooms);
+				});
+		};
+
+	auto dispatchToJobQueue = [this, jobQueue, onComplete, finalizeAndDispatch](ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomListEntry>& rooms)
 		{
 			if( jobQueue == nullptr )
 				return;
 
 			// 항목마다 image_ref가 상대 경로로 저장돼 있으면 완전한 URL로
-			// 복원한다(ToDisplayImageUrl() 참고).
-			std::vector<SRoomListEntry> displayRooms = rooms;
-			for( SRoomListEntry& entry : displayRooms )
+			// 복원한다(ToDisplayImageUrl() 참고). shared_ptr로 감싸는 이유는
+			// 아래 SCARD 콜백들(여러 개, 서로 다른 스레드에서 올 수 있음)이
+			// 전부 이 벡터를 참조해야 하는데, 그중 마지막 콜백이 응답할
+			// 때까지 이 벡터가 살아있어야 하기 때문이다.
+			auto displayRooms = std::make_shared<std::vector<SRoomListEntry>>(rooms);
+			for( SRoomListEntry& entry : *displayRooms )
 				entry.imageRef = ToDisplayImageUrl(entry.imageRef);
 
-			jobQueue->DoAsync([onComplete, result, totalCount, resultPage, displayRooms]()
-				{
-					if( onComplete )
-						onComplete(result, totalCount, resultPage, displayRooms);
-				});
+			if( result != ELoginResult::Ok || displayRooms->empty() || _redisService == nullptr )
+			{
+				// 실패했거나, 이 페이지에 방이 하나도 없거나, Redis 서비스
+				// 자체가 없으면(둘 다 정상적인 상황) SCARD를 걸 대상이
+				// 없으므로 바로 완료 처리한다 — totalMemberCount는 기본값
+				// 0으로 남는다.
+				finalizeAndDispatch(result, totalCount, resultPage, displayRooms);
+				return;
+			}
+
+			auto remaining = std::make_shared<std::atomic<int32>>(static_cast<int32>(displayRooms->size()));
+
+			for( size_t i = 0; i < displayRooms->size(); ++i )
+			{
+				CVector<std::string> args;
+				args.push_back("SCARD");
+				args.push_back(BuildRoomMembersKey((*displayRooms)[i].roomId));
+
+				_redisService->SendCommand(args, [finalizeAndDispatch, result, totalCount, resultPage, displayRooms, remaining, i](const RedisValue& res)
+					{
+						// SCARD는 정수(Integer) 응답이다. 연결 오류 등으로
+						// Error가 오면 이 방의 totalMemberCount는 DB 기본값인
+						// 0으로 남긴다(방 목록 조회 자체를 실패시키지 않는다
+						// — 인원수 하나 때문에 전체 목록이 안 보이는 것보다는
+						// 그 항목만 0으로 보이는 게 낫다는 판단).
+						if( res.eType == ERedisType::Integer )
+							(*displayRooms)[i].totalMemberCount = static_cast<int32>(res.i64Val);
+
+						// 마지막으로 도착한 응답만 최종 completion을 트리거한다.
+						if( remaining->fetch_sub(1, std::memory_order_acq_rel) == 1 )
+							finalizeAndDispatch(result, totalCount, resultPage, displayRooms);
+					});
+			}
 		};
 
 	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOMS_PAGE_REQ>(
@@ -524,6 +684,21 @@ void CChatServerMain::RequestRecordRoomJoin(
 
 	if( !pushed )
 		LOG_ERROR(_T("RequestRecordRoomJoin: DB 요청 큐가 가득 차서 입장 기록을 건너뜀 (roomId=%d)"), roomId);
+
+	// [추가] 방 목록에 표시할 totalMemberCount(RequestListRooms() 참고)를
+	// 위한 Redis Set에도 같이 넣는다. DB 기록과 별개의 요청이라 DB 큐가
+	// 가득 찼어도(위 pushed==false) 이건 시도한다 — SADD는 이미 있는
+	// 원소를 넣어도 무해(집합 크기 안 늘어남)하므로 재시도 로직 없이
+	// 그냥 fire-and-forget으로 보낸다(다른 Redis 기록성 요청들과 동일한
+	// 패턴 — RecordRoomChatMessage() 등 참고).
+	if( _redisService != nullptr )
+	{
+		CVector<std::string> args;
+		args.push_back("SADD");
+		args.push_back(BuildRoomMembersKey(roomId));
+		args.push_back(Crypto::CCryptoUtil::ToHex(requesterPublicId.data(), requesterPublicId.size()));
+		_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+	}
 }
 
 //***************************************************************************
@@ -706,7 +881,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 
 		// [추가] RequestDeleteRoom()과 동일한 이유 — 방이 없어지는 이
 		// 경로(빈 방 자동 삭제)에서도 대화 기록을 같이 지운다.
-		ClearRoomChatHistory(roomId);
+		ClearRoomRedisData(roomId);
 
 		PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_ROOM_REQ>(
 			MEMBER_DB_ASYNC,

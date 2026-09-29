@@ -17,11 +17,34 @@
 #include "DBListProfileImagesRequest.h"
 #include "DBListRoomsRequest.h"
 
+//***************************************************************************
+// @brief 방 멤버 목록 조회(GetRoomMembers()) 결과 항목.
+//***************************************************************************
+struct SRoomMemberInfo
+{
+	std::array<BYTE, kPublicIdBytes> publicId{};
+	std::string nickname;
+	std::string profileImageUrl;
+};
+
+//***************************************************************************
+// @brief 방 입장 이력 조회(RequestRoomMemberHistoryPage()) 결과 항목.
+//        SRoomMemberInfo에 접속 상태(online)만 추가된 형태다.
+//***************************************************************************
+struct SRoomMemberHistoryInfo
+{
+	std::array<BYTE, kPublicIdBytes> publicId{};
+	std::string nickname;
+	std::string profileImageUrl;
+	bool online = false;
+};
+
 #include <string>
 #include <memory>
 #include <functional>
 #include <array>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <deque>
 #include <mutex>
@@ -120,6 +143,14 @@ public:
 	// CChatSession/핸들러에서 호출하는 콜백들
 	void OnUserLogin(const std::array<BYTE, kPublicIdBytes>& publicId);
 	void OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publicId);
+
+	//***************************************************************************
+	// @brief [추가] 이 publicId가 지금 서버 어딘가에 로그인해 있는지 조회합니다.
+	// @details OnUserLogin()/OnUserLogout()이 관리하는 인메모리 집합을 그
+	//          자리에서 바로 확인한다 — "이 방에 지금 있는지"(GetRoomMembers())가
+	//          아니라 "서버에 지금 접속해 있는지"(다른 방/로비에 있어도 true).
+	//***************************************************************************
+	bool IsUserOnline(const std::array<BYTE, kPublicIdBytes>& publicId) const;
 
 	void Broadcast(const void* data, uint16 size);
 
@@ -305,11 +336,14 @@ public:
 	void RemoveRoomChatMessage(int32 roomId, int64 messageId);
 
 	//***************************************************************************
-	// @brief [추가] 방의 대화 기록 전체를 지운다(방 삭제 시 호출) —
-	//        RoomChatOrder/RoomChatMsg 두 키를 통째로 DEL한다. 로비면
-	//        애초에 기록이 없으므로 아무 일도 안 한다.
+	// @brief [수정 — 리네이밍] 방과 관련된 Redis 데이터를 전부 지운다(방 삭제
+	//        시 호출) — 대화 기록(RoomChatOrder/RoomChatMsg)과 입장 이력
+	//        집계용 Set(RoomMembers, RequestListRooms()의 totalMemberCount
+	//        참고) 세 키를 통째로 DEL한다. 원래 이름은 ClearRoomChatHistory였는데,
+	//        멤버 집계 Set까지 같이 지우게 되면서 이름을 넓혔다. 로비면
+	//        애초에 어느 것도 없으므로 아무 일도 안 한다.
 	//***************************************************************************
-	void ClearRoomChatHistory(int32 roomId);
+	void ClearRoomRedisData(int32 roomId);
 
 	//***************************************************************************
 	// @brief [추가] 방의 최근 대화 기록(최대 1000개)을 오래된 순서로
@@ -411,6 +445,39 @@ public:
 	//        빈 방이면 0을 반환합니다.
 	//***************************************************************************
 	int32 GetRoomUserCount(int32 roomId) const;
+
+	//***************************************************************************
+	// @brief 방(로비 포함)에 지금 실제로 접속해 있는 멤버의 프로필(공개 ID/
+	//        닉네임/프로필 이미지 URL)을 조회합니다.
+	// @details GetRoomUserCount()와 마찬가지로 _roomMembers를 직접 스냅샷
+	//          뜨는 것이라 DB를 거치지 않고 즉시(동기) 반환한다 — "지금 이
+	//          순간 그 방에 연결돼 있는" 세션만 대상이며, RequestListRooms()의
+	//          "참여한 적이 있는 방" 개념과는 다르다(그건 DB의 room_members,
+	//          이건 인메모리 _roomMembers).
+	// @return 닉네임 가나다순으로 정렬된 멤버 목록(끊긴 세션은 제외).
+	//***************************************************************************
+	std::vector<SRoomMemberInfo> GetRoomMembers(int32 roomId) const;
+
+	//***************************************************************************
+	// @brief [추가] 방에 입장한 적이 있는 유저 목록(전체 이력, DB 기준)의
+	//        한 페이지를 조회합니다. 각 항목에는 그 유저가 지금 서버 어딘가에
+	//        로그인해 있는지(IsUserOnline() 기준 — 이 방에 지금 있는지가
+	//        아니라 서버 접속 여부)도 함께 담아 돌려줍니다.
+	// @details GetRoomMembers()("지금 이 방에 실제로 접속해 있는" 인메모리
+	//          스냅샷)와는 다른 개념이다 — 이건 DB의 room_members(입장 이력)
+	//          기준이라 예전에 들어왔다가 지금은 로그아웃했거나 다른 방으로
+	//          옮긴 유저도 포함된다.
+	// @param page 0부터 시작하는 페이지 번호. 범위를 넘으면 마지막 페이지로
+	//        보정되며, 실제로 조회된 페이지 번호가 onComplete의 page로 돌아온다
+	// @param pageSize 한 페이지 항목 수. 1~kMaxRoomPageSize로 보정된다
+	// @param onComplete totalCount는 이 방에 입장 이력이 있는 전체 유저 수.
+	//        JobQueue에서 호출된다
+	//***************************************************************************
+	void RequestRoomMemberHistoryPage(
+		int32 roomId,
+		int32 page,
+		int32 pageSize,
+		std::function<void(ELoginResult result, int32 totalCount, int32 page, const std::vector<SRoomMemberHistoryInfo>& members)> onComplete);
 
 	//***************************************************************************
 	// @brief 지정한 방(로비 포함)에 있는 세션들에게만 브로드캐스트합니다.
@@ -572,6 +639,21 @@ private:
 	std::string BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const;
 
 	//***************************************************************************
+	// @brief [추가] 방에 입장한 적이 있는 전체 유저 집합을 담는 Redis Set 키.
+	// @details "RoomMembers:{roomId}" — 원소는 publicId를 16진 문자열로 바꾼
+	//          값(BuildUserKey()와 동일한 인코딩). SADD는 이미 들어있는
+	//          원소를 다시 넣어도 집합 크기가 늘지 않으므로(자동 중복 제거),
+	//          같은 사람이 여러 번 입장해도 SCARD 값은 "서로 다른 유저 수"를
+	//          정확히 유지한다 — RequestRecordRoomJoin()이 입장마다 SADD를
+	//          걸고, RequestListRooms()가 방 목록에 표시할 totalMemberCount를
+	//          이 값(SCARD)으로 채운다. DB의 room_members 테이블(입장
+	//          시각까지 정확히 필요한 "전체 참여 이력" 페이징 목록 —
+	//          RequestRoomMemberHistoryPage() 용도)과는 별개로, 오직 "방
+	//          목록에 보여줄 숫자 하나"만을 위한 빠른 카운터다.
+	//***************************************************************************
+	std::string BuildRoomMembersKey(int32 roomId) const;
+
+	//***************************************************************************
 	// @brief roomId의 갱신된 인원수를 그 방의 멤버 전원에게 알립니다.
 	// @details MoveToRoom()/LeaveCurrentRoom()이 인원수 변경 시 내부적으로
 	//          호출한다 — 직접 호출할 일 없음.
@@ -633,6 +715,17 @@ private:
 	// LeaveCurrentRoom() 호출 시 청소된다).
 	mutable std::mutex	_roomMutex;
 	std::unordered_map<int32, std::vector<std::weak_ptr<CChatSession>>>	_roomMembers;
+
+	//***************************************************************************
+	// @brief [추가] 지금 로그인 중인(서버 어딘가에 접속해 있는) 계정의 집합.
+	// @details OnUserLogin()/OnUserLogout()이 관리한다(Redis 기록과 별개로
+	//          인메모리에도 둔 것 — Redis 조회는 비동기라 "방 멤버 목록 조회"처럼
+	//          그 자리에서 바로 답해야 하는 요청에는 안 맞는다). publicId는
+	//          std::array라 기본 해시가 없어서, 다른 곳(BuildUserKey() 등)과
+	//          동일하게 hex 문자열로 변환해서 키로 쓴다.
+	//***************************************************************************
+	mutable std::mutex	_onlineMutex;
+	std::unordered_set<std::string>	_onlinePublicIdsHex;
 
 	//***************************************************************************
 	// @brief [추가] 동적으로 생성/삭제되는 방의 메타데이터(이름/방장) —

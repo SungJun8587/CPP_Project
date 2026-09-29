@@ -30,6 +30,7 @@ namespace ChatApp
                 if (res.Success)
                 {
                     AccountStorage.Save(_profileName, res.PublicId, res.Token);
+                    _myPublicId = res.PublicId;
 
                     // [수정] 접속 성공 = 초록으로 되돌림("성공은 초록"이라는
                     // 일반적인 관례대로).
@@ -53,6 +54,8 @@ namespace ChatApp
                     _galleryPanel.AttachClient(_client);
                     _roomListPanel.AttachClient(_client);
                     _roomListPanel.MyNickname = _currentNickname; // 방장 관리 메뉴(⚙) 표시 여부 판단용
+                    _roomListPanel.MyPublicId = _myPublicId; // 멤버보기 패널에서 "나" 강조 표시용
+                    _roomMemberListPanel.AttachClient(_client);
 
                     // 서버가 로그인 직후 자동으로 로비에 배정한다 — 클라이언트도
                     // 그 전제로 현재 위치를 로비로 잡아둔다(서버의 RoomUserCountNotify가
@@ -353,6 +356,7 @@ namespace ChatApp
 
                 _galleryPanel.DetachClient();
                 _roomListPanel.DetachClient();
+                _roomMemberListPanel.DetachClient();
             });
         }
 

@@ -397,6 +397,63 @@ struct RenameRoomNotifyPacket : PacketHeader
 };
 
 //***************************************************************************
+// @brief 방 멤버 목록의 한 페이지 조회 요청 (Client -> Server).
+// @details roomId는 로그인한 사용자라면 지금 자신이 그 방에 있는지와
+//          무관하게 조회할 수 있다(RoomMemberListHandler.cpp 참고) — 방의
+//          존재 자체는 이미 전체 방 목록(ListRoomsReq)으로 누구나 볼 수
+//          있으므로, 그 방의 멤버 목록을 여는 것으로 새로 노출되는 정보는
+//          없다는 판단이다. 예를 들어 RoomListPanel(방 목록 화면)에서
+//          "내가 예전에 들어갔던 방"의 멤버보기 버튼을 누르는 경우처럼,
+//          지금 그 방에 있지 않은 상태에서의 조회도 정상 동작이다.
+//          scope는 ERoomMemberListScope 참고(지금 접속 중인 사람만 /
+//          입장 이력 전체). page/pageSize는 ListRoomsReqPacket과 동일한
+//          의미 — 서버가 1~kMaxRoomPageSize로 보정하고, 범위를 넘는 page는
+//          마지막 페이지로 보정한다(Present 범위도 클라이언트 쪽 페이징
+//          UI를 하나로 통일하기 위해 동일하게 페이지네이션한다).
+//***************************************************************************
+struct RoomMemberListReqPacket : PacketHeader
+{
+	int32	requestId;
+	int32	roomId;
+	uint8_t	scope;
+	int32	page;
+	int32	pageSize;
+};
+
+//***************************************************************************
+// @brief 방 멤버(입장 이력) 목록 항목 단건 응답 (Server -> Client).
+// @details publicId는 클라이언트가 목록에서 "나 자신"을 구분하는 데 쓸 수
+//          있다(로그인 응답으로 이미 받아 알고 있는 자신의 publicId와 비교).
+//          profileImageUrl이 비어있으면 기본 이미지를 뜻한다. online은 이
+//          유저가 "지금 이 방에 있는지"가 아니라 "지금 서버 어딘가에
+//          로그인해 있는지"를 뜻한다(CChatServerMain::IsUserOnline() 참고).
+//***************************************************************************
+struct RoomMemberListItemResPacket : PacketHeader
+{
+	int32	requestId;
+	BYTE	publicId[kPublicIdBytes];
+	char	nickname[kNicknameBytes];
+	char	profileImageUrl[kProfileImageUrlBytes];
+	uint8_t	online;
+};
+
+//***************************************************************************
+// @brief 방 멤버 목록 한 페이지 전송 완료 응답 (Server -> Client).
+// @details totalCount는 이 페이지에 담긴 개수가 아니라 scope 기준(지금
+//          접속 중인 인원 수, 또는 입장 이력이 있는 전체 유저 수) 전체
+//          개수다. page/pageSize는 서버가 보정한 뒤 실제로 적용한 값이다.
+//***************************************************************************
+struct RoomMemberListEndResPacket : PacketHeader
+{
+	int32	requestId;
+	int32	roomId;
+	uint8_t	scope;
+	int32	totalCount;
+	int32	page;
+	int32	pageSize;
+};
+
+//***************************************************************************
 // @brief 방 목록 조회 요청 구조체 (Client -> Server).
 // @details 범위(scope)/페이지/검색어로 방 목록의 한 페이지를 요청한다.
 //          scope     : ERoomListScope (All=전체 방, Joined=내가 참여한 방)
@@ -430,7 +487,10 @@ struct ListRoomsItemResPacket : PacketHeader
 	int32	roomId;
 	char	name[kRoomNameBytes];
 	char	ownerNickname[kNicknameBytes];	// 방장의 "지금" 닉네임(DB 조회 시점 스냅샷)
-	int32	userCount;						// 현재 그 방에 있는 인원수(GetRoomUserCount() 참고)
+	int32	userCount;						// 현재 그 방에 접속해 있는 인원수(GetRoomUserCount() 참고)
+	int32	totalMemberCount;				// [추가] 이 방에 입장한 적이 있는 전체 유저 수(DB의
+	// room_members 기준, 지금 접속 중인지와 무관 —
+	// SRoomListEntry::totalMemberCount 참고)
 	char	imageUrl[kProfileImageUrlBytes];	// 방 프로필 이미지. 빈 문자열이면 기본 이미지
 };
 

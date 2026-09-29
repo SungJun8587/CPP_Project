@@ -51,6 +51,8 @@ namespace ChatApp
         public event Action<RenameRoomNotifyData> RenameRoomNotified;
         public event Action<RoomListItemData> RoomListItemReceived;
         public event Action<ListRoomsEndResData> RoomListEndReceived;
+        public event Action<RoomMemberItemData> RoomMemberListItemReceived;
+        public event Action<RoomMemberListEndResData> RoomMemberListEndReceived;
         public event Action<RoomOwnerChangedNotifyData> RoomOwnerChangedNotified;
 
         // [추가] 방 프로필 이미지 설정 결과 + 변경 알림.
@@ -129,6 +131,19 @@ namespace ChatApp
         {
             int requestId = System.Threading.Interlocked.Increment(ref _listRoomsRequestSeq);
             SendRaw(PacketBuilder.BuildListRoomsReq(requestId, scope, page, pageSize, keyword));
+            return requestId;
+        }
+
+        private int _roomMemberListRequestSeq;
+
+        //***************************************************************************
+        // @brief 지금 자신이 있는 방(로비 포함)에 입장한 적이 있는 유저 목록
+        //        (전체 이력)의 한 페이지를 요청하고, 이 요청의 식별자를 돌려준다.
+        //***************************************************************************
+        public int RequestRoomMemberList(int roomId, RoomMemberListScope scope, int page, int pageSize)
+        {
+            int requestId = System.Threading.Interlocked.Increment(ref _roomMemberListRequestSeq);
+            SendRaw(PacketBuilder.BuildRoomMemberListReq(requestId, roomId, scope, page, pageSize));
             return requestId;
         }
 
@@ -335,6 +350,14 @@ namespace ChatApp
 
                 case PacketType.ChatHistoryEndRes:
                     ChatHistoryEndReceived?.Invoke(PacketParser.ParseChatHistoryEndRes(full));
+                    break;
+
+                case PacketType.RoomMemberListItemRes:
+                    RoomMemberListItemReceived?.Invoke(PacketParser.ParseRoomMemberListItemRes(full));
+                    break;
+
+                case PacketType.RoomMemberListEndRes:
+                    RoomMemberListEndReceived?.Invoke(PacketParser.ParseRoomMemberListEndRes(full));
                     break;
 
                 default:

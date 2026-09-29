@@ -31,6 +31,19 @@ struct SRoomListEntry
 	std::string	ownerPublicId;	// 16진 문자열
 	std::string	ownerNickname;
 	std::string	imageRef;		// [추가] 방 프로필 이미지. 비어있으면(NULL) 기본 이미지
+
+	//***************************************************************************
+	// @brief [추가] 이 방에 입장한 적이 있는 전체 유저 수. 이 DB 조회
+	//        핸들러(ListRoomsPageDBHandler.cpp)는 이 값을 채우지 않고
+	//        기본값(0)인 채로 둔다 — 호출부인 CChatServerMain::
+	//        RequestListRooms()가 DB 결과를 받은 뒤 Redis Set
+	//        (RoomMembers:{roomId})의 SCARD로 채운다(BuildRoomMembersKey()
+	//        참고). 지금 접속해 있는 인원수(서버 메모리 기준)는 이
+	//        구조체가 아니라 CChatServerMain::GetRoomUserCount()가 별도로
+	//        채운다 — 방 목록 화면에서 "현재 접속자수/전체 참여 인원수"를
+	//        나란히 보여주기 위해 둘을 구분해서 관리한다.
+	//***************************************************************************
+	int32		totalMemberCount = 0;
 };
 
 //***************************************************************************
