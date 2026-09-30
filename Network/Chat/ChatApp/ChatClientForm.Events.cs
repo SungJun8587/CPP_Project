@@ -29,7 +29,19 @@ namespace ChatApp
             {
                 if (res.Success)
                 {
-                    AccountStorage.Save(_profileName, res.PublicId, res.Token);
+                    // [추가 — 방어] Save()의 원자적 교체(File.Replace/Move)는
+                    // 디스크 공간 부족, 권한 문제 등으로 예외를 던질 수 있다 —
+                    // 여기서 삼키지 않으면 로그인 자체가 실패해 보이므로, 저장만
+                    // 실패로 처리하고 로그인 흐름은 계속 진행한다(다음 실행 때
+                    // 재접속이 안 될 뿐, 지금 이 세션은 정상 동작해야 하므로).
+                    try
+                    {
+                        AccountStorage.Save(_profileName, res.PublicId, res.Token);
+                    }
+                    catch (Exception saveEx)
+                    {
+                        AppendSystemLog("[경고] 계정 정보를 로컬에 저장하지 못했습니다 — 다음 실행 때 재접속이 안 될 수 있습니다 (" + saveEx.Message + ")", ColorSystemWarning);
+                    }
                     _myPublicId = res.PublicId;
 
                     // [수정] 접속 성공 = 초록으로 되돌림("성공은 초록"이라는
@@ -37,16 +49,23 @@ namespace ChatApp
                     SetStatus("연결됨", Color.FromArgb(47, 184, 112));
 
                     _currentNickname = res.Nickname;
-                    _myProfileImageUrl = res.ProfileImageUrl ?? string.Empty;
                     AppendSystemLog("[시스템] 로그인 성공 - 닉네임: " + res.Nickname, ColorSystemOk);
 
-                    // 서버가 기억하고 있는(=다른 사람에게 보이는) 프로필
-                    // 이미지가 있으면 내 화면에도 그 실제 이미지를 반영한다
-                    // — 로컬에서 마지막으로 설정한 이미지와 다를 수 있으므로
-                    // (다른 기기에서 URL로 설정했을 수 있음) 로그인 시점의
-                    // 서버 값을 우선한다.
-                    if (!string.IsNullOrEmpty(_myProfileImageUrl))
-                        LoadMyProfileImageFromUrl(_myProfileImageUrl);
+                    // [수정 — 버그 수정] 예전엔 여기서 _myProfileImageUrl에 직접
+                    // 대입하고 LoadMyProfileImageFromUrl()만 불렀다 — 채팅 탭의
+                    // 작은 프로필 사진은 갱신됐지만, 갤러리 탭 상단의 큰 "현재
+                    // 대표 이미지"(_galleryPanel.SetActiveImagePreview())는
+                    // 로그인 시점엔 전혀 호출되지 않았다. ProfileImageGalleryPanel
+                    // 자체도 목록 조회(RequestListProfileImages()) 응답에서
+                    // IsActive 항목을 받아도 상단 큰 이미지를 갱신하지 않으므로,
+                    // 결과적으로 로그인 직후 갤러리 탭을 열면 그리드에는 "대표"
+                    // 배지가 붙은 항목이 보이는데 정작 상단 큰 이미지는 빈 채로
+                    // 남는 버그였다. ApplyProfileImageUrl()이 채팅 탭/갤러리 탭
+                    // 둘 다 갱신하는 단일 진입점이므로, 그걸 그대로 쓴다 — 서버가
+                    // 기억하고 있는(=다른 사람에게 보이는) 값을 우선한다(로컬에서
+                    // 마지막으로 설정한 값과 다를 수 있음 — 다른 기기에서 URL로
+                    // 설정했을 수 있으므로).
+                    ApplyProfileImageUrl(res.ProfileImageUrl ?? string.Empty);
 
                     // 갤러리는 로그인된 세션이 있어야 조회 가능(서버가
                     // IsLoggedIn() 확인)하므로, TCP 연결 시점이 아니라
@@ -442,10 +461,22 @@ namespace ChatApp
             _currentRoomId = -1;
             UpdateRoomStatusUI();
 
-            bool hasToken = AccountStorage.TryLoad(profileName, out byte[] publicId, out byte[] token);
+            bool hasToken = AccountStorage.TryLoad(profileName, out byte[] publicId, out byte[] token, out bool tokenFileWasCorrupted);
 
             AppendSystemLog("[디버그] 계정 파일 경로: " + AccountStorage.GetAccountFilePath(profileName)
                 + " (존재함: " + hasToken + ")", ColorSystemInfo);
+
+            // [추가 — 버그 진단] 파일이 있는데 내용이 손상돼 있었던 경우를
+            // "파일이 원래 없던 것"과 구분해서 알린다 — 이 경우 클라이언트는
+            // 어쩔 수 없이 신규가입 경로로 넘어가는데, 서버가 그 프로필/닉네임을
+            // 이미 존재하는 계정으로 판단해 거부하면 "로그인을 할 수 없다"는
+            // 증상으로 나타난다. 사용자가 원인을 알 수 있도록 경고로 남긴다.
+            if (tokenFileWasCorrupted)
+            {
+                AppendSystemLog(
+                    "[경고] 로컬 계정 파일이 손상되어 있어 새로 시작합니다 — 이전 계정으로 재접속이 안 될 수 있습니다.",
+                    ColorSystemWarning);
+            }
 
             _client = new ChatNetworkClient();
             _client.LoginResultReceived += OnLoginResultReceived;

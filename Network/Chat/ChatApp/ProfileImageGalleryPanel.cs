@@ -2,13 +2,6 @@
 //***************************************************************************
 // ProfileImageGalleryPanel.cs : 프로필 이미지 갤러리 패널 (카카오톡 스타일).
 //
-// [설계] 상단에 현재 대표 이미지를 크게 보여주고(클릭하면 카메라 배지로
-// 업로드 메뉴), 하단에 전체 사진을 3열 정사각형 썸네일 그리드로 보여준다.
-// 실제 업로드/URL설정/로컬파일/해제 네트워크 로직은 이 패널이 갖고 있지
-// 않다(그건 ChatClientForm 소유) — 카메라 배지를 누르면 이벤트만 올려보내고,
-// ChatClientForm이 기존 메서드(UploadMyProfileImage() 등, 채팅 탭 프로필
-// 사진 메뉴와 동일)를 그대로 재사용해서 처리한다. 처리 결과는
-// SetActiveImagePreview()로 다시 이 패널에 통보된다.
 //***************************************************************************
 
 using System;
@@ -96,7 +89,10 @@ namespace ChatApp
                             g.FillPath(overlay, path);
                     }
 
-                    if (Item.IsActive || IsSelected)
+                    // [수정] 대표(IsActive) 테두리는 상단의 "현재 대표 이미지"
+                    // 쪽으로 옮겼다 — 목록에서는 좌상단 "대표" 배지(아래)만으로
+                    // 표시한다. 선택 중임을 나타내는 테두리는 그대로 유지한다.
+                    if (IsSelected)
                     {
                         using (var pen = new Pen(Accent, 2))
                             g.DrawPath(pen, path);
@@ -195,6 +191,7 @@ namespace ChatApp
         private readonly HttpClient _httpClient;
 
         private PictureBox _picActive;
+        private Panel _picActiveFrame; // [추가] _picActive를 감싸며 테두리 링만 그리는 별도 패널 — 아래 InitializeComponents() 설명 참고
         private CircleBadgeButton _btnCameraBadge;
         private Label _lblActiveCaption;
         private Label _lblSectionTitle;
@@ -251,6 +248,20 @@ namespace ChatApp
             // ── 상단: 대표 이미지 크게 + 카메라 배지 ──────────────────────
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 190 };
 
+            // [수정 — 재시도] 테두리를 _picActive 자신의 Paint 이벤트에서 그리고
+            // 이미지 쪽 Region만 안쪽으로 줄이는 방식을 시도했었는데, Control.Region은
+            // 그 컨트롤에 그려지는 모든 것(이미지뿐 아니라 Paint 이벤트로 그리는
+            // 테두리까지)을 다 함께 클리핑한다 — 그래서 이미지 Region을 안쪽으로
+            // 줄이면 바깥 가장자리에 그리는 테두리까지 통째로 Region 밖으로
+            // 밀려나 안 보이게 됐다. Region으로는 "안쪽은 이미지, 바깥 여백은
+            // 테두리"라는 두 가지 다른 클리핑을 한 컨트롤에 동시에 줄 수 없다.
+            //
+            // 그래서 아예 컨트롤을 둘로 나눈다 — kBorderInset(5px)만큼 더 큰
+            // _picActiveFrame(테두리 전용, 아래)이 _picActive(이미지, 지금 이 자리)를
+            // 감싸고, 프레임 자신의 가장자리에 테두리를 그린다. 서로 다른 두
+            // 컨트롤이라 Region 충돌이 없다.
+            const int kBorderInset = 5;
+
             _picActive = new PictureBox
             {
                 Size = new Size(140, 140),
@@ -262,17 +273,39 @@ namespace ChatApp
             ApplyRoundedRegion(_picActive, 18);
             _picActive.Resize += (s, e) => ApplyRoundedRegion(_picActive, 18);
 
+            // 이미지보다 kBorderInset*2만큼 더 크게, 정확히 같은 중심으로 감싼다.
+            _picActiveFrame = new Panel
+            {
+                Size = new Size(_picActive.Width + kBorderInset * 2, _picActive.Height + kBorderInset * 2),
+                Left = _picActive.Left - kBorderInset,
+                Top = _picActive.Top - kBorderInset,
+            };
+            _picActiveFrame.Paint += (s, e) =>
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                var rect = new Rectangle(0, 0, _picActiveFrame.Width - 1, _picActiveFrame.Height - 1);
+                using (var path = RoundedRectPath(rect, 18 + kBorderInset))
+                using (var pen = new Pen(ChatTheme.Current.Accent, 2))
+                    e.Graphics.DrawPath(pen, path);
+            };
+
             var cameraMenu = new ContextMenuStrip();
             cameraMenu.Items.Add("URL로 설정 (모두에게 공유)", null, (s, e) => SetUrlRequested?.Invoke());
             cameraMenu.Items.Add("이미지 업로드 (서버에 저장, 공유)", null, (s, e) => UploadRequested?.Invoke());
             cameraMenu.Items.Add("로컬 파일로 설정 (나만 보임)", null, (s, e) => LocalFileRequested?.Invoke());
             cameraMenu.Items.Add("프로필 이미지 해제 (공유 해제)", null, (s, e) => ClearRequested?.Invoke());
 
+            // [수정 — 배치] 예전엔 대표 이미지의 우측 하단 모서리에 겹쳐
+            // 그렸는데(카카오톡 프로필 편집 아이콘과 같은 흔한 패턴), 원형
+            // 이미지의 30px가량을 이 배지가 가려서 이미지 일부가 안 보이는
+            // 것처럼 느껴졌다. 이미지 오른쪽 바깥(겹치지 않게, 세로 중앙)으로
+            // 옮겼다 — 여전히 이미지 옆에 붙어 있어 "이 이미지를 편집하는
+            // 버튼"이라는 연관성은 유지되고, 이미지 자체는 전혀 가리지 않는다.
             _btnCameraBadge = new CircleBadgeButton
             {
                 Size = new Size(34, 34),
-                Left = _picActive.Left + _picActive.Width - 30,
-                Top = _picActive.Top + _picActive.Height - 30,
+                Left = _picActive.Left + _picActive.Width + 6,
+                Top = _picActive.Top + (_picActive.Height - 34) / 2,
             };
             _btnCameraBadge.Click += (s, e) => cameraMenu.Show(_btnCameraBadge, new Point(0, _btnCameraBadge.Height));
 
@@ -288,7 +321,15 @@ namespace ChatApp
                 Font = new Font(Font.FontFamily, 8.5f),
             };
 
-            topPanel.Controls.AddRange(new Control[] { _picActive, _btnCameraBadge, _lblActiveCaption });
+            topPanel.Controls.AddRange(new Control[] { _picActiveFrame, _picActive, _btnCameraBadge, _lblActiveCaption });
+            // [수정 — 버그 수정] Panel의 기본 배경 채우기(OnPaintBackground)는
+            // Paint 이벤트(테두리를 그리는 코드)보다 먼저 항상 프레임 전체
+            // 사각형을 불투명하게 칠한다 — 추가 순서만으로 z-order를 가정했다가
+            // _picActiveFrame이 _picActive보다 앞에 그려지면서 이미지 전체를
+            // 덮어버렸다. BringToFront()로 이미지가 항상 프레임 위(앞)에
+            // 오도록 명시적으로 고정한다 — 이제 겹치는 140x140 영역은 이미지가
+            // 덮고, 프레임의 바깥 5px 여백 링만 남아서 테두리로 보인다.
+            _picActive.BringToFront();
             topPanel.Resize += (s, e) => RecenterTopPanel(topPanel);
 
             // ── 섹션 제목 ──────────────────────────────────────────────
@@ -304,8 +345,13 @@ namespace ChatApp
             // ── 하단 액션 버튼 + 상태 ──────────────────────────────────
             var buttonPanel = new Panel { Dock = DockStyle.Bottom, Height = 40, Padding = new Padding(10, 4, 10, 4) };
 
+            // StyleDynamicButton()을 써서 _btnDelete/앱의 다른 동적 버튼들과
+            // 동일한 규칙(RefreshDynamicButtonColors — Enabled=false면 회색
+            // 배경+회색 글씨, true면 액센트 배경+흰 글씨)을 따르게 한다 —
+            // 사진을 하나도 선택하지 않아 비활성화된 동안에도 이 버튼만
+            // 액센트 색으로 진하게 남아있는 건 다른 버튼들과 일관성이 없다.
             _btnSelect = new Button { Text = "대표로 지정", Dock = DockStyle.Left, Width = 270, Height = 32, Enabled = false };
-            StyleActionButton(_btnSelect, filled: true);
+            StyleDynamicButton(_btnSelect);
             _btnSelect.Click += BtnSelect_Click;
 
             _btnDelete = new Button { Text = "삭제", Dock = DockStyle.Right, Width = 270, Height = 32, Enabled = false };
@@ -372,22 +418,6 @@ namespace ChatApp
             RefreshDynamicButtonColors(btn);
         }
 
-        private static void StyleActionButton(Button btn, bool filled)
-        {
-            btn.FlatStyle = FlatStyle.Flat;
-            btn.FlatAppearance.BorderSize = filled ? 0 : 1;
-            btn.FlatAppearance.BorderColor = ChatTheme.Current.Border;
-            if (filled)
-            {
-                btn.BackColor = ChatTheme.Current.Accent;
-                btn.ForeColor = Color.White;
-            }
-            else
-            {
-                btn.BackColor = Color.White;
-                btn.ForeColor = ChatTheme.Current.Danger;
-            }
-        }
 
         private static void ApplyRoundedRegion(Control control, int radius)
         {
@@ -398,7 +428,10 @@ namespace ChatApp
         private void RecenterTopPanel(Panel topPanel)
         {
             _picActive.Left = (topPanel.Width - _picActive.Width) / 2;
-            _btnCameraBadge.Left = _picActive.Left + _picActive.Width - 30;
+            _picActiveFrame.Left = _picActive.Left - (_picActiveFrame.Width - _picActive.Width) / 2;
+            _picActiveFrame.Top = _picActive.Top - (_picActiveFrame.Height - _picActive.Height) / 2;
+            _btnCameraBadge.Left = _picActive.Left + _picActive.Width + 6;
+            _btnCameraBadge.Top = _picActive.Top + (_picActive.Height - _btnCameraBadge.Height) / 2;
             _lblActiveCaption.Width = topPanel.Width;
         }
 
@@ -464,7 +497,7 @@ namespace ChatApp
             _lblStatus.ForeColor = ChatTheme.Current.TextMuted;
 
             _btnCameraBadge.RefreshThemeColor();
-            StyleActionButton(_btnSelect, filled: true);
+            RefreshDynamicButtonColors(_btnSelect);
             RefreshDynamicButtonColors(_btnDelete);
 
             Invalidate(true);
@@ -546,6 +579,17 @@ namespace ChatApp
                 _items.Add(item);
                 RebuildThumbnailGrid();
                 _ = LoadThumbnailAsync(item);
+
+                // [추가 — 버그 방어] 서버 목록에 대표(IsActive) 항목이 있으면
+                // 상단 큰 이미지도 이 자리에서 바로 맞춘다. 원래는 외부
+                // (ChatClientForm.ApplyProfileImageUrl())가 SetActiveImagePreview()를
+                // 불러줘야만 갱신됐는데, 로그인 시점에 그 호출이 빠져 있었던
+                // 적이 있었다(대표 이미지가 그리드에는 배지로 보이는데 상단
+                // 큰 이미지는 빈 채로 남는 버그). 서버가 보내주는 이 목록
+                // 자체를 진짜 근거로 삼아 스스로 복원하면, 외부 호출을 또
+                // 빠뜨려도 갤러리 탭을 여는 순간 항상 정확하게 맞는다.
+                if (item.IsActive)
+                    SetActiveImagePreview(item.ImageRef);
             });
         }
 

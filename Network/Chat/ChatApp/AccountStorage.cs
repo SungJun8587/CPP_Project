@@ -62,35 +62,96 @@ namespace ChatApp
 
         //***************************************************************************
         // @brief 로컬 계정 파일을 읽습니다. 파일이 없거나 형식이 잘못됐으면 false.
+        // @param wasCorrupted [추가] 파일은 있는데 내용이 못 쓰게 손상돼 있었으면
+        //        true(줄 수 부족, 16진 파싱 실패, 길이 불일치, 읽기 자체가 예외를
+        //        던진 경우 등). 파일이 아예 없는 정상적인 "첫 실행" 상황과 구분해서
+        //        호출부가 로그를 남기거나 사용자에게 알릴 수 있게 한다 — 예전엔
+        //        이 둘을 구분 못 해서, 손상된 파일도 "그냥 첫 실행"처럼 조용히
+        //        신규가입 경로로 흘러버렸다(그 뒤 서버가 이미 존재하는 프로필/
+        //        닉네임이라고 거부하면 "로그인이 안 된다"는 증상으로 나타났다).
         //***************************************************************************
-        public static bool TryLoad(string profileName, out byte[] publicId, out byte[] token)
+        public static bool TryLoad(string profileName, out byte[] publicId, out byte[] token, out bool wasCorrupted)
         {
             publicId = null;
             token = null;
+            wasCorrupted = false;
 
             string path = PathFor(profileName);
             if (!File.Exists(path))
                 return false;
 
-            string[] lines = File.ReadAllLines(path);
-            if (lines.Length < 2)
+            string[] lines;
+            try
+            {
+                lines = File.ReadAllLines(path);
+            }
+            catch
+            {
+                // 권한 오류, 다른 프로세스의 잠금, 디스크 오류 등 — 파일은
+                // 있는데 못 읽은 것이므로 손상으로 취급한다.
+                wasCorrupted = true;
                 return false;
+            }
+
+            if (lines.Length < 2)
+            {
+                wasCorrupted = true;
+                return false;
+            }
 
             publicId = HexToBytes(lines[0]);
             token = HexToBytes(lines[1]);
 
-            return publicId != null && token != null
+            bool valid = publicId != null && token != null
                 && publicId.Length == ProtocolConstants.PublicIdBytes
                 && token.Length == ProtocolConstants.TokenBytes;
+
+            if (!valid)
+            {
+                publicId = null;
+                token = null;
+                wasCorrupted = true;
+            }
+
+            return valid;
         }
 
         //***************************************************************************
-        // @brief 로컬 계정 파일에 저장(덮어쓰기)합니다.
+        // @brief 로컬 계정 파일에 저장합니다.
+        // @details [수정 — 버그 수정] 예전엔 File.WriteAllText(path, ...)로 파일을
+        //          그 자리에서 바로 덮어썼다 — 이 호출은 원자적이지 않아서, 쓰기
+        //          도중(파일을 비우고 새 내용을 쓰는 사이) 프로세스가 죽거나
+        //          (크래시, 강제 종료), 전원이 나가거나, 디스크 공간이 모자라는 등의
+        //          일이 생기면 파일이 반쯤 써진 상태로 남을 수 있다 — "가끔
+        //          chat_token_*.dat이 망가져서 그 프로필로 로그인을 못 한다"는
+        //          증상의 실제 원인이었다.
+        //
+        //          이제는 임시 파일에 전부 쓴 뒤, 다 쓰고 나서야 File.Replace()/
+        //          File.Move()로 원본 자리에 원자적으로 밀어넣는다 — NTFS 수준의
+        //          원자적 교체라, 이 순간 프로세스가 죽어도 원본 파일은 "교체되기
+        //          전 상태 그대로" 아니면 "교체가 끝난 새 내용 그대로" 둘 중
+        //          하나로만 존재하고, 그 중간 상태로 남는 일이 없다.
+        //
+        //          [수정 — 백업 파일 제거] File.Replace()의 세 번째 인자(백업
+        //          경로)는 원자성 자체와는 무관하다 — null을 넘겨도 교체는 똑같이
+        //          원자적이다. 처음엔 "혹시 새 토큰이 잘못됐을 때 되돌릴 수
+        //          있도록" .bak을 하나 남겼었는데, 이 클래스는 파일을 평문(16진
+        //          텍스트)으로 저장한다는 걸 이미 알려진 한계로 밝혀둔 상태라
+        //          (클래스 상단 주석 참고), .bak까지 남기면 그 평문 자격증명
+        //          사본이 하나 더 디스크에 상시 남는 셈이라 노출 범위만 넓히고
+        //          실익은 적었다. null로 바꿔서 백업 파일 자체를 안 만든다.
         //***************************************************************************
         public static void Save(string profileName, byte[] publicId, byte[] token)
         {
             string path = PathFor(profileName);
-            File.WriteAllText(path, BytesToHex(publicId) + "\n" + BytesToHex(token));
+            string tempPath = path + ".tmp";
+
+            File.WriteAllText(tempPath, BytesToHex(publicId) + "\n" + BytesToHex(token));
+
+            if (File.Exists(path))
+                File.Replace(tempPath, path, null);
+            else
+                File.Move(tempPath, path);
         }
 
         private static string BytesToHex(byte[] bytes)

@@ -25,6 +25,14 @@
 // 입/퇴장하지 않아도 같은 방에 있는 "다른" 누군가가 들고나면 자동으로
 // 화면 숫자가 바뀐다.
 //
+// [수정 — 탭 구성] "시스템 로그"는 원래 "대화" 탭 하단에 고정 카드로
+// 끼어 있었다 — 채팅 리스트박스가 항상 눌려 있는 높이(206px)로 제한된
+// 원인 중 하나였다. 이제 "시스템 로그"를 별도 탭(맨 뒤)으로 뺐고,
+// 그만큼 대화 탭의 채팅 리스트박스에게 그 공간을 돌려줬다. 탭 순서
+// 맨 뒤에 추가했으므로(대화=0, 채팅방=1, 갤러리=2, 시스템 로그=3),
+// 기존에 SelectedIndex를 하드코딩해 쓰던 곳(BtnRoomList_Click,
+// SwitchToGalleryTab 등)의 인덱스는 그대로 유효하다.
+//
 // [설계 — 보낸/받은 메시지 구분] 서버(ChatMessageHandler.cpp)는 채팅
 // 메시지를 발신자 포함, 지금 있는 방/로비 전체에게 브로드캐스트한다.
 // "이게 내가 보낸 게 되돌아온 건지"는 프로토콜만으로 구분이 안 돼서,
@@ -44,9 +52,6 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-// [수정 — 컴파일 오류] 이 프로젝트 설정(암시적 using 등)에서 System.Net.Mime.MediaTypeNames에도
-// Font/Image라는 이름의 클래스가 있어서, System.Drawing.Font/Image와 이름이 겹쳐 모호한
-// 참조 오류가 났다. 타입 별칭으로 System.Drawing 쪽을 명시적으로 고정한다.
 using Font = System.Drawing.Font;
 using Image = System.Drawing.Image;
 
@@ -135,11 +140,132 @@ namespace ChatApp
             }
         }
 
+        //***************************************************************************
+        // @brief [추가] 더블 버퍼링이 켜진 ListBox.
+        // @details 일반 ListBox의 DoubleBuffered 프로퍼티는 protected라
+        //          바깥에서 그냥 못 켠다 — OwnerDraw로 자주 다시 그리는
+        //          상황(업로드/다운로드 진행률 갱신으로 인한 InvalidateChatItem(),
+        //          RefreshChatItem()의 재삽입 등)에서 이게 꺼져 있으면
+        //          화면이 깜박이는 증상이 생긴다.
+        // @details [수정 — 항목이 안 보였다가 마우스오버해야 보이던 버그]
+        //          처음엔 DoubleBuffered와 함께 ControlStyles.UserPaint/
+        //          AllPaintingInWmPaint도 SetStyle()로 강제 켰었는데, 이게
+        //          바로 그 버그의 원인이었다 — ListBox는 순수 .NET 컨트롤이
+        //          아니라 네이티브 Win32 리스트박스를 감싼 래퍼라, OwnerDraw
+        //          그리기는 .NET의 OnPaint가 아니라 네이티브 컨트롤이 보내는
+        //          WM_DRAWITEM 메시지로 이뤄진다. UserPaint/AllPaintingInWmPaint를
+        //          강제하면 이 메시지 흐름이 깨져서 최초 그리기가 누락되고,
+        //          마우스 이동 등 다른 이벤트가 우연히 다시 그리게 만들
+        //          때만 보이는 증상으로 나타난다. DoubleBuffered 프로퍼티만
+        //          켜는 것으로 충분하고, 이건 네이티브 그리기 흐름을 건드리지
+        //          않는다(ListBox/ListView에서 흔히 쓰는 표준적인 방법).
+        //***************************************************************************
         private class DoubleBufferedListBox : ListBox
         {
             public DoubleBufferedListBox()
             {
                 DoubleBuffered = true;
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가 — 버그 수정] 탭 사이에 보이던 가느다란 세로선(탭마다
+        //        간격이 조금씩 다르게 보이던 증상 포함)의 진짜 원인과 수정.
+        // @details TabControl도 ListBox와 마찬가지로 네이티브 Win32 컨트롤
+        //          (SysTabControl32)을 감싼 것이고, DrawMode=OwnerDrawFixed의
+        //          실제 그리기는 WM_DRAWITEM 메시지로 이뤄진다. 문제는 이
+        //          WM_DRAWITEM이 보고하는 탭 하나하나의 사각형(DrawItem의
+        //          e.Bounds)이 탭들 사이의 실제 네이티브 여백을 전부 포함하지
+        //          않는다는 점이다 — 그 여백 픽셀은 WM_DRAWITEM으로 우리에게
+        //          넘어오지 않고, Windows가 WM_ERASEBKGND(배경 지우기) 단계에서
+        //          시스템 기본색(회색 계열)으로 직접 채운다. 그래서 DrawItem이
+        //          아무리 정확히 칠해도 그 여백만은 항상 시스템 기본색으로
+        //          남는다 — 폭이 DPI/폰트 반올림에 따라 탭마다 미세하게 달라질
+        //          수 있어 "탭마다 간격이 다르게" 보이는 것도 같은 원인이다.
+        //
+        //          [시행착오 — 되돌린 시도들] 1) SetWindowTheme(hwnd, "", "")로
+        //          비주얼 스타일을 꺼봤지만 이 여백 자체는 테마와 무관하게
+        //          생기는 것이라 효과가 없었다. 2) DrawItem의 배경 채우기
+        //          사각형을 3px씩 넓혀서 덮어봤지만, 인접한 탭이 이미 그려둔
+        //          텍스트 가장자리를 흰색으로 살짝 덮어써버려서 오히려
+        //          간격이 들쭉날쭉해 보이는 새 증상을 만들었다.
+        //
+        //          [실제 수정] ListBox 때와 동일한 교훈(UserPaint는 네이티브
+        //          래핑 컨트롤의 정상적인 WM_DRAWITEM 흐름을 깨뜨린다 —
+        //          DoubleBufferedListBox 설명 참고)을 적용해 ControlStyles는
+        //          건드리지 않는다. 대신 WM_ERASEBKGND 자체를 가로채서, 그
+        //          단계에서 시스템 기본색 대신 우리가 원하는 흰색을 GDI로
+        //          직접(Graphics.FromHdc + FillRectangle) 채운다 — 이러면
+        //          DrawItem이 그리지 않는 여백 픽셀까지 포함한 컨트롤 전체가
+        //          항상 정확히 흰색이 된 다음에야 각 탭의 텍스트/밑줄이
+        //          그 위에 그려지므로, 여백의 색이 새거나 폭이 들쭉날쭉해
+        //          보일 여지 자체가 없어진다.
+        //***************************************************************************
+        private class FlickerFreeTabControl : TabControl
+        {
+            private const int WM_ERASEBKGND = 0x0014;
+
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == WM_ERASEBKGND)
+                {
+                    using (Graphics g = Graphics.FromHdc(m.WParam))
+                        g.FillRectangle(Brushes.White, ClientRectangle);
+
+                    m.Result = (IntPtr)1; // 배경을 직접 처리했다고 Windows에 알림
+                    return;
+                }
+
+                base.WndProc(ref m);
+            }
+        }
+
+        //***************************************************************************
+        // @brief [추가 — 근본 수정] 네이티브 TabControl 헤더를 완전히 대체하는
+        //        탭 버튼.
+        // @details FlickerFreeTabControl(WM_ERASEBKGND 흰색 처리)과 DrawItem
+        //          좌표 고정 두 가지를 다 적용해도, 탭 사이 간격이 선택한
+        //          탭에 따라 계속 달라 보이는 문제가 남았다 — 실제 스크린샷을
+        //          픽셀 단위로 비교해서 원인을 확인했다: 각 탭 주위에 얇은
+        //          회색 사각 테두리가 있는데, 이건 DrawItem 코드에 전혀
+        //          없는 것이었다. Owner-draw(TabDrawMode.OwnerDrawFixed)는
+        //          탭 "안의 내용"(텍스트/아이콘)만 우리에게 위임할 뿐, 탭의
+        //          기하학적 모양(테두리 포함)은 여전히 Win32 공통 컨트롤이
+        //          직접 그린다 — 그리고 그 모양은 "선택된 탭은 튀어나온다"는
+        //          네이티브 관례에 따라 선택 상태별로 실제 폭/위치가 달라
+        //          진다. 이 테두리 자체를 owner-draw로는 없앨 수 없으므로,
+        //          네이티브 탭 헤더를 화면에서 완전히 가리고(ItemSize를
+        //          최소화) 이 클래스로 만든 버튼들로 통째로 대체한다 —
+        //          RoomListPanel의 범위 전환 버튼과 동일한, 이미 검증된
+        //          "직접 그리는 버튼 그룹으로 선택 상태를 표시" 패턴이다.
+        //***************************************************************************
+        private class CustomTabButton : Panel
+        {
+            public string TabText;
+            public bool IsSelected;
+
+            public CustomTabButton()
+            {
+                DoubleBuffered = true;
+                Cursor = Cursors.Hand;
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                var g = e.Graphics;
+                using (var b = new SolidBrush(Color.White))
+                    g.FillRectangle(b, ClientRectangle);
+
+                using (var font = new Font(Font.FontFamily, 9f, IsSelected ? FontStyle.Bold : FontStyle.Regular))
+                using (var brush = new SolidBrush(IsSelected ? AccentColor : TextSecondaryColor))
+                using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                    g.DrawString(TabText, font, brush, ClientRectangle, fmt);
+
+                if (IsSelected)
+                {
+                    using (var pen = new Pen(AccentColor, 2))
+                        g.DrawLine(pen, 8, Height - 1, Width - 8, Height - 1);
+                }
             }
         }
 
@@ -501,6 +627,18 @@ namespace ChatApp
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         private static extern bool RedrawWindow(IntPtr hWnd, IntPtr lprcUpdate, IntPtr hrgnUpdate, uint flags);
 
+        //***************************************************************************
+        // @brief [추가 — 버그 수정] OwnerDrawFixed TabControl의 탭 사이에 보이던
+        //        가느다란 세로선(비주얼 스타일이 그리는 네이티브 탭 모양 테두리 —
+        //        owner-draw 영역 바깥에 걸쳐 있어서 DrawItem으로 아무리 칠해도
+        //        안 없어짐) 제거용. uxtheme.dll의 SetWindowTheme()에 빈 문자열을
+        //        넘기면 그 컨트롤의 비주얼 스타일 테마 렌더링 자체를 끌 수 있다 —
+        //        그러면 네이티브 탭 테두리/구분선이 아예 그려지지 않고, DrawItem이
+        //        그리는 내용이 유일한 렌더링이 된다.
+        //***************************************************************************
+        [System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);
+
         private const uint RDW_INVALIDATE = 0x0001;
         private const uint RDW_FRAME = 0x0400;
         private const uint RDW_UPDATENOW = 0x0100;
@@ -738,7 +876,12 @@ namespace ChatApp
             });
 
             // ── 그룹박스 2: 채팅방(로비/룸) ──────────────────────────────
-            var groupBox2 = new CardPanel { Left = 3, Top = 100, Width = 562, Height = 374 };
+            // [수정 — 레이아웃] "시스템 로그" 카드가 이 탭에서 별도 탭으로
+            // 빠지면서(맨 아래 탭 구성 부분 참고) 생긴 여유 공간(139px)을
+            // 그대로 이 그룹박스와 채팅 리스트박스에 돌려줬다 — 높이 374→513,
+            // 리스트박스 206→345, 그 아래(첨부/입력/전송) 줄은 그만큼(139px)
+            // 아래로 내렸다. 다른 자식들의 상대 위치/간격은 전부 그대로다.
+            var groupBox2 = new CardPanel { Left = 3, Top = 100, Width = 562, Height = 513 };
             var lblCard2Title = new Label
             {
                 Text = "채팅방",
@@ -782,8 +925,7 @@ namespace ChatApp
             // (Top=22~47) 바로 아래에 새로 만든 공간. 로비에 있을 때는
             // 이 행 전체를 숨긴다(UpdateRoomStatusUI() 참고). 이 행이
             // 새로 생긴 만큼 아래 있던 통계 줄(Top=58→94)과 채팅
-            // 리스트박스(Top=88→126, Height=244→206)를 같이 내려서
-            // 그룹박스 전체 높이(374)는 그대로 유지했다.
+            // 리스트박스(Top=88→126)를 같이 내렸다.
             _pnlRoomInfo = new Panel { Left = 11, Top = 52, Width = 540, Height = 38, Visible = false };
 
             _pnlRoomAvatar = new RoomAvatarPanel { Left = 0, Top = 1 };
@@ -848,27 +990,29 @@ namespace ChatApp
 
             // [추가] 파일 첨부 — 입력창 왼쪽에 작은 버튼으로 배치. 클릭하면
             // 파일 선택 창이 뜨고, 업로드가 끝나면 자동으로 채팅 메시지로 전송된다.
-            _btnAttachFile = new Button { Text = "📎", Left = 10, Top = 338, Width = 36, Height = 24, Enabled = false };
+            // [수정 — 레이아웃] 채팅 리스트박스가 커진 만큼(139px) 이 줄과
+            // 아래 전송 줄도 같이 내렸다(338→477).
+            _btnAttachFile = new Button { Text = "📎", Left = 10, Top = 477, Width = 36, Height = 24, Enabled = false };
             _btnAttachFile.Click += (s, e) => AttachAndSendFile();
             StyleDynamicButton(_btnAttachFile);
 
-            _txtMessage = new TextBox { Left = 52, Top = 338, Width = 432, Height = 24, Enabled = false, BorderStyle = BorderStyle.FixedSingle, Multiline = true };
+            _txtMessage = new TextBox { Left = 52, Top = 477, Width = 432, Height = 24, Enabled = false, BorderStyle = BorderStyle.FixedSingle, Multiline = true };
             _txtMessage.KeyDown += TxtMessage_KeyDown;
 
-            _btnSend = new Button { Text = "전송", Left = 490, Top = 338, Width = 67, Height = 26, Enabled = false, Visible = true };
+            _btnSend = new Button { Text = "전송", Left = 490, Top = 477, Width = 67, Height = 26, Enabled = false, Visible = true };
             _btnSend.Click += BtnSend_Click;
             StyleDynamicButton(_btnSend);
 
             _listBoxChat = new DoubleBufferedListBox
             {
                 Left = 10,
-                // [수정] 방 정보 줄(_pnlRoomInfo)과 통계 줄이 아래로 밀리면서
-                // (Top=88→126) 이 리스트박스도 같이 내려왔다 — 끝 지점(332,
-                // 첨부/입력 줄 Top=338 바로 위)은 그대로 유지하려고 Height도
-                // 244→206으로 줄였다(그룹박스 전체 높이는 안 바꿈).
+                // [수정 — 레이아웃] 시스템 로그 카드가 별도 탭으로 빠지면서
+                // 생긴 공간(139px)을 그대로 여기에 더했다: 206 → 345. 끝
+                // 지점(126+345=471)은 새 첨부/입력 줄(Top=477)의 6px 위다
+                // (예전 332/338 관계와 동일한 간격 유지).
                 Top = 126,
                 Width = 542,
-                Height = 206,
+                Height = 345,
                 DrawMode = DrawMode.OwnerDrawVariable,
                 HorizontalScrollbar = false, // 말풍선 너비를 자동으로 줄바꿈하려면 가로 스크롤은 꺼둬야 함
                 ScrollAlwaysVisible = true,
@@ -929,27 +1073,31 @@ namespace ChatApp
 
             // ── 탭 구성: "대화"(기존 화면 전체) / "갤러리"(카카오톡 스타일로
             // 별도 창이 아니라 메인 창 안에 탭으로 통합) ──────────────────
-            var tabControl = new TabControl { Dock = DockStyle.Fill, DrawMode = TabDrawMode.OwnerDrawFixed, SizeMode = TabSizeMode.Fixed, ItemSize = new Size(90, 32) };
+            // [수정 — 근본 수정] 네이티브 탭 헤더(선택된 탭마다 테두리 모양이
+            // 달라지는 문제 — 위 CustomTabButton 클래스 설명 참고)를 화면에서
+            // 완전히 가린다. ItemSize를 최소화해서 네이티브 헤더 자체를 최대한
+            // 얇게 만들고, DrawItem에는 흰색 배경만 남겨(혹시 완전히 안 가려진
+            // 부분이 있어도 최소한 흰색으로 보이도록) 텍스트/밑줄은 그리지
+            // 않는다 — 실제 탭 헤더 UI는 아래 customTabHeader(CustomTabButton
+            // 4개)가 전담한다.
+            // [수정 — 버그 수정] ItemSize.Height를 1로 주면 Windows가 강제하는
+            // 최소 네이티브 헤더 높이가 아래 customTabHeader(36px)보다 작아질
+            // 수 있다 — 그러면 customTabHeader가 그 차이만큼 탭 페이지의 실제
+            // 콘텐츠(예: "서버 접속" 카드) 위까지 덮어버려서 카드 제목/테두리가
+            // 가려지는 문제가 생긴다. Height를 kCustomTabHeaderHeight(아래
+            // customTabHeader와 공유하는 상수)와 정확히 맞춰서, 네이티브가
+            // 예약하는 헤더 공간이 항상 customTabHeader 높이 이상이 되도록
+            // 보장한다 — Width는 여전히 1로 둬서(어차피 화면엔 흰 배경만
+            // 그리고 그 위를 customTabHeader가 덮으므로) 실제 폭은 문제되지
+            // 않는다.
+            const int kCustomTabHeaderHeight = 36;
+            var tabControl = new FlickerFreeTabControl { Dock = DockStyle.Fill, DrawMode = TabDrawMode.OwnerDrawFixed, SizeMode = TabSizeMode.Fixed, ItemSize = new Size(1, kCustomTabHeaderHeight) };
+            tabControl.HandleCreated += (s, e) => SetWindowTheme(tabControl.Handle, "", "");
+
             tabControl.DrawItem += (s, e) =>
             {
-                var g = e.Graphics;
-                var tabRect = e.Bounds;
-                bool selected = e.Index == tabControl.SelectedIndex;
-
                 using (var b = new SolidBrush(Color.White))
-                    g.FillRectangle(b, tabRect);
-
-                string text = tabControl.TabPages[e.Index].Text;
-                using (var font = new Font(Font.FontFamily, 9f, selected ? FontStyle.Bold : FontStyle.Regular))
-                using (var brush = new SolidBrush(selected ? AccentColor : TextSecondaryColor))
-                using (var fmt = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
-                    g.DrawString(text, font, brush, tabRect, fmt);
-
-                if (selected)
-                {
-                    using (var pen = new Pen(AccentColor, 2))
-                        g.DrawLine(pen, tabRect.Left + 8, tabRect.Bottom - 1, tabRect.Right - 8, tabRect.Bottom - 1);
-                }
+                    e.Graphics.FillRectangle(b, e.Bounds);
             };
 
             var tabPageChat = new TabPage("대화");
@@ -960,9 +1108,54 @@ namespace ChatApp
             // 문제가 없다.
             var chatPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
             _chatPagePanel = chatPagePanel;
-            // 시스템 로그도 다른 두 카드와 같은 톤으로 감싼다 — 리스트박스 자체는
-            // 카드 안에서 (0,0) 기준 상대좌표로 다시 배치.
-            var card3 = new CardPanel { Left = 3, Top = 480, Width = 562, Height = 139 };
+
+            // [수정 — 레이아웃] 시스템 로그(card3)는 더 이상 이 탭에 없다 —
+            // 아래 "시스템 로그" 탭으로 옮겼다. groupBox1/groupBox2 두
+            // 카드만 이 탭에 남는다.
+            chatPagePanel.Controls.AddRange(new Control[] { groupBox1, groupBox2 });
+            tabPageChat.Controls.Add(chatPagePanel);
+
+            var tabPageGallery = new TabPage("갤러리");
+            var galleryPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+            _galleryPagePanel = galleryPagePanel;
+            _galleryPanel = new ProfileImageGalleryPanel(_httpClient);
+            _galleryPanel.ActiveImageChanged += OnGalleryActiveImageChanged;
+            // [추가] 갤러리 상단 카메라 배지 메뉴는 실제 업로드/네트워크 로직을
+            // 갖고 있지 않다(그건 여전히 이 폼이 소유) — 이벤트로 위임만 받아서
+            // 채팅 탭의 프로필 이미지 메뉴와 똑같은 메서드를 그대로 재사용한다.
+            _galleryPanel.UploadRequested += () => UploadMyProfileImage();
+            _galleryPanel.SetUrlRequested += () => SetMyProfileImageUrl();
+            _galleryPanel.LocalFileRequested += () => SetMyProfileImage();
+            _galleryPanel.ClearRequested += () => ClearMyProfileImageUrl();
+            galleryPagePanel.Controls.Add(_galleryPanel);
+            tabPageGallery.Controls.Add(galleryPagePanel);
+
+            var tabPageRoomList = new TabPage("채팅방");
+            var roomListPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+            _roomListPanel = new RoomListPanel();
+            // [추가] 이 패널 안에서 방 입장에 성공하면(직접 클릭/방 만들기
+            // 둘 다) 여기로 알려준다 — 현재 방 이름/방장 상태를 갱신하고
+            // 대화 탭으로 자동 전환한다(RoomEnterResPacket 자체엔 응답이
+            // 오는 즉시 대화 탭의 OnRoomEnterResultReceived도 별도로 반응해
+            // _currentRoomId 등을 갱신하므로, 여기서는 "탭 전환 + 이름/방장
+            // 보완"만 담당하면 된다).
+            _roomListPanel.RoomEntered += OnRoomListPanelRoomEntered;
+            // [추가] 방장 관리 메뉴의 "프로필 이미지 변경"은 업로드 토큰
+            // 발급+파일 서버 업로드가 필요해서(HttpClient 등을 이 폼이
+            // 들고 있음) RoomListPanel이 직접 못 하고 여기로 위임한다.
+            _roomListPanel.RoomImageEditRequested += roomId => UploadRoomImage(roomId);
+            roomListPagePanel.Controls.Add(_roomListPanel);
+            tabPageRoomList.Controls.Add(roomListPagePanel);
+
+            // ── "시스템 로그" 탭 — [수정 — 레이아웃] 원래 "대화" 탭 하단에
+            // 고정 카드(card3, Height=139)로 끼어 있던 것을 별도 탭으로
+            // 뺐다. 독립된 탭 페이지 전체를 쓸 수 있어서 카드를 훨씬 크게
+            // (Height=600) 잡고, 리스트박스도 그만큼 키웠다(116 → 566).
+            // 내용/그리기 방식(ColoredListBox_DrawItem, 범례)은 그대로다.
+            var tabPageSystemLog = new TabPage("시스템 로그");
+            var systemLogPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
+
+            var card3 = new CardPanel { Left = 3, Top = 9, Width = 562, Height = 600 };
             var lblCard3Title = new Label
             {
                 Text = "시스템 로그",
@@ -1009,13 +1202,13 @@ namespace ChatApp
                 }
             };
 
-            // ── 하단: 시스템 로그(로그인/닉네임 변경/방 입퇴장 결과/연결 끊김/오류 등) ──
+            // ── 시스템 로그(로그인/닉네임 변경/방 입퇴장 결과/연결 끊김/오류 등) ──
             _listBoxMsg = new ListBox
             {
                 Left = 10,
                 Top = 20,
                 Width = 542,
-                Height = 116,
+                Height = 566,
                 DrawMode = DrawMode.OwnerDrawFixed,
                 ItemHeight = 16,
                 ScrollAlwaysVisible = true,
@@ -1024,52 +1217,58 @@ namespace ChatApp
             _listBoxMsg.DrawItem += ColoredListBox_DrawItem;
             card3.Controls.AddRange(new Control[] { lblCard3Title, pnlLogLegend, _listBoxMsg });
 
-            chatPagePanel.Controls.AddRange(new Control[] { groupBox1, groupBox2, card3 });
-            tabPageChat.Controls.Add(chatPagePanel);
+            systemLogPagePanel.Controls.Add(card3);
+            tabPageSystemLog.Controls.Add(systemLogPagePanel);
 
-            var tabPageGallery = new TabPage("갤러리");
-            var galleryPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
-            _galleryPagePanel = galleryPagePanel;
-            _galleryPanel = new ProfileImageGalleryPanel(_httpClient);
-            _galleryPanel.ActiveImageChanged += OnGalleryActiveImageChanged;
-            // [추가] 갤러리 상단 카메라 배지 메뉴는 실제 업로드/네트워크 로직을
-            // 갖고 있지 않다(그건 여전히 이 폼이 소유) — 이벤트로 위임만 받아서
-            // 채팅 탭의 프로필 이미지 메뉴와 똑같은 메서드를 그대로 재사용한다.
-            _galleryPanel.UploadRequested += () => UploadMyProfileImage();
-            _galleryPanel.SetUrlRequested += () => SetMyProfileImageUrl();
-            _galleryPanel.LocalFileRequested += () => SetMyProfileImage();
-            _galleryPanel.ClearRequested += () => ClearMyProfileImageUrl();
-            galleryPagePanel.Controls.Add(_galleryPanel);
-            tabPageGallery.Controls.Add(galleryPagePanel);
-
-            var tabPageRoomList = new TabPage("채팅방");
-            var roomListPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
-            _roomListPanel = new RoomListPanel();
-            // [추가] 이 패널 안에서 방 입장에 성공하면(직접 클릭/방 만들기
-            // 둘 다) 여기로 알려준다 — 현재 방 이름/방장 상태를 갱신하고
-            // 대화 탭으로 자동 전환한다(RoomEnterResPacket 자체엔 응답이
-            // 오는 즉시 대화 탭의 OnRoomEnterResultReceived도 별도로 반응해
-            // _currentRoomId 등을 갱신하므로, 여기서는 "탭 전환 + 이름/방장
-            // 보완"만 담당하면 된다).
-            _roomListPanel.RoomEntered += OnRoomListPanelRoomEntered;
-            // [추가] 방장 관리 메뉴의 "프로필 이미지 변경"은 업로드 토큰
-            // 발급+파일 서버 업로드가 필요해서(HttpClient 등을 이 폼이
-            // 들고 있음) RoomListPanel이 직접 못 하고 여기로 위임한다.
-            _roomListPanel.RoomImageEditRequested += roomId => UploadRoomImage(roomId);
-            roomListPagePanel.Controls.Add(_roomListPanel);
-            tabPageRoomList.Controls.Add(roomListPagePanel);
-
-            // [수정] 탭 순서: 대화(0) → 채팅방(1) → 갤러리(2). 아래
-            // SelectedIndex 하드코딩 값(BtnRoomList_Click/SwitchToGalleryTab
+            // [수정] 탭 순서: 대화(0) → 채팅방(1) → 갤러리(2) → 시스템 로그(3).
+            // 아래 SelectedIndex 하드코딩 값(BtnRoomList_Click/SwitchToGalleryTab
             // 등)도 전부 이 순서에 맞춰져 있다 — 순서를 또 바꾸면 그쪽도
-            // 같이 고쳐야 한다.
+            // 같이 고쳐야 한다. 시스템 로그는 맨 뒤(3번)에 새로 추가된
+            // 것이라 기존 0~2번 인덱스를 쓰던 코드는 그대로 유효하다.
             tabControl.TabPages.Add(tabPageChat);
             tabControl.TabPages.Add(tabPageRoomList);
             tabControl.TabPages.Add(tabPageGallery);
+            tabControl.TabPages.Add(tabPageSystemLog);
+
+            // ── 커스텀 탭 헤더 — 네이티브 탭 헤더를 대체하는 버튼 4개
+            // (CustomTabButton 클래스 설명 참고). 순서/이름은 위 TabPages
+            // 순서와 정확히 같아야 한다.
+            var customTabHeader = new Panel { Height = kCustomTabHeaderHeight, BackColor = Color.White };
+            var tabButtons = new List<CustomTabButton>();
+            string[] tabNames = { "대화", "채팅방", "갤러리", "시스템 로그" };
+            for (int i = 0; i < tabNames.Length; i++)
+            {
+                int tabIndex = i; // 클로저 캡처용 지역 복사
+                var tabButton = new CustomTabButton
+                {
+                    TabText = tabNames[i],
+                    Left = 4 + i * 90,
+                    Top = 0,
+                    Width = 90,
+                    Height = customTabHeader.Height,
+                    IsSelected = (i == 0),
+                };
+                tabButton.Click += (s, e) => tabControl.SelectedIndex = tabIndex;
+                tabButtons.Add(tabButton);
+                customTabHeader.Controls.Add(tabButton);
+            }
 
             // 갤러리/채팅방 목록 탭으로 전환할 때마다 최신 목록을 다시 받아온다.
+            // 시스템 로그 탭은 별도로 새로 불러올 목록이 없다(AppendSystemLog()가
+            // 실시간으로 채워주는 로그라 탭을 열 때 딱히 손댈 게 없음) — 그래서
+            // 여기 분기에 추가하지 않았다.
             tabControl.SelectedIndexChanged += (s, e) =>
             {
+                // 커스텀 헤더 버튼들의 선택 표시를 실제 선택된 탭에 맞춘다 —
+                // 탭 전환은 이제 이 버튼들의 Click뿐 아니라(BtnRoomList_Click,
+                // SwitchToGalleryTab처럼) 코드에서 SelectedIndex를 직접 바꾸는
+                // 경로로도 일어나므로, 어느 경로든 이 한 곳에서 갱신한다.
+                for (int i = 0; i < tabButtons.Count; i++)
+                {
+                    tabButtons[i].IsSelected = (i == tabControl.SelectedIndex);
+                    tabButtons[i].Invalidate();
+                }
+
                 if (tabControl.SelectedTab == tabPageGallery)
                     _galleryPanel.RefreshList();
                 else if (tabControl.SelectedTab == tabPageRoomList)
@@ -1079,6 +1278,11 @@ namespace ChatApp
             _tabControl = tabControl;
 
             Controls.Add(_tabControl);
+            // customTabHeader는 tabControl(Dock=Fill)의 네이티브 헤더 영역
+            // 바로 위에 겹쳐야 하므로 tabControl의 자식이 아니라 이 폼의
+            // 자식으로 별도로 추가한다 — 정확한 위치(headerPanel 바로 아래)는
+            // 아래에서 headerPanel을 추가한 직후에 맞춘다.
+            Controls.Add(customTabHeader);
 
             // ── 상단 헤더 바 — 로고 + 앱 이름. Dock 순서 주의: _tabControl(Fill)을
             // 먼저 추가해야 헤더(Top)가 나중에 그 위쪽 띠를 차지할 수 있다. ──
@@ -1136,6 +1340,17 @@ namespace ChatApp
 
             headerPanel.Controls.AddRange(new Control[] { logoBox, lblAppName, btnSkin });
             Controls.Add(headerPanel);
+
+            // customTabHeader를 tabControl의 네이티브 탭 헤더(맨 위 영역) 바로
+            // 위에, 로고 바(headerPanel) 바로 아래에 정확히 겹쳐 놓는다 —
+            // headerPanel의 실제 높이/폼 폭을 여기서 확정적으로 알 수 있으므로
+            // 이 시점에 위치를 맞춘다. BringToFront()로 z-order 최상단에 둬서
+            // 그 밑에 깔린 네이티브 탭 헤더(얇게 줄여뒀지만 완전히 0은 아닐 수
+            // 있음)가 전혀 보이지 않게 한다.
+            customTabHeader.Location = new Point(0, headerPanel.Height);
+            customTabHeader.Width = ClientSize.Width;
+            customTabHeader.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+            customTabHeader.BringToFront();
 
             // [추가] 서버 동접자수 폴링 — 로그인 성공 시 시작, 연결 끊기면 정지.
             // 39초마다 서버에 물어보는 방식이라(예전의 로그인/로그아웃마다

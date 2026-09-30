@@ -387,7 +387,15 @@ namespace ChatApp
             StyleDynamicButton(_btnRefresh);
             _btnRefresh.Click += (s, e) => RefreshList();
 
-            topPanel.Controls.AddRange(new Control[] { _lblSectionTitle, _btnCreateRoom, _btnRefresh });
+            // [추가] 두 버튼이 Dock=Right라 그냥 두면 서로 딱 붙는다 — Dock
+            // 레이아웃에서 버튼 사이 간격은 Margin으로 안 먹히므로, 폭 10px짜리
+            // 투명한 spacer 패널을 그 사이에 Dock=Right로 끼워 넣는다. Controls
+            // 추가 순서가 Dock=Right의 "나중에 추가될수록 바깥쪽" 규칙을
+            // 따르므로, _btnCreateRoom과 _btnRefresh 사이에 이 순서로 넣으면
+            // 화면상 정확히 두 버튼 사이에 자리 잡는다.
+            var buttonSpacer = new Panel { Dock = DockStyle.Right, Width = 10 };
+
+            topPanel.Controls.AddRange(new Control[] { _lblSectionTitle, _btnCreateRoom, buttonSpacer, _btnRefresh });
 
             _lblStatus = new Label
             {
