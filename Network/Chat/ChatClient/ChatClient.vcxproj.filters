@@ -110,6 +110,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp">
       <Filter>UtilCore\Network</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -276,6 +279,15 @@
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
     <ClInclude Include="ChatPacketTypes.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

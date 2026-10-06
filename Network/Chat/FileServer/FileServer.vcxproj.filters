@@ -121,39 +121,6 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\BmpCodec.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Checksum.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ColorSpace.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Deflate.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageFilters.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageIO.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageProcessor.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\ImageTypes.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\Inflate.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\JpegCodec.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\..\..\Library\UtilCore\Image\PngCodec.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
     <ClCompile Include="FileServerRouter.cpp" />
     <ClCompile Include="FileMetadataRepository.cpp" />
     <ClCompile Include="FileSendBufferPool.cpp" />
@@ -162,6 +129,9 @@
     <ClCompile Include="FileUploadHandler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\FileStream.cpp">
       <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -206,9 +176,6 @@
     </Filter>
     <Filter Include="UtilCore\Network\HTTP">
       <UniqueIdentifier>{279455c2-84d4-4dd6-baf1-73e1f02d1336}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="UtilCore\Image">
-      <UniqueIdentifier>{c5eeee51-2e04-4065-8bf4-c2d85118092b}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -413,45 +380,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\BmpCodec.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Checksum.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ColorSpace.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Deflate.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ICodec.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageCommon.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageFilters.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageIO.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageProcessor.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\ImageTypes.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\Inflate.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\JpegCodec.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Image\PngCodec.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
     <ClInclude Include="FileServerRouter.h" />
     <ClInclude Include="FileMetadata.h" />
     <ClInclude Include="FileMetadataRepository.h" />
@@ -463,6 +391,18 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\MultipartStreamParser.h">
+      <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpMessageParser.h">
       <Filter>UtilCore\Network\HTTP</Filter>
     </ClInclude>
   </ItemGroup>

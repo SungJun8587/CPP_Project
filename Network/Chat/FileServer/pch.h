@@ -43,6 +43,7 @@ using namespace std;
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
 #include <Util/FileStream.h>
+#include <Util/ScopeExit.h>
 
 #include <Memory/RawAllocator.h>
 #include <Memory/Allocator.h>
@@ -58,6 +59,7 @@ using namespace std;
 #include <Thread/SRWLock.h>
 #include <Thread/PlatformLock.h>
 #include <Thread/ThreadManager.h>
+#include <Thread/SyncValue.h>
 
 #include <Job/JobCommon.h>
 
@@ -72,6 +74,7 @@ using namespace std;
 
 #include <Network/NetworkCommon.h>
 #include <Network/HTTP/HttpParseUtil.h>
+#include <Network/HTTP/HttpMessageParser.h>
 #include <Network/HTTP/HttpRequestParser.h>
 #include <Network/HTTP/MultipartFormParser.h>
 #include <Network/HTTP/MultipartStreamParser.h>
@@ -79,8 +82,6 @@ using namespace std;
 #include <ServerConfig.h>
 
 #include <Redis/RedisCommon.h>
-
-#include <Image/ImageCommon.h>
 
 #include "FileServerConfig.h"
 #include "FileStorage.h"

@@ -42,6 +42,7 @@ using namespace std;
 #include <Util/Log.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
+#include <Util/ScopeExit.h>
 
 #include <Memory/RawAllocator.h>
 #include <Memory/Allocator.h>
@@ -57,6 +58,7 @@ using namespace std;
 #include <Thread/SRWLock.h>
 #include <Thread/PlatformLock.h>
 #include <Thread/ThreadManager.h>
+#include <Thread/SyncValue.h>
 
 #include <Job/JobCommon.h>
 

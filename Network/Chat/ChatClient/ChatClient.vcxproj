@@ -104,6 +104,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpService.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSession.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetAddress.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\NetService.cpp" />
@@ -157,6 +158,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpService.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSession.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetAddress.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\NetService.h" />
@@ -172,10 +174,12 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="ChatClientMain.h" />
     <ClInclude Include="ChatClientPacketDispatcher.h" />
