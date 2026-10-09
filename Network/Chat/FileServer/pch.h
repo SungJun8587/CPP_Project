@@ -39,7 +39,10 @@ using namespace std;
 
 #include <Util/ConsoleUtil.h>
 #include <Util/CommonUtil.h>
+#include <Util/DateTimeUtil.h>
 #include <Util/Log.h>
+#include <Util/Regular.h>
+#include <Util/PercentCodec.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
 #include <Util/FileStream.h>

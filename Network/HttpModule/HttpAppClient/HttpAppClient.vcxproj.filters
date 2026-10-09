@@ -88,6 +88,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Regular.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -297,6 +300,15 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.h">
       <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\PercentCodec.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Regular.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\UrlParser.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

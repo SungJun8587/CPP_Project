@@ -167,6 +167,9 @@
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
     <ClInclude Include="DBServerConfig.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

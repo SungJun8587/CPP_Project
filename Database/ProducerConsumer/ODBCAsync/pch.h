@@ -68,6 +68,7 @@ using namespace std;
 
 #include <DB/DBEnum.h>
 #include <DB/DBAsyncSrv.h>
+#include <DB/DBAsyncRegistry.h>
 #include <DB/DBAsyncHandler.h>
 #include <DB/DBAsyncPushHelper.h>
 

@@ -133,6 +133,12 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Regular.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -404,6 +410,15 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\HTTP\HttpMessageParser.h">
       <Filter>UtilCore\Network\HTTP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\PercentCodec.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Regular.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -39,6 +39,7 @@ using namespace std;
 
 #include <Util/ConsoleUtil.h>
 #include <Util/CommonUtil.h>
+#include <Util/DateTimeUtil.h>
 #include <Util/Log.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
@@ -79,6 +80,7 @@ using namespace std;
 
 #include <DB/DBEnum.h>
 #include <DB/DBAsyncSrv.h>
+#include <DB/DBAsyncRegistry.h>
 #include <DB/DBAsyncHandler.h>
 #include <DB/DBAsyncPushHelper.h>
 

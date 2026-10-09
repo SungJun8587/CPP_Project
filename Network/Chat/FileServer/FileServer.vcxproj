@@ -128,9 +128,11 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\FileStream.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Regular.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="FileDeleteHandler.cpp" />
     <ClCompile Include="FileDownloadHandler.cpp" />
@@ -215,9 +217,12 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FileStream.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\PercentCodec.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Regular.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="FileDeleteHandler.h" />

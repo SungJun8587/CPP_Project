@@ -32,6 +32,9 @@ using namespace std;
 
 #include <Util/ConsoleUtil.h>
 #include <Util/Log.h>
+#include <Util/Regular.h>
+#include <Util/PercentCodec.h>
+#include <Util/UrlParser.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
 #include <Util/ScopeExit.h>

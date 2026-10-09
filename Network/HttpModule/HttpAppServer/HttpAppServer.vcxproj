@@ -116,6 +116,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Regular.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="HttpAppServer.cpp" />
     <ClCompile Include="HttpServerSession.cpp" />
@@ -167,6 +168,8 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\PercentCodec.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Regular.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="HttpServerSession.h" />

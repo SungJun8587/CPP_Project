@@ -131,6 +131,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
@@ -193,6 +194,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncSrv.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\OdbcAsyncSrv.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\OdbcConnPool.h" />
@@ -249,6 +251,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\CommonUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
@@ -271,6 +274,7 @@
     <ClInclude Include="DBRecordRoomJoinRequest.h" />
     <ClInclude Include="DBRenameRoomRequest.h" />
     <ClInclude Include="DBSelectProfileImageRequest.h" />
+    <ClInclude Include="DbServiceManager.h" />
     <ClInclude Include="DBSetProfileImageUrlRequest.h" />
     <ClInclude Include="DBSetRoomImageRequest.h" />
     <ClInclude Include="DBSignupRequest.h" />

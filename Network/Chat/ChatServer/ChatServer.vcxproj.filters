@@ -240,6 +240,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -528,6 +531,13 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.h">
       <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="DbServiceManager.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h">
+      <Filter>UtilCore\DB</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

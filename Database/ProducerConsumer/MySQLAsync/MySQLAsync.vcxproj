@@ -126,6 +126,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\QueueCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncSrv.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBEnum.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\MySQL\BaseMySQL.h" />

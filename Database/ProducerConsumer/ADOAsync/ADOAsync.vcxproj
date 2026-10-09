@@ -129,6 +129,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\ADO\AdoDB.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncPushHelper.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncSrv.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBEnum.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h" />

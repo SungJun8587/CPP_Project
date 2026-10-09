@@ -196,6 +196,9 @@
     </ClInclude>
     <ClInclude Include="DBServiceManager.h" />
     <ClInclude Include="DBServerConfig.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h">
+      <Filter>UtilCore\DB</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
