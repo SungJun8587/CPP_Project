@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{B096FD64-1868-9A0B-885A-2412BFF9288F}</ProjectGuid>
+    <Keyword>MFCProj</Keyword>
+    <RootNamespace>AvatarImageTool</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Static</UseOfMfc>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>Static</UseOfMfc>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+    <OutDir>$(SolutionDir)Bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>Bin\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>$(ProjectName)64D</TargetName>
+    <IncludePath>K:\GitHub\CPP\Library\UtilCore;$(ProjectDir);$(IncludePath)</IncludePath>
+    <LibraryPath>K:\GitHub\CPP\Library\ExternalLib\Bin\$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+    <OutDir>$(SolutionDir)Bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>Bin\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>$(ProjectName)64</TargetName>
+    <IncludePath>K:\GitHub\CPP\Library\UtilCore;$(ProjectDir);$(IncludePath)</IncludePath>
+    <LibraryPath>K:\GitHub\CPP\Library\ExternalLib\Bin\$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\BmpCodec.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Canvas.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Checksum.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ColorSpace.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Deflate.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\FileManager.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\GifCodec.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ICodec.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageCommon.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageFilters.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageIO.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageProcessor.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageTypes.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Inflate.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\JpegCodec.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\PngCodec.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Quantize.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Sprite.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Win32Draw.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\SRWLock.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\DelimitedRowFile.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\DirectoryUtil.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\FileUtil.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\KeyedTable.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\TextFieldParser.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="AvatarImageDefine.h" />
+    <ClInclude Include="AvatarImageExternAll.h" />
+    <ClInclude Include="AvatarImageStream.h" />
+    <ClInclude Include="AvatarImageToolDlg.h" />
+    <ClInclude Include="AvatarInfoMemDBEx.h" />
+    <ClInclude Include="Character.h" />
+    <ClInclude Include="DrawImage.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="ItemDataCombo.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="targetver.h" />
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\BmpCodec.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Canvas.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Checksum.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ColorSpace.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Deflate.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\FileManager.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\GifCodec.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageFilters.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageIO.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageProcessor.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageTypes.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Inflate.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\JpegCodec.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\PngCodec.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Quantize.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Sprite.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Win32Draw.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\DirectoryUtil.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\FileUtil.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
+    <ClCompile Include="AvatarImageTool.cpp" />
+    <ClCompile Include="AvatarImageToolDlg.cpp" />
+    <ClCompile Include="AvatarInfoMemDBEx.cpp" />
+    <ClCompile Include="Character.cpp" />
+    <ClCompile Include="DrawImage.cpp" />
+    <ClCompile Include="ItemDataCombo.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="AvatarImageTool.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="small.ico" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -40,7 +40,7 @@ ChatApp은 C++ IOCP 기반 채팅 서버와 C# WinForms 클라이언트로 구�
 
 &#91;embedded content: 전체 구조 · 클라이언트·채팅 서버·파일 서버·MySQL·Redis\]
 
-채팅 서버가 중심에서 클라이언트·MySQL·Redis·파일 서버를 모두 연결한다.
+채팅 서버는 클라이언트(TCP)·MySQL(ODBC)·Redis와 연결된다. 파일 서버는 채팅 서버와 직접 통신하지 않고, 클라이언트의 HTTP 요청과 Redis(업로드 토큰·삭제 예약)만 다룬다.
 
 ## 핵심 구현 포인트
 
@@ -129,6 +129,101 @@ CRedisResultSet은 RedisValue를 문자열 목록으로 펼친 뒤 GetData()로 
 ### 서버 하트비트
 
 CRedisServerHeartbeat는 서버 시작 시 `{serverName}:{serverGroupId}:{serverChannelId}` 키에 Hash로 등록 정보(포트, pid, 세션 수, 시작·갱신 시각 등)를 HSET하고 TTL(기본 15초)을 건다. 전용 스레드가 주기(기본 5초)마다 등록 필드 전체를 다시 쓰고 EXPIRE로 TTL을 갱신하므로, Redis가 재시작돼 키가 사라져도 완전한 등록 정보로 복구된다. 비정상 종료하면 TTL 만료로 항목이 자동 소멸하고, 정상 종료(Stop)는 DEL로 즉시 지운다. 갱신 주기는 TTL보다 짧아야 하며, 세션 수는 등록한 콜백(SetSessionCountProvider)이 알려 준다.
+
+## HTTP 계층 구조
+
+UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구현이다. 클라이언트 쪽(CHttpClient, 커넥션 풀, TLS)과 서버 쪽(요청 파서, 응답 빌더, 멀티파트, Range)이 같은 파서·빌더 기반을 공유한다. 파일 서버는 서버 쪽 클래스를 사용한다(파일 서버 구조 참고).
+
+### 클라이언트 구조
+
+&#91;embedded content: HTTP 클라이언트 구조\]
+
+- CHttpClient: URL의 scheme으로 평문/HTTPS 매니저를 골라 요청을 보낸다. SSL\_CTX 없이 만들면 https 요청은 즉시 실패(success=false)로 통지된다.
+- CHttpConnPoolManager: host(hostname:port)별 풀을 지연 생성해 캐싱한다. 같은 host로 첫 요청이 동시에 오면 한 스레드만 DNS 해석과 풀 생성을 맡는다. 주소는 기본 60초마다 다시 해석하고, 종료 시에는 모든 세션이 정리될 때까지 기다릴 수 있다.
+- CHttpConnPoolT: host 하나의 풀이며, 세션·서비스 타입을 템플릿 파라미터로 받아 IOCP와 RIO가 같은 코드를 쓴다. 초기에는 minIdle개만 연결하고, 유휴 세션이 없어 요청이 대기열에 쌓이면 maxConnections까지 늘린다. 끊긴 연결은 지수 백오프(200ms\~10초)로 다시 채우고, 멱등 요청은 1회 자동 재시도하며, 무응답 타임아웃 기본값은 30초다.
+- CHttpSessionIocp / CHttpSessionRio: 엔진 세션의 훅을 CHttpClientChannel로 이어 주는 얇은 어댑터다. 채널은 평문이면 CHttpClientCore로 바이트를 직접 전달하고, HTTPS면 CTlsFilter(OpenSSL 메모리 BIO)로 암·복호화한 뒤 전달한다.
+- CHttpClientCore: 커넥션 하나에서 요청을 한 번에 하나씩만 처리한다(파이프라이닝 없음). 완료 콜백은 정확히 한 번, 락 밖에서 호출한다.
+
+### 메시지 파서와 빌더
+
+&#91;embedded content: HTTP 메시지 파서·빌더 구조\]
+
+- 파서: CHttpMessageParser가 헤더·Content-Length·chunked·trailer 처리와 줄·헤더·본문 상한을 담당하고, 요청/응답 파서는 시작 줄과 본문 길이 규칙만 구현한다. 헤더 이름 앞뒤 공백, 서로 다른 Content-Length 중복처럼 메시지 경계가 모호해지는 입력은 모두 Error로 처리한다.
+- 대용량 본문: CHttpRequestParser는 기본적으로 본문을 메모리에 누적하되 64MB를 넘으면 Error로 처리한다. 헤더 완료 콜백에서 본문 스트림 콜백을 걸면 본문을 누적하지 않고 흘려보내며, 요청별로 상한을 따로 줄 수 있다. 파일 서버의 업로드가 이 경로를 쓴다.
+- 멀티파트: 소량 폼은 MultipartFormParser가 완성된 본문을 한 번에 해석하고, 대용량은 CMultipartStreamParser가 boundary 기준으로 파트 시작·데이터·끝 콜백을 보낸다(파트 헤더만 버퍼링).
+- 빌더: char 바이트로만 조립하고 헤더는 flat vector로 보관하며, Reset으로 버퍼를 재사용한다. 요청 빌더와 응답 빌더는 CHttpBuilderBase를 공유한다.
+- Range: 단일 바이트 구간만 지원한다. 다중 구간 요청은 무시하고 전체를 200으로 응답한다.
+
+## 파일 서버 구조
+
+파일 서버는 채팅 서버와 별개 프로세스로 동작하는 HTTP 서버다. 네트워크 계층(CIocpCore, CIocpServerService)과 Redis 계층(CRedisService), CJobQueue를 그대로 재사용하고, 세션만 HTTP를 해석하는 CFileServerSession으로 바꿨다. 채팅 서버와는 서로 직접 통신하지 않는다. 두 서버가 같은 Redis를 바라보며 업로드 토큰과 삭제 예약 목록을 주고받고, 클라이언트는 채팅 서버에서 받은 주소와 토큰으로 파일 서버에 직접 HTTP 요청을 보낸다.
+
+&#91;embedded content: 파일 서버 클래스 구조\]
+
+### 업로드 흐름
+
+- 요청은 멀티파트로 받으며 본문을 메모리에 모으지 않고 임시 파일(upload\_{랜덤 hex}.tmp)에 스트리밍으로 기록한다. 허용 크기는 MaxUploadBytes로 제한한다.
+- 채팅 서버가 Redis에 발급한 일회용 토큰(UploadToken:{token})을 GET 후 DEL로 소비한다. 토큰이 없거나 이미 사용되었으면 거부한다.
+- 검증이 끝나면 저장소로 옮기고 메타데이터를 등록한 뒤 PublicBaseUrl 기반의 접근 URL을 응답한다.
+- 상태 코드: 잘못된 요청 400, 토큰 오류 401, 크기 초과 413, 저장 실패 500, 성공 200.
+
+### 다운로드 흐름
+
+- Range 요청을 지원한다. 구간이 유효하면 206, 범위를 벗어나면 416으로 응답한다.
+- 본문은 64KB 풀 버퍼(CFileSendBufferPool)를 청크 단위로 재사용해 전송하므로 큰 파일도 메모리를 크게 쓰지 않는다.
+- Content-Type은 파일 확장자로 추정한다.
+
+### 삭제와 예약 삭제
+
+- DELETE 요청은 파일과 메타데이터를 함께 제거한다.
+- 채팅 서버가 Redis의 FileServer:PendingDeletions 목록에 삭제 대상을 넣으면, 파일 서버가 5초 주기로 LPOP 폴링해 저장소에서 파일을 지우고 메타데이터도 함께 정리한다. 목록에 항목이 남아 있으면 대기 없이 연속으로 비운다.
+- DELETE 요청 자체에는 인증이 없다. 외부 노출 시에는 별도 보호가 필요하다.
+
+### 저장소와 메타데이터
+
+- IFileStorage 인터페이스 뒤에 CLocalFileStorage가 있다. 저장 경로는 {baseDir}/{ownerId}/{랜덤 hex}{확장자}이며, 경로에 ".."가 포함되면 읽기·삭제·스트림 열기 모두 거부한다.
+- 저장소를 인터페이스로 분리했으므로 다른 백엔드로 교체해도 핸들러는 바뀌지 않는다.
+- 파일 메타데이터(소유자·크기·타입)는 CFileMetadataRepository가 메모리에 보관한다.
+
+### 채팅 서버와의 연동 (Redis)
+
+- 업로드 토큰: 클라이언트가 채팅 서버에 토큰을 요청하면, 채팅 서버가 무작위 32바이트(16진 64자)를 만들어 `SET UploadToken:{token} {계정 public_id} EX 60`으로 Redis에 넣는다. 응답에는 토큰과 파일 서버 주소(FileServerUrl)가 실린다. 파일 서버는 업로드 요청이 올 때 이 키를 조회해 소비하고, 값으로 소유 계정을 알아낸다. TTL이 60초라 발급 후 곧바로 쓰지 않으면 만료된다.
+- 삭제 예약: 채팅 서버가 프로필 이미지를 교체하거나 지울 때, 지워진 URL이 자기 파일 서버 소유(`{FileServerUrl}/images/...`)이면 상대 경로만 `RPUSH FileServer:PendingDeletions`로 넣는다. 외부 URL은 대상에서 제외한다.
+- 주소 일치: 위 접두사 판별이 파일 서버가 만드는 공개 URL과 같은 형식이어야 하므로, 채팅 서버의 FileServerUrl과 파일 서버의 PublicBaseUrl은 같은 주소로 맞춘다.
+- 클라이언트 경로: 채팅 서버는 파일 바이트를 중계하지 않는다. 업로드와 다운로드는 클라이언트가 파일 서버로 직접 보낸다.
+
+### 채팅 서버 설정 (chatserver\_config\_mysql.json)
+
+채팅 서버는 실행 폴더의 chatserver\_config\_mysql.json을 읽는다. 파일 서버와 맞물리는 항목은 FileServerUrl과 RedisNode다.
+
+| 항목 | 설명 | 기본값 |
+| --- | --- | --- |
+| Name / GroupId / ChannelId | 서버 이름과 그룹·채널 식별자 | ChatServer / 1 / 1 |
+| IP / Port | 수신 주소와 포트 | 127.0.0.1 / 30201 |
+| KeepAliveSec | 세션 유지 시간(초) | 3000 |
+| MaxSessionCount | 최대 동시 세션 수 | 2000 |
+| WorkerThreadCnt | IOCP 워커 스레드 수 | 0 |
+| RedisPoolSize | 노드당 Redis 연결 수 | 8 |
+| DbWorkerThreadCnt | DB 비동기 워커 스레드 수 | 4 |
+| HeartbeatTtlSec / HeartbeatIntervalSec | 서버 하트비트 TTL과 갱신 주기(초) | 15 / 5 |
+| FileServerUrl | 클라이언트에 알려 줄 파일 서버 주소. 파일 서버의 PublicBaseUrl과 일치해야 한다 | http://127.0.0.1:8081 |
+| MaxRoomsPerOwner | 계정당 만들 수 있는 방 수 상한 | 3 |
+| DBNode | 접속할 DB 노드(ODBC 드라이버, 주소, DB 이름 등) | MySQL, 127.0.0.1:3306, chat |
+| RedisNode | 접속할 Redis 노드. 파일 서버와 같은 Redis를 가리켜야 한다 | 1, 127.0.0.1:16379, 0 |
+
+### 파일 서버 설정 (fileserver\_config\_mysql.json)
+
+| 항목 | 설명 | 기본값 |
+| --- | --- | --- |
+| Name / GroupId / ChannelId | 서버 이름과 그룹·채널 식별자 | FileServer / 1 / 0 |
+| IP / Port | 수신 주소와 포트 | 0.0.0.0 / 8081 |
+| MaxSessionCount | 최대 동시 세션 수 | 500 |
+| WorkerThreadCnt | IOCP 워커 스레드 수 | 4 |
+| RedisPoolSize | 노드당 Redis 연결 수 | 4 |
+| StorageDir | 파일 저장 기준 디렉터리 | ProfileImages |
+| PublicBaseUrl | 클라이언트에 알려 줄 접근 URL의 기준 | http://127.0.0.1:8081 |
+| MaxUploadBytes | 업로드 최대 크기 (바이트) | 5368709120 (5GB) |
+| RedisNode | 접속할 Redis 노드(ID, 주소, DBIndex) | 1, 127.0.0.1:16379, 0 |
 
 ## 기술 스택
 

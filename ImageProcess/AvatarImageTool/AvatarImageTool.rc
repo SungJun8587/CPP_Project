@@ -1,0 +1,314 @@
+//Microsoft Developer Studio generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// Korean resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_KOR)
+#ifdef _WIN32
+LANGUAGE LANG_KOREAN, SUBLANG_DEFAULT
+#pragma code_page(949)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE DISCARDABLE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_KOR)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 18, 1\r\n"
+    "#pragma code_page(949)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\AvatarImageTool.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""l.kor\\afxres.rc""          // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON    DISCARDABLE     "res\\AvatarImageTool.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_AVATARIMAGETOOL_DIALOG DIALOGEX 0, 0, 371, 271
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP
+EXSTYLE WS_EX_APPWINDOW
+FONT 10, "굴림"
+BEGIN
+    PUSHBUTTON      "닫기",IDCANCEL,284,248,80,15
+    CONTROL         "List1",IDC_AVATAR_LIST,"SysListView32",LVS_REPORT | 
+                    WS_BORDER | WS_TABSTOP,9,131,77,133
+    CONTROL         "List1",IDC_ITEM_LIST,"SysListView32",LVS_REPORT | 
+                    WS_BORDER | WS_TABSTOP,88,131,98,133
+    COMBOBOX        IDC_SUBTYPE,87,115,98,75,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    PUSHBUTTON      "왼쪽 시선 그리기",IDC_LEFT_DRAW,284,212,80,15
+    COMBOBOX        IDC_GENDER,9,115,76,39,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    CONTROL         "List2",IDC_ITEMDRAW_LIST,"SysListView32",LVS_REPORT | 
+                    WS_BORDER | WS_TABSTOP,189,183,90,81
+    PUSHBUTTON      "리스트 삭제",IDC_LIST_DELETE,229,113,50,15
+    COMBOBOX        IDC_EXPRESSION,189,115,37,78,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    PUSHBUTTON      "오른쪽 시선 그리기",IDC_RIGHT_DRAW,284,230,80,15
+    PUSHBUTTON      "이미지 파일 생성툴 제어",
+                    IDC_IMAGE_FILE_CREATETOOL_CONTROL,284,194,80,15
+    COMBOBOX        IDC_DRAWSTYLE,283,175,81,68,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    CONTROL         "List2",IDC_CHAR_GENERAL_ITEM_LIST,"SysListView32",
+                    LVS_REPORT | WS_BORDER | WS_TABSTOP,189,131,90,50
+END
+
+IDD_IMAGEFILECREATE_DIALOG DIALOG DISCARDABLE  0, 0, 359, 150
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION
+CAPTION "아이템 이미지 파일 생성"
+FONT 10, "돋움"
+BEGIN
+    DEFPUSHBUTTON   "파일 만들기",IDC_IMAGEFILECREATE,292,128,50,15
+    CONTROL         "List1",IDC_ITEMLIST,"SysListView32",LVS_REPORT | 
+                    WS_BORDER | WS_TABSTOP,78,39,98,88
+    COMBOBOX        IDC_SUBTYPE,78,23,59,65,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    LTEXT           "Top : ",IDC_STATIC,281,27,20,8
+    LTEXT           "Bottom : ",IDC_STATIC,281,45,29,8
+    LTEXT           "Left : ",IDC_STATIC,281,61,19,8
+    LTEXT           "Right : ",IDC_STATIC,281,78,24,8
+    EDITTEXT        IDC_TOP,312,24,40,15,ES_AUTOHSCROLL
+    EDITTEXT        IDC_BOTTOM,312,41,40,15,ES_AUTOHSCROLL
+    EDITTEXT        IDC_LEFT,312,58,40,15,ES_AUTOHSCROLL
+    EDITTEXT        IDC_RIGHT,312,75,40,15,ES_AUTOHSCROLL
+    CONTROL         "남자",IDC_MAN,"Button",BS_AUTORADIOBUTTON | WS_GROUP,78,
+                    10,31,10
+    CONTROL         "여자",IDC_WOMAN,"Button",BS_AUTORADIOBUTTON | WS_GROUP,
+                    109,10,31,10
+    CONTROL         "왼쪽",IDC_LEFTBUTTON,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,282,9,27,10
+    CONTROL         "오른쪽",IDC_RIGHTBUTTON,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,314,9,35,10
+    CONTROL         "List1",IDC_ITEMVIEWLIST,"SysListView32",LVS_REPORT | 
+                    WS_BORDER | WS_TABSTOP,181,39,95,88
+    PUSHBUTTON      "이동 -->",IDC_MOVE,141,22,35,15
+    PUSHBUTTON      "리스트 삭제",IDC_LISTDELETE,181,21,50,15
+    LTEXT           "width : ",IDC_STATIC,281,96,25,8
+    LTEXT           "Height : ",IDC_STATIC,282,113,28,8
+    EDITTEXT        IDC_WIDTH,312,93,40,15,ES_AUTOHSCROLL
+    EDITTEXT        IDC_HEIGHT,312,110,40,15,ES_AUTOHSCROLL
+END
+
+IDD_REGISTRYINFO_DIALOG DIALOGEX 0, 0, 295, 481
+STYLE DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "레지스트리 정보"
+FONT 9, "돋움", 0, 0, 0x1
+BEGIN
+    PUSHBUTTON      "REGISTRY",IDC_REGISTRY,184,457,50,15
+    PUSHBUTTON      "Cancel",IDCANCEL,238,457,50,15
+    LTEXT           "캐릭터 정보 메모리 사이즈 :",IDC_STATIC,14,378,90,11
+    EDITTEXT        IDC_CHARMEM_SIZE,107,374,35,15,ES_AUTOHSCROLL,
+                    WS_EX_STATICEDGE
+    LTEXT           "이미지 캐쉬 메모리 사이즈 :",IDC_STATIC,151,395,90,11
+    EDITTEXT        IDC_IMAGECACHEMEM_SIZE,244,392,35,15,ES_AUTOHSCROLL,
+                    WS_EX_STATICEDGE
+    GROUPBOX        "메모리 정보",IDC_STATIC,7,363,281,90,0,
+                    WS_EX_DLGMODALFRAME
+    LTEXT           "아이템 정보 메모리 사이즈 :",IDC_STATIC,151,377,88,11
+    EDITTEXT        IDC_ITEMMEM_SIZE,244,374,35,15,ES_AUTOHSCROLL,
+                    WS_EX_STATICEDGE
+    GROUPBOX        "로그 파일 정보",IDC_STATIC,7,1,281,100,0,
+                    WS_EX_DLGMODALFRAME
+    LTEXT           "SYSTEM LOG :",IDC_STATIC,15,14,58,9
+    EDITTEXT        IDC_SYSTEM_LOG_EDIT,15,25,215,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_SYSLOG_SEARCH,233,26,50,15
+    LTEXT           "PROCESS LOG :",IDC_STATIC,15,56,66,9
+    EDITTEXT        IDC_PROCESS_LOG_EDIT,15,66,215,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_PROCESSLOG_SEARCH,233,66,50,15
+    LTEXT           "파일명 :",IDC_STATIC,15,44,32,9
+    LTEXT           "파일명 :",IDC_STATIC,15,85,32,9
+    LTEXT           "",IDC_SYSLOG_FILENAME,45,44,175,11
+    LTEXT           "",IDC_PROCESSLOG_FILENAME,45,85,175,11
+    GROUPBOX        "참조 파일 정보",IDC_STATIC,7,105,281,254,0,
+                    WS_EX_DLGMODALFRAME
+    LTEXT           "데이타 파일경로 :",IDC_STATIC,15,117,76,9
+    EDITTEXT        IDC_DATA_FILEDIR,15,128,215,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_DATAFILEDIR_SEARCH,232,128,50,15
+    LTEXT           "SPRITE 파일경로 :",IDC_STATIC,15,148,74,9
+    EDITTEXT        IDC_SPRITE_FILEDIR,15,159,215,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_SPRITEFILEDIR_SEARCH,232,159,50,15
+    EDITTEXT        IDC_CHARINFO_FILENAME,92,298,110,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_CHARINFOFILE_SEARCH,209,298,50,15
+    LTEXT           "아이템 정보 파일 :",IDC_STATIC,15,320,72,9
+    EDITTEXT        IDC_ITEMINFO_FILENAME,92,317,110,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_ITEMINFOFILE_SEARCH,209,317,50,15
+    LTEXT           "캐릭터 정보 파일 :",IDC_STATIC,15,301,73,9
+    LTEXT           "이미지 저장 경로 :",IDC_STATIC,15,178,78,9
+    EDITTEXT        IDC_IMAGE_SAVEDIR,15,189,215,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_IMAGESAVEDIR_SEARCH,232,189,50,15
+    LTEXT           "이미지 요청 확인 URL :",IDC_STATIC,15,237,99,9
+    EDITTEXT        IDC_IMAGE_VIEW_REQUEST_URL,15,248,215,15,ES_AUTOHSCROLL
+    LTEXT           "표정 정보 메모리 사이즈 :",IDC_STATIC,14,395,87,11
+    EDITTEXT        IDC_EXPRINFOMEM_SIZE,107,392,35,15,ES_AUTOHSCROLL,
+                    WS_EX_STATICEDGE
+    LTEXT           "표정 정보 파일 :",IDC_STATIC,15,339,72,9
+    EDITTEXT        IDC_EXPRINFO_FILENAME,92,336,110,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "찾아보기",IDC_EXPRINFOFILE_SEARCH,209,336,50,15
+    LTEXT           "이미지 캐쉬 메모리 체크 타임 :",IDC_STATIC,15,430,97,11
+    EDITTEXT        IDC_IMAGECACHEMEM_CHECK_TIME,116,426,27,15,
+                    ES_AUTOHSCROLL,WS_EX_STATICEDGE
+    LTEXT           "이미지 서버 모니터링 URL :",IDC_STATIC,15,269,99,9
+    EDITTEXT        IDC_IMAGE_SERVER_MONITORING_URL,15,279,215,15,
+                    ES_AUTOHSCROLL
+    LTEXT           "이미지 캐쉬 메모리 체크 유무( 1 : 체크, 0 : 체크 안함 ) :",
+                    IDC_STATIC,15,414,178,11
+    EDITTEXT        IDC_IMAGECACHEMEM_CHECK,195,410,27,15,ES_AUTOHSCROLL,
+                    WS_EX_STATICEDGE
+    LTEXT           "이미지 요청 URL :",IDC_STATIC,14,208,99,9
+    EDITTEXT        IDC_IMAGE_REQUEST_URL,14,218,215,15,ES_AUTOHSCROLL
+END
+
+
+#ifndef _MAC
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "041204B0"
+        BEGIN
+            VALUE "CompanyName", "\0"
+            VALUE "FileDescription", "AvatarImageTool MFC 응용 프로그램\0"
+            VALUE "FileVersion", "1, 0, 0, 1\0"
+            VALUE "InternalName", "AvatarImageTool\0"
+            VALUE "LegalCopyright", "Copyright (C) 2003\0"
+            VALUE "LegalTrademarks", "\0"
+            VALUE "OriginalFilename", "AvatarImageTool.EXE\0"
+            VALUE "ProductName", "AvatarImageTool 응용 프로그램\0"
+            VALUE "ProductVersion", "1, 0, 0, 1\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x412, 1200
+    END
+END
+
+#endif    // !_MAC
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO DISCARDABLE 
+BEGIN
+    IDD_AVATARIMAGETOOL_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 364
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 264
+    END
+
+    IDD_IMAGEFILECREATE_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 352
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 143
+    END
+
+    IDD_REGISTRYINFO_DIALOG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 288
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 474
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+#endif    // Korean resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_KOR)
+#ifdef _WIN32
+LANGUAGE 18, 1
+#pragma code_page(949)
+#endif //_WIN32
+#include "res\AvatarImageTool.rc2"  // non-Microsoft Visual C++ edited resources
+#include "l.kor\afxres.rc"          // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+
