@@ -5,6 +5,11 @@
 #pragma once
 #include <afxcmn.h>
 
+#include "AvatarImageDefine.h"
+#include "AvatarImageStream.h"
+#include "Character.h"
+#include "DrawImage.h"
+
 #define DHT_NONE		0x00
 #define DHT_CLOSE		0x01
 #define DHT_MIN			0x02
@@ -76,6 +81,9 @@ private:
 	void	CharacterDrawGeneralItemListUpdate(int nItemNumber);
 	void	ItemDrawListUpdate(int nItemNumber);
 
+	void	ImageDraw(int nCheck);
+	BOOL	DrawingImage(const TCHAR* ptszDirection);
+	BOOL	GetDrawingInfo(const TCHAR* ptszImageInfo, AVATAR_DRAWING_ITEM_INFO& DrawItemInfo);
 	DWORD	HitTest(CPoint point);
 
 private:
@@ -87,6 +95,16 @@ private:
 
 	int			m_nAvatar;
 	int			m_nBufSize;
+	int			m_nAboveBufferSize;
+	int			m_nExprBufferSize;
+	int			m_nUnderBufferSize;
+
+	BYTE		m_bBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
+	BYTE		m_bAboveBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
+	BYTE		m_bExprBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
+	BYTE		m_bUnderBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
+
+	TCHAR		m_tszEncString[AVATARITEM_QUERYSTRING_DATA_STR_ENC_LEN];
 
 	CRect		m_rcClose;
 	CRect		m_rcMin;

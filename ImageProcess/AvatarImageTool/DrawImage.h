@@ -52,11 +52,11 @@ class CDrawImage
 {
 public:
 	CDrawImage();
-	CDrawImage(TCHAR* pszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType = 0);
+	CDrawImage(const TCHAR* pszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType = 0);
 	~CDrawImage();
 
 public:
-	void		SetCanvasInfo(TCHAR* pszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType);
+	void		SetCanvasInfo(const TCHAR* pszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType);
 
 	BOOL		SetItemInfoMemDB(int nLayerExpr, TCHAR* tszDirection, int nCharacter, int nExprImageNum, int* pnItemNumber, int nItemCount, RECT rRect, int nWidth, int nHeight);
 	BOOL		SetItemInfoMemDB(int nLayerExpr, int nDrawType, TCHAR* tszDirection, int nCharacter, int nExpression, int* pnItemNumber, int nItemCount, CImageInfo& ImageInfo);
@@ -67,7 +67,7 @@ public:
 	BOOL		SetItemInfoMemDB(int* pnSrcItem, int nSrcSize, BYTE*& pbBuffer, int& nBufferSize);
 
 private:
-	void		Init(TCHAR* ptszSprFilePath);
+	void		Init(const TCHAR* ptszSprFilePath);
 	void		Create(int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType = 0);
 
 	BOOL		Draw(int nLayerExpr, TCHAR* tszDirection, int nCharacter, int nExprImageNum, RECT rRect, int nWidth, int nHeight, CItemInfoList*& pItemInfoList);

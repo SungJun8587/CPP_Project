@@ -50,6 +50,7 @@ using namespace std;
 #include <Util/EncodingConvert.h>
 #include <Util/DirectoryUtil.h>
 #include <Util/FileUtil.h>
+#include <Util/WebUtil.h>
 #include <Util/KeyedTable.h>
 #include <Util/TextFieldParser.h>
 #include <Util/DelimitedRowFile.h>

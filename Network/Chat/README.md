@@ -1,6 +1,6 @@
 # ChatApp 컨셉 가이드
 
-Oct 2, 2026 · @성준
+Oct 2, 2026 · 성준
 
 ## 개요
 
@@ -38,7 +38,9 @@ ChatApp은 C++ IOCP 기반 채팅 서버와 C# WinForms 클라이언트로 구�
 
 클라이언트와 서버는 TCP 커스텀 프로토콜로 통신한다. 서버는 MySQL(계정·방·메시지 영구 저장)과 Redis(로그인 상태·온라인 카운터 등 실시간 데이터)를 함께 쓰고, 첨부파일·프로필 이미지는 별도 파일 서버가 HTTP로 처리한다.
 
-&#91;embedded content: 전체 구조 · 클라이언트·채팅 서버·파일 서버·MySQL·Redis\]
+![전체 구조 · 클라이언트·채팅 서버·파일 서버·MySQL·Redis](Doc/md_images/01-overall-architecture.png)
+
+*전체 구조 · 클라이언트·채팅 서버·파일 서버·MySQL·Redis*
 
 채팅 서버는 클라이언트(TCP)·MySQL(ODBC)·Redis와 연결된다. 파일 서버는 채팅 서버와 직접 통신하지 않고, 클라이언트의 HTTP 요청과 Redis(업로드 토큰·삭제 예약)만 다룬다.
 
@@ -46,7 +48,7 @@ ChatApp은 C++ IOCP 기반 채팅 서버와 C# WinForms 클라이언트로 구�
 
 ### 네트워크 I/O
 
-- IOCP 비동기 모델 — `AcceptEx`/`ConnectEx`로 연결을 맺고, 이후 모든 송수신은 `WSARecv`/`WSASend` 완료 통지로만 진행된다. 세션당 recv 1개, send 1개까지만 동시에 진행 중인 것을 전제로 설계했다.
+- IOCP 비동기 모델 — `AcceptEx` / `ConnectEx` 로 연결을 맺고, 이후 모든 송수신은 `WSARecv` / `WSASend` 완료 통지로만 진행된다. 세션당 recv 1개, send 1개까지만 동시에 진행 중인 것을 전제로 설계했다.
 - 진행 중 I/O 카운트(`_pendingIoCount`) — 진행 중인 Recv·Send·DisconnectEx 완료 통지가 모두 돌아오고 종료 요청도 끝난 시점에만 세션 정리를 마무리한다. 종료 통지(OnDisconnected)는 CAS 가드로 한 번만 호출된다.
 - 수신 링버퍼(`CRingBuffer`) — 버퍼 끝에서 앞으로 되감기는(wrap) 구조라, 경계를 넘는 데이터는 최대 2개의 연속 구간(`WSABUF[2]`)으로 WSARecv에 넘기고, 한 덩어리로 읽어야 할 때는 선형으로 복사해(Peek) 읽는다. 송신은 링버퍼 대신 청크 기반 `CSendBuffer`를 모아 scatter-gather로 한 번에 WSASend한다.
 
@@ -70,7 +72,9 @@ ChatApp은 C++ IOCP 기반 채팅 서버와 C# WinForms 클라이언트로 구�
 
 CChatSession이 CIocpSession을 상속해 IOCP 송수신을 담당하고, 패킷은 디스패처가 타입별 핸들러로 라우팅한다. 로직은 전부 CChatServerMain에 모이고, 거기서 Redis와 DB는 각각 비동기 서비스 계층(CRedisService, COdbcAsyncSrv)을 거쳐 커넥션 풀에 접근한다.
 
-&#91;embedded content: 서버 클래스 구조 · IOCP 엔진이 세션을 만들고 CChatServerMain이 Redis·DB를 조율\]
+![서버 클래스 구조 · IOCP 엔진이 세션을 만들고 CChatServerMain이 Redis·DB를 조율](Doc/md_images/02-server-class-structure.png)
+
+*서버 클래스 구조 · IOCP 엔진이 세션을 만들고 CChatServerMain이 Redis·DB를 조율*
 
 세션 → 서버 → Redis/DB로 이어지는 호출 방향이 곧 책임의 경계다: 세션은 네트워크만, 서버는 로직만, 서비스 계층은 커넥션 관리만 맡는다.
 
@@ -78,7 +82,9 @@ CChatSession이 CIocpSession을 상속해 IOCP 송수신을 담당하고, 패킷
 
 네트워크 계층은 엔진(IOCP, RIO)에 독립적인 공통 기반 위에 쌓여 있다. CNetworkFactory가 IOCP 코어 또는 RIO 코어(EngineCoreRef)를 받아 std::visit로 해당 엔진의 서버·클라이언트 서비스와 세션을 만들고, CNetService와 CSession이 두 엔진이 공유하는 계약을 정의한다.
 
-&#91;embedded content: 엔진 추상화 계층 · 팩토리, 서비스·세션 기반, IOCP/RIO 구현\]
+![엔진 추상화 계층 · 팩토리, 서비스·세션 기반, IOCP/RIO 구현](Doc/md_images/03-engine-abstraction-layer.png)
+
+*엔진 추상화 계층 · 팩토리, 서비스·세션 기반, IOCP/RIO 구현*
 
 CNetService는 세션 생성·추적과 종료 대기(Close)를, CSession은 세션 ID·상태·송수신 훅을 맡는다. 확장 함수(AcceptEx, ConnectEx, DisconnectEx)는 CSocketUtils가 로드하고, 수신 데이터는 CRingBuffer가 쌓는다.
 
@@ -86,7 +92,9 @@ CNetService는 세션 생성·추적과 종료 대기(Close)를, CSession은 세
 
 IOCP 쪽은 객체를 코어에 등록해 두면 완료 통지가 왔을 때 코어가 그 객체의 Dispatch()를 호출한다는 한 가지 규칙으로 묶인다. 리스너와 세션이 모두 CIocpObject를 구현하고, 서버 서비스가 워커 풀·리스너·세션 매니저를 소유한다.
 
-&#91;embedded content: IOCP 클래스 구조 · 서비스·코어·리스너·세션·세션 매니저\]
+![IOCP 클래스 구조 · 서비스·코어·리스너·세션·세션 매니저](Doc/md_images/04-iocp-class-structure.png)
+
+*IOCP 클래스 구조 · 서비스·코어·리스너·세션·세션 매니저*
 
 채팅 세션(CChatSession)은 CIocpSession을 상속해 OnRecv에서 헤더 단위로 패킷을 잘라 디스패처에 넘긴다. 클라이언트 쪽 CChatClientSession과 스트레스 테스트의 CChatStressSession도 같은 CIocpSession을 상속한다.
 
@@ -94,15 +102,19 @@ IOCP 쪽은 객체를 코어에 등록해 두면 완료 통지가 왔을 때 코
 
 CIocpSession 안에서 수신은 CRingBuffer로, 송신은 CSendBuffer 묶음으로 갈라진다. 세션당 Recv와 Send는 각각 1개씩만 진행 중이고, 모든 I/O 요청은 CIocpEvent(OVERLAPPED)로 게시되며 이벤트의 owner가 완료 통지가 올 때까지 세션을 살려 둔다.
 
-&#91;embedded content: 세션 내부 경로 · 수신 링버퍼, 송신 청크 버퍼, 이벤트\]
+![세션 내부 경로 · 수신 링버퍼, 송신 청크 버퍼, 이벤트](Doc/md_images/05-session-internal-path.png)
 
-수신은 링버퍼에 쌓인 데이터를 CChatSession의 OnRecv가 헤더(size, type) 기준으로 완성된 패킷만 잘라 CPacketDispatcher로 넘긴다. 송신은 CSendBufferManager가 스레드별 청크(8KB)에서 구간을 열어 CSendBuffer로 주고, 세션이 \_sendQueue에 모아 scatter-gather로 한 번에 WSASend한다.
+*세션 내부 경로 · 수신 링버퍼, 송신 청크 버퍼, 이벤트*
+
+수신은 링버퍼에 쌓인 데이터를 CChatSession의 OnRecv가 헤더(size, type) 기준으로 완성된 패킷만 잘라 CPacketDispatcher로 넘긴다. 송신은 CSendBufferManager가 스레드별 청크(8KB)에서 구간을 열어 CSendBuffer로 주고, 세션이 _sendQueue에 모아 scatter-gather로 한 번에 WSASend한다.
 
 ## Redis 클래스 구조
 
 Redis 계층도 IOCP 위에 얹혀 있다. CRedisClient가 CIocpObject를 구현해 연결 1개를 IOCP 코어에 등록하고, CRedisConnectionPool이 노드별로 이 클라이언트들을 빌려주고 되돌려 받는다.
 
-&#91;embedded content: Redis 클래스 구조 · 서비스·연결 풀·클라이언트·파서·JobQueue\]
+![Redis 클래스 구조 · 서비스·연결 풀·클라이언트·파서·JobQueue](Doc/md_images/06-redis-class-structure.png)
+
+*Redis 클래스 구조 · 서비스·연결 풀·클라이언트·파서·JobQueue*
 
 명령은 CRedisCommandBuilder가 RESP 바이트로 만들어 보내고, 응답은 CRedisParser가 RedisValue로 조립한다. 풀의 연결이 모두 사용 중이면 요청은 대기 큐(상한 2000)에 쌓이고, 상한을 넘기면 SendCommand가 false를 반환한다. 그래서 처리량은 대체로 풀 크기 ÷ 왕복 시간으로 정해진다.
 
@@ -118,9 +130,13 @@ Redis 계층도 IOCP 위에 얹혀 있다. CRedisClient가 CIocpObject를 구현
 
 CRedisClient 하나는 소켓 하나를 소유한 CIocpObject다. 접속은 논블로킹 connect와 select로 시간 제한(기본 3초)을 걸고, TCP keepalive(30초 유휴 후 10초 간격)를 켠 뒤 IOCP에 등록하고 첫 WSARecv를 게시한다. 논리 DB가 0이 아니면 SELECT까지 마쳐야 접속이 성공한다.
 
-&#91;embedded content: Redis 클라이언트 내부 경로 · 빌더, 송신 버퍼, 이벤트, 링버퍼, 파서\]
+![Redis 클라이언트 내부 경로 · 빌더, 송신 버퍼, 이벤트, 링버퍼, 파서](Doc/md_images/07-redis-client-internal-path.png)
 
-송신은 CRedisCommandBuilder가 크기를 먼저 계산하고, CSendBufferManager에서 연 버퍼에 RESP를 직접 기록한다(중간 std::string 복사 없음). 명령이 청크 크기(8KB)를 넘으면 여러 CSendBuffer로 나눠 담아 scatter-gather로 한 번에 보내고, 부분 전송은 남은 구간부터 이어 보낸다. 수신은 링버퍼의 연속 구간을 CRedisParser에 순서대로 넘기며, 파서는 미완성 데이터를 자체 누적 버퍼에 보관한다. 파서 누적 상한(16MB) 초과나 RESP 형식 오류가 나면 연결을 끊고, 대기 중이던 콜백은 사유별 에러 문자열로 완료된다. 파서는 배열 원소 수(4096)와 중첩 깊이(64)에도 상한을 둔다.
+*Redis 클라이언트 내부 경로 · 빌더, 송신 버퍼, 이벤트, 링버퍼, 파서*
+
+송신은 CRedisCommandBuilder가 크기를 먼저 계산하고, CSendBufferManager에서 연 버퍼에 RESP를 직접 기록한다(중간 std::string 복사 없음). 명령이 청크 크기(8KB)를 넘으면 여러 CSendBuffer로 나눠 담아 scatter-gather로 한 번에 보내고, 부분 전송은 남은 구간부터 이어 보낸다.
+
+수신은 링버퍼의 연속 구간을 CRedisParser에 순서대로 넘기며, 파서는 미완성 데이터를 자체 누적 버퍼에 보관한다. 파서 누적 상한(16MB) 초과나 RESP 형식 오류가 나면 연결을 끊고, 대기 중이던 콜백은 사유별 에러 문자열로 완료된다. 파서는 배열 원소 수(4096)와 중첩 깊이(64)에도 상한을 둔다.
 
 ### 응답 읽기
 
@@ -136,17 +152,19 @@ UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구
 
 ### 클라이언트 구조
 
-&#91;embedded content: HTTP 클라이언트 구조\]
+![HTTP 클라이언트 구조](Doc/md_images/08-http-client-structure.png)
 
-- CHttpClient: URL의 scheme으로 평문/HTTPS 매니저를 골라 요청을 보낸다. SSL\_CTX 없이 만들면 https 요청은 즉시 실패(success=false)로 통지된다.
+*HTTP 클라이언트 구조*
+
+- CHttpClient: URL의 scheme으로 평문/HTTPS 매니저를 골라 요청을 보낸다. SSL_CTX 없이 만들면 https 요청은 즉시 실패(success=false)로 통지된다.
 - CHttpConnPoolManager: host(hostname:port)별 풀을 지연 생성해 캐싱한다. 같은 host로 첫 요청이 동시에 오면 한 스레드만 DNS 해석과 풀 생성을 맡는다. 주소는 기본 60초마다 다시 해석하고, 종료 시에는 모든 세션이 정리될 때까지 기다릴 수 있다.
-- CHttpConnPoolT: host 하나의 풀이며, 세션·서비스 타입을 템플릿 파라미터로 받아 IOCP와 RIO가 같은 코드를 쓴다. 초기에는 minIdle개만 연결하고, 유휴 세션이 없어 요청이 대기열에 쌓이면 maxConnections까지 늘린다. 끊긴 연결은 지수 백오프(200ms\~10초)로 다시 채우고, 멱등 요청은 1회 자동 재시도하며, 무응답 타임아웃 기본값은 30초다.
+- CHttpConnPoolT: host 하나의 풀이며, 세션·서비스 타입을 템플릿 파라미터로 받아 IOCP와 RIO가 같은 코드를 쓴다. 초기에는 minIdle개만 연결하고, 유휴 세션이 없어 요청이 대기열에 쌓이면 maxConnections까지 늘린다. 끊긴 연결은 지수 백오프(200ms~10초)로 다시 채우고, 멱등 요청은 1회 자동 재시도하며, 무응답 타임아웃 기본값은 30초다.
 - CHttpSessionIocp / CHttpSessionRio: 엔진 세션의 훅을 CHttpClientChannel로 이어 주는 얇은 어댑터다. 채널은 평문이면 CHttpClientCore로 바이트를 직접 전달하고, HTTPS면 CTlsFilter(OpenSSL 메모리 BIO)로 암·복호화한 뒤 전달한다.
 - CHttpClientCore: 커넥션 하나에서 요청을 한 번에 하나씩만 처리한다(파이프라이닝 없음). 완료 콜백은 정확히 한 번, 락 밖에서 호출한다.
 
 ### 메시지 파서와 빌더
 
-&#91;embedded content: HTTP 메시지 파서·빌더 구조\]
+<!-- 다이어그램 "HTTP 메시지 파서·빌더 구조": 원본 PDF에 이미지가 포함되어 있지 않음 -->
 
 - 파서: CHttpMessageParser가 헤더·Content-Length·chunked·trailer 처리와 줄·헤더·본문 상한을 담당하고, 요청/응답 파서는 시작 줄과 본문 길이 규칙만 구현한다. 헤더 이름 앞뒤 공백, 서로 다른 Content-Length 중복처럼 메시지 경계가 모호해지는 입력은 모두 Error로 처리한다.
 - 대용량 본문: CHttpRequestParser는 기본적으로 본문을 메모리에 누적하되 64MB를 넘으면 Error로 처리한다. 헤더 완료 콜백에서 본문 스트림 콜백을 걸면 본문을 누적하지 않고 흘려보내며, 요청별로 상한을 따로 줄 수 있다. 파일 서버의 업로드가 이 경로를 쓴다.
@@ -158,11 +176,11 @@ UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구
 
 파일 서버는 채팅 서버와 별개 프로세스로 동작하는 HTTP 서버다. 네트워크 계층(CIocpCore, CIocpServerService)과 Redis 계층(CRedisService), CJobQueue를 그대로 재사용하고, 세션만 HTTP를 해석하는 CFileServerSession으로 바꿨다. 채팅 서버와는 서로 직접 통신하지 않는다. 두 서버가 같은 Redis를 바라보며 업로드 토큰과 삭제 예약 목록을 주고받고, 클라이언트는 채팅 서버에서 받은 주소와 토큰으로 파일 서버에 직접 HTTP 요청을 보낸다.
 
-&#91;embedded content: 파일 서버 클래스 구조\]
+<!-- 다이어그램 "파일 서버 클래스 구조": 원본 PDF에 이미지가 포함되어 있지 않음 -->
 
 ### 업로드 흐름
 
-- 요청은 멀티파트로 받으며 본문을 메모리에 모으지 않고 임시 파일(upload\_{랜덤 hex}.tmp)에 스트리밍으로 기록한다. 허용 크기는 MaxUploadBytes로 제한한다.
+- 요청은 멀티파트로 받으며 본문을 메모리에 모으지 않고 임시 파일(upload_{랜덤 hex}.tmp)에 스트리밍으로 기록한다. 허용 크기는 MaxUploadBytes로 제한한다.
 - 채팅 서버가 Redis에 발급한 일회용 토큰(UploadToken:{token})을 GET 후 DEL로 소비한다. 토큰이 없거나 이미 사용되었으면 거부한다.
 - 검증이 끝나면 저장소로 옮기고 메타데이터를 등록한 뒤 PublicBaseUrl 기반의 접근 URL을 응답한다.
 - 상태 코드: 잘못된 요청 400, 토큰 오류 401, 크기 초과 413, 저장 실패 500, 성공 200.
@@ -192,9 +210,9 @@ UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구
 - 주소 일치: 위 접두사 판별이 파일 서버가 만드는 공개 URL과 같은 형식이어야 하므로, 채팅 서버의 FileServerUrl과 파일 서버의 PublicBaseUrl은 같은 주소로 맞춘다.
 - 클라이언트 경로: 채팅 서버는 파일 바이트를 중계하지 않는다. 업로드와 다운로드는 클라이언트가 파일 서버로 직접 보낸다.
 
-### 채팅 서버 설정 (chatserver\_config\_mysql.json)
+### 채팅 서버 설정 (chatserver_config_mysql.json)
 
-채팅 서버는 실행 폴더의 chatserver\_config\_mysql.json을 읽는다. 파일 서버와 맞물리는 항목은 FileServerUrl과 RedisNode다.
+채팅 서버는 실행 폴더의 chatserver_config_mysql.json을 읽는다. 파일 서버와 맞물리는 항목은 FileServerUrl과 RedisNode다.
 
 | 항목 | 설명 | 기본값 |
 | --- | --- | --- |
@@ -211,7 +229,7 @@ UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구
 | DBNode | 접속할 DB 노드(ODBC 드라이버, 주소, DB 이름 등) | MySQL, 127.0.0.1:3306, chat |
 | RedisNode | 접속할 Redis 노드. 파일 서버와 같은 Redis를 가리켜야 한다 | 1, 127.0.0.1:16379, 0 |
 
-### 파일 서버 설정 (fileserver\_config\_mysql.json)
+### 파일 서버 설정 (fileserver_config_mysql.json)
 
 | 항목 | 설명 | 기본값 |
 | --- | --- | --- |

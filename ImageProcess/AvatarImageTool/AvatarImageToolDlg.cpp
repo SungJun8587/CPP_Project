@@ -23,6 +23,22 @@ CAvatarImageToolDlg::CAvatarImageToolDlg(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_AVATARIMAGETOOL_DIALOG, pParent)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
+
+	//m_pItemImageCreateDlg = NULL;
+	*m_bAboveBuffer = NULL;
+	*m_bExprBuffer = NULL;
+	*m_bUnderBuffer = NULL;
+	*m_bBuffer = NULL;
+	m_nBufSize = 0;
+	m_nAboveBufferSize = 0;
+	m_nExprBufferSize = 0;
+	m_nUnderBufferSize = 0;
+	m_nAvatar = 0;
+	m_nSubType = 0;
+	m_nGender = 0;
+	m_nDrawStyle = 0;
+	m_nExpression = 0;
+	m_tszEncString[0] = '\0';
 }
 
 void CAvatarImageToolDlg::DoDataExchange(CDataExchange* pDX)
@@ -46,6 +62,7 @@ BEGIN_MESSAGE_MAP(CAvatarImageToolDlg, CDialogEx)
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
 
+	ON_NOTIFY(NM_DBLCLK, IDC_AVATAR_LIST, OnDblclkAvatarList)
 	ON_NOTIFY(NM_DBLCLK, IDC_ITEM_LIST, OnDblclkItemList)
 	ON_CBN_SELCHANGE(IDC_SUBTYPE, OnSelchangeSubtype)
 	ON_CBN_SELCHANGE(IDC_GENDER, OnSelchangeGender)
@@ -233,6 +250,62 @@ void CAvatarImageToolDlg::OnPaint()
 		catch( const ImageException& ) {}
 
 		DrawTitleButtons(dc);
+
+		ImageDraw(AVATARITEM_IMAGE_ABOVE_LAYER);
+		ImageDraw(AVATARITEM_IMAGE_EXPR_LAYER);
+		ImageDraw(AVATARITEM_IMAGE_UNDER_LAYER);
+		ImageDraw(AVATARITEM_IMAGE_TOTAL_LAYER);
+	}
+}
+
+//***************************************************************************
+//
+void CAvatarImageToolDlg::ImageDraw(int nCheck)
+{
+	int nBufferSize = 0;
+	int nX = 50, nY = 56;
+	int nWidth = 120, nHeight = 170;
+
+	BYTE* pBuffer = NULL;
+
+	if( nCheck == AVATARITEM_IMAGE_ABOVE_LAYER )
+	{
+		nX = 20;
+		pBuffer = m_bAboveBuffer;
+		nBufferSize = m_nAboveBufferSize;
+	}
+	else if( nCheck == AVATARITEM_IMAGE_EXPR_LAYER )
+	{
+		nX = 20 + nWidth + 20;
+		pBuffer = m_bExprBuffer;
+		nBufferSize = m_nExprBufferSize;
+	}
+	else if( nCheck == AVATARITEM_IMAGE_UNDER_LAYER )
+	{
+		nX = 20 + nWidth * 2 + 40;
+		pBuffer = m_bUnderBuffer;
+		nBufferSize = m_nUnderBufferSize;
+	}
+	else
+	{
+		nX = 20 + nWidth * 3 + 60;
+		pBuffer = m_bBuffer;
+		nBufferSize = m_nBufSize;
+	}
+
+	if( pBuffer == nullptr || nBufferSize <= 0 ) return;	// 기존 CxImage는 빈 버퍼를 조용히 무시
+
+	CClientDC dc(this);
+
+	try
+	{
+		ImageProcessor xImage;
+		xImage.LoadFromMemory(pBuffer, static_cast<size_t>(nBufferSize));
+		Win32Draw::DrawToDCAlpha(dc.GetSafeHdc(), xImage.Buffer(), nX, nY);	// 원본 크기 (= GetWidth/GetHeight)
+	}
+	catch( const ImageException& )
+	{
+		// TODO: 디코딩 실패 처리
 	}
 }
 
@@ -290,7 +363,7 @@ void CAvatarImageToolDlg::OnLButtonUp(UINT nFlags, CPoint point)
 	m_ButtonDown = DHT_NONE;
 	m_LastHit = DHT_NONE;
 	ReleaseCapture();
-	//Invalidate(FALSE);
+	Invalidate(FALSE);
 
 	if( hit != pressed ) return;		// 누른 버튼 위에서 뗐을 때만 동작
 
@@ -678,6 +751,7 @@ void CAvatarImageToolDlg::OnDblclkAvatarList(NMHDR* pNMHDR, LRESULT* pResult)
 	else if( m_bWomanAvatar ) m_nAvatar = m_ctrlAvatarList.GetItemCount() + nIndex + 1;
 
 	CharacterDrawGeneralItemList();
+	OnLeftDraw();
 
 	*pResult = 0;
 }
@@ -786,7 +860,6 @@ void CAvatarImageToolDlg::ItemDrawListUpdate(int nItemNumber)
 	BOOL	bCoverageCheck = true;
 	int		nCuritem = 0;
 	TCHAR	tszIndex[8];
-	TCHAR	tszBuffer[32];
 	TCHAR	tszMessage[MAX_BUFFER_SIZE];
 
 	LV_ITEM lvitem;
@@ -811,9 +884,8 @@ void CAvatarImageToolDlg::ItemDrawListUpdate(int nItemNumber)
 
 	for( i = 0; i < nCount; i++ )
 	{
-		m_ctrlItemDrawList.GetItemText(i, 1, tszBuffer, sizeof(tszBuffer));
-
-		g_ItemInfoListMem.Search(_ttoi(tszBuffer), TempItemInfoList);
+		int nTempNumber = _ttoi(m_ctrlItemDrawList.GetItemText(i, 1));
+		g_ItemInfoListMem.Search(nTempNumber, TempItemInfoList);
 		if( (ItemInfoList.m_ItemImageInfo.m_nCoverageMask & TempItemInfoList.m_ItemImageInfo.m_nCoverageMask) != 0 )
 		{
 			bCoverageCheck = false;
@@ -850,7 +922,7 @@ void CAvatarImageToolDlg::ItemDrawListUpdate(int nItemNumber)
 void CAvatarImageToolDlg::OnLeftDraw()
 {
 	// TODO: Add your control notification handler code here
-	//DrawingImage(_T("L"));
+	DrawingImage(_T("L"));
 	InvalidateRect(NULL);
 }
 
@@ -859,6 +931,187 @@ void CAvatarImageToolDlg::OnLeftDraw()
 void CAvatarImageToolDlg::OnRightDraw()
 {
 	// TODO: Add your control notification handler code here
-	//DrawingImage(_T("R"));
+	DrawingImage(_T("R"));
 	InvalidateRect(NULL);
+}
+
+//***************************************************************************
+//
+BOOL CAvatarImageToolDlg::DrawingImage(const TCHAR* ptszDirection)
+{
+	int		nCount = 0;
+	int		nItemNumber[AVATARITEM_MAX_EQUIPMENTS] = { 0 };
+
+	TCHAR	tszEncString[AVATARITEM_QUERYSTRING_DATA_STR_ENC_LEN];
+	TCHAR	tszQueryString[HTTP_QUERYSTRING_STRLEN];
+
+	CDrawImage					DrawImage;
+	CImageInfo					ImageInfo;
+	AVATAR_DRAWING_ITEM_INFO	DrawItemInfo;
+
+	DrawImage.SetCanvasInfo(AVATARITEM_AVATARINFO_FILEPATH, AVATARITEM_IMAGE_SIZE_WIDTH, AVATARITEM_IMAGE_SIZE_HEIGHT, 24, 8, AVATARITEM_IMAGE_LAYER_TOTAL, 0);
+
+	for( int i = 0; i < m_ctrlItemDrawList.GetItemCount() && nCount < AVATARITEM_MAX_EQUIPMENTS; i++ )
+	{
+		int nTemp = _ttoi(m_ctrlItemDrawList.GetItemText(i, 1));
+		if( nTemp > 534 )
+			nItemNumber[nCount++] = nTemp;
+	}
+
+	nItemNumber[nCount] = 3377;
+	nCount++;
+
+	_tstring strSrc;
+	for( int i = 0; i < nCount; i++ )
+	{
+		if( i > 0 ) strSrc += _T(',');
+		strSrc += std::to_wstring(nItemNumber[i]);		// MBCS 빌드면 std::to_string
+	}
+
+	_tstring strEnc = Base64Enc(strSrc);
+
+	if( strEnc.length() >= _countof(tszEncString) ) return FALSE;		// 4자리 번호가 섞이면 초과 가능
+	_tcsncpy_s(tszEncString, _countof(tszEncString), strEnc.c_str(), _TRUNCATE);
+	_tcsncpy_s(m_tszEncString, _countof(m_tszEncString), tszEncString, _TRUNCATE);
+
+	_sntprintf_s(tszQueryString, _countof(tszQueryString), _TRUNCATE, _T("?style=%d&side=%s&char=%d&expr=%d&dress=%s"), m_nDrawStyle, ptszDirection, m_nAvatar, m_nExpression + 1, tszEncString);
+	memset(&DrawItemInfo, 0, sizeof(AVATAR_DRAWING_ITEM_INFO));
+	GetDrawingInfo(tszQueryString, DrawItemInfo);
+
+	DrawItemInfo.m_nLayerExpr = AVATARITEM_IMAGE_TOTAL_LAYER;
+	if( !DrawImage.SetItemInfoMemDB(DrawItemInfo, ImageInfo) ) return FALSE;
+	m_nBufSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
+	memcpy(m_bBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nBufSize);
+
+	DrawItemInfo.m_nLayerExpr = AVATARITEM_IMAGE_ABOVE_LAYER;
+	if( !DrawImage.SetItemInfoMemDB(DrawItemInfo, ImageInfo) ) return FALSE;
+	m_nAboveBufferSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
+	memcpy(m_bAboveBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nAboveBufferSize);
+
+	DrawItemInfo.m_nLayerExpr = AVATARITEM_IMAGE_EXPR_LAYER;
+	if( !DrawImage.SetItemInfoMemDB(DrawItemInfo, ImageInfo) ) return FALSE;
+	m_nExprBufferSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
+	memcpy(m_bExprBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nExprBufferSize);
+
+	DrawItemInfo.m_nLayerExpr = AVATARITEM_IMAGE_UNDER_LAYER;
+	if( !DrawImage.SetItemInfoMemDB(DrawItemInfo, ImageInfo) ) return FALSE;
+	m_nUnderBufferSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
+	memcpy(m_bUnderBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nUnderBufferSize);
+
+	return TRUE;
+}
+
+//*************************************************************************
+// 쿼리 구간에서 token(예: "char=")으로 시작하는 값을 추출
+static BOOL GetQueryValue(const TCHAR* ptszQuery, const TCHAR* ptszToken, TCHAR* ptszOut, size_t nOutLen)
+{
+	const size_t nTokenLen = _tcslen(ptszToken);
+	const TCHAR* p = ptszQuery;
+
+	while( *p )
+	{
+		const TCHAR* pEnd = _tcschr(p, _T('&'));
+		const size_t nSegLen = pEnd ? static_cast<size_t>(pEnd - p) : _tcslen(p);
+
+		if( nSegLen >= nTokenLen && _tcsncmp(p, ptszToken, nTokenLen) == 0 )
+		{
+			const size_t nValLen = nSegLen - nTokenLen;
+			if( nValLen == 0 || nValLen >= nOutLen ) return FALSE;	// 비었거나 버퍼 초과
+
+			_tcsncpy_s(ptszOut, nOutLen, p + nTokenLen, nValLen);
+			return TRUE;
+		}
+
+		if( !pEnd ) break;
+		p = pEnd + 1;
+	}
+	return FALSE;
+}
+
+//*************************************************************************
+// http://avatar-image.test.com/render-body?style=0&side=L&char=6&expr=1&dress=NIo26OdDrZJEpmqXwGnYgVg
+//
+BOOL CAvatarImageToolDlg::GetDrawingInfo(const TCHAR* ptszImageInfo, AVATAR_DRAWING_ITEM_INFO& DrawItemInfo)
+{
+	if( ptszImageInfo == nullptr ) return FALSE;
+
+	TCHAR	tszDrawType[AVATARITEM_QUERYSTRING_DRAW_TYPE_STR_LEN] = { 0 };
+	TCHAR	tszDirection[AVATARITEM_QUERYSTRING_DIRECTION_STR_LEN] = { 0 };
+	TCHAR	tszCharacter[AVATARITEM_QUERYSTRING_CHARACTER_STR_LEN] = { 0 };
+	TCHAR	tszExpr[AVATARITEM_QUERYSTRING_EXPRESSION_STR_LEN] = { 0 };
+	TCHAR	tszData[AVATARITEM_QUERYSTRING_DATA_STR_ENC_LEN] = { 0 };
+
+	// 1) 쿼리 문자열 분리 ('?' 뒤, '#' 앞)
+	const TCHAR* ptszQuery = _tcschr(ptszImageInfo, _T('?'));
+	if( ptszQuery == nullptr ) return FALSE;
+
+	_tstring strQuery(ptszQuery + 1);
+	size_t nFrag = strQuery.find(_T('#'));
+	if( nFrag != _tstring::npos ) strQuery.erase(nFrag);
+
+	// 2) 항목 추출 (5개 모두 필수)
+	if( !GetQueryValue(strQuery.c_str(), AVATARITEM_QUERYSTRING_DRAW_TYPE_TOKEN, tszDrawType, _countof(tszDrawType)) ) return FALSE;
+	if( !GetQueryValue(strQuery.c_str(), AVATARITEM_QUERYSTRING_DIRECTION_TOKEN, tszDirection, _countof(tszDirection)) ) return FALSE;
+	if( !GetQueryValue(strQuery.c_str(), AVATARITEM_QUERYSTRING_CHARACTER_TOKEN, tszCharacter, _countof(tszCharacter)) ) return FALSE;
+	if( !GetQueryValue(strQuery.c_str(), AVATARITEM_QUERYSTRING_EXPRESSION_TOKEN, tszExpr, _countof(tszExpr)) ) return FALSE;
+	if( !GetQueryValue(strQuery.c_str(), AVATARITEM_QUERYSTRING_DRESS_TOKEN, tszData, _countof(tszData)) ) return FALSE;
+
+	// 3) 값 검증
+	if( tszDirection[0] != _T('L') && tszDirection[0] != _T('R') ) return FALSE;
+
+	TCHAR* pEnd = nullptr;
+	const long nDrawType = _tcstol(tszDrawType, &pEnd, 10);  if( *pEnd != _T('\0') ) return FALSE;
+	const long nCharacter = _tcstol(tszCharacter, &pEnd, 10);  if( *pEnd != _T('\0') ) return FALSE;
+	const long nExpr = _tcstol(tszExpr, &pEnd, 10);  if( *pEnd != _T('\0') ) return FALSE;
+
+	if( nDrawType < 0 || nDrawType > 4 ) return FALSE;
+	if( nCharacter < 1 ) return FALSE;
+	if( nExpr < 0 || nExpr > AVATARITEM_EXPRESSION_IMAGE_NUM ) return FALSE;
+
+	// 4) dress Base64 복호화 (URL-safe 표기 보정: -,_ -> +,/ 및 패딩)
+	_tstring strEnc = DecodeURIComponent(tszData);		// %2B -> '+' (원문 '+'는 공백이 되므로 인코딩 쪽에서 반드시 %2B로 보낼 것)
+	while( strEnc.length() % 4 != 0 ) strEnc += _T('=');
+
+	Base64DecodeResult res = Base64DecodeResult::Success;
+	_tstring strDec = Base64Dec(strEnc, &res);
+	if( res != Base64DecodeResult::Success || strDec.empty() ) return FALSE;
+	if( strDec.length() > AVATARITEM_QUERYSTRING_DATA_STR_DEC_LEN ) return FALSE;
+
+	// "535,540,600" 파싱
+	int nItemNumber[AVATARITEM_MAX_EQUIPMENTS] = { 0 };
+	int nCount = 0;
+
+	size_t pos = 0;
+	while( pos <= strDec.length() && nCount < AVATARITEM_MAX_EQUIPMENTS )
+	{
+		size_t end = strDec.find(_T(','), pos);
+		if( end == _tstring::npos ) end = strDec.length();
+
+		_tstring tok = strDec.substr(pos, end - pos);
+		if( tok.empty() ) return FALSE;
+
+		TCHAR* pEndTok = nullptr;
+		long n = _tcstol(tok.c_str(), &pEndTok, 10);
+		if( *pEndTok != _T('\0') || n <= 534 ) return FALSE;
+
+		nItemNumber[nCount++] = static_cast<int>(n);
+		pos = end + 1;
+	}
+
+	if( _tcslen(ptszImageInfo) >= REQUEST_URL_STRLEN ) return FALSE;	// URL이 버퍼보다 길면 거부
+
+	memset(&DrawItemInfo, 0, sizeof(DrawItemInfo));
+
+	DrawItemInfo.m_nDrawType = static_cast<int>(nDrawType);
+	DrawItemInfo.m_nCharacter = static_cast<int>(nCharacter);
+	DrawItemInfo.m_nExpression = static_cast<int>(nExpr);
+	DrawItemInfo.m_tszDirection[0] = tszDirection[0];
+	DrawItemInfo.m_tszDirection[1] = _T('\0');
+
+	memcpy(DrawItemInfo.m_nItemNumber, nItemNumber, sizeof(nItemNumber));
+	DrawItemInfo.m_nItemCount = nCount;
+
+	_tcsncpy_s(DrawItemInfo.m_tszRequestImageURL, _countof(DrawItemInfo.m_tszRequestImageURL), ptszImageInfo, _TRUNCATE);
+
+	return TRUE;
 }

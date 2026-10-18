@@ -1,48 +1,215 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <Filter Include="소스 파일">
-      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
-      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
-    </Filter>
-    <Filter Include="헤더 파일">
-      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
-      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
-    </Filter>
     <Filter Include="리소스 파일">
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{1579e10f-7e8d-4ebf-b8a6-5b8979b194aa}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{0e61508c-5197-415c-9da5-3a780a205662}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Image">
+      <UniqueIdentifier>{399192be-0291-4742-b636-9e04ac35cc0a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Thread">
+      <UniqueIdentifier>{0767d2f8-0bcd-42be-8e0e-fa567d412c2f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="AvatarImageTool.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="AvatarImageToolDlg.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="framework.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
     </ClInclude>
-    <ClInclude Include="targetver.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\FileUtil.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="Resource.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="pch.h">
-      <Filter>헤더 파일</Filter>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\DirectoryUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\DelimitedRowFile.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\TextFieldParser.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\SRWLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\KeyedTable.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\PlatformLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="AvatarImageDefine.h" />
+    <ClInclude Include="AvatarImageExternAll.h" />
+    <ClInclude Include="AvatarImageStream.h" />
+    <ClInclude Include="AvatarImageToolDlg.h" />
+    <ClInclude Include="AvatarInfoMemDBEx.h" />
+    <ClInclude Include="targetver.h" />
+    <ClInclude Include="Character.h" />
+    <ClInclude Include="DrawImage.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="ItemDataCombo.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\BmpCodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Canvas.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Checksum.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ColorSpace.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Deflate.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\FileManager.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\GifCodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ICodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageCommon.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageFilters.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageIO.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageProcessor.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\ImageTypes.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Inflate.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\JpegCodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\PngCodec.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Quantize.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Sprite.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\Win32Draw.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WebUtil.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="AvatarImageTool.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
     </ClCompile>
-    <ClCompile Include="AvatarImageToolDlg.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\FileUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
     </ClCompile>
-    <ClCompile Include="pch.cpp">
-      <Filter>소스 파일</Filter>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\DirectoryUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="AvatarImageTool.cpp" />
+    <ClCompile Include="AvatarImageToolDlg.cpp" />
+    <ClCompile Include="AvatarInfoMemDBEx.cpp" />
+    <ClCompile Include="Character.cpp" />
+    <ClCompile Include="DrawImage.cpp" />
+    <ClCompile Include="ItemDataCombo.cpp" />
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\BmpCodec.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Canvas.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Checksum.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ColorSpace.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Deflate.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\FileManager.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\GifCodec.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageFilters.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageIO.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageProcessor.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\ImageTypes.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Inflate.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\JpegCodec.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\PngCodec.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Quantize.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Sprite.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\Win32Draw.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WebUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -51,12 +218,7 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="res\AvatarImageTool.rc2">
-      <Filter>리소스 파일</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Image Include="res\AvatarImageTool.ico">
+    <Image Include="small.ico">
       <Filter>리소스 파일</Filter>
     </Image>
   </ItemGroup>

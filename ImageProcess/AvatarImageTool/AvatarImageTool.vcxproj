@@ -125,6 +125,7 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\KeyedTable.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\TextFieldParser.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WebUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="AvatarImageDefine.h" />
     <ClInclude Include="AvatarImageExternAll.h" />
@@ -162,6 +163,7 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\FileUtil.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WebUtil.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="AvatarImageTool.cpp" />
     <ClCompile Include="AvatarImageToolDlg.cpp" />

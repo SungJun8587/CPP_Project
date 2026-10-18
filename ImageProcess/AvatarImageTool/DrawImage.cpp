@@ -15,7 +15,7 @@ CDrawImage::CDrawImage()
 {
 }
 
-CDrawImage::CDrawImage(TCHAR* ptszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType)
+CDrawImage::CDrawImage(const TCHAR* ptszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType)
 {
 	Init(ptszSprFilePath);
 	Create(nWidth, nHeight, nCanvasBit, nAlphaBit, nTotalLayer, nImageType);
@@ -27,7 +27,7 @@ CDrawImage::~CDrawImage()
 
 //***************************************************************************
 //
-void CDrawImage::Init(TCHAR* ptszSprFilePath)
+void CDrawImage::Init(const TCHAR* ptszSprFilePath)
 {
 	_tcsncpy_s(m_tszSprFilelocation, _countof(m_tszSprFilelocation), ptszSprFilePath, _TRUNCATE);
 }
@@ -46,7 +46,7 @@ void CDrawImage::Create(int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, 
 
 //***************************************************************************
 //
-void CDrawImage::SetCanvasInfo(TCHAR* ptszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType)
+void CDrawImage::SetCanvasInfo(const TCHAR* ptszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType)
 {
 	Init(ptszSprFilePath);
 	Create(nWidth, nHeight, nCanvasBit, nAlphaBit, nTotalLayer, nImageType);
@@ -656,7 +656,7 @@ BOOL CDrawImage::Draw(AVATAR_DRAWING_ITEM_INFO DrawItemInfo, CItemInfoList*& pIt
 
 	int nFileLen = Canvas.Encode(pbBuffer);
 
-	if( nFileLen <= MAX_BUFFER_SIZE )
+	if( nFileLen <= AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE )
 	{
 		memcpy(&ImageInfo.m_CacheMemInfo.m_bBuffer, pbBuffer, nFileLen);
 		ImageInfo.m_CacheMemInfo.m_nBufSize = nFileLen;
