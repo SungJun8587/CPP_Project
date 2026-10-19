@@ -65,7 +65,7 @@
 #define IDC_WIDTH                       1034
 #define IDC_HEIGHT                      1035
 #define IDC_EXPLORER                    1049
-
+#define IDC_AVATAR_BG					1050	
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED

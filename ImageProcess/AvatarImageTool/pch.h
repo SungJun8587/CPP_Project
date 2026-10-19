@@ -67,8 +67,8 @@ using namespace std;
 #include "AvatarImageExternAll.h"
 
 #include "ItemDataCombo.h"
-//#include "ItemImageCreateDlg.h"
 
 #include "AvatarImageToolDlg.h"
+#include "ItemImageCreateDlg.h"
 
 #endif // ndef PCH_H

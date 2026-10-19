@@ -9,11 +9,30 @@
 #include "AvatarImageStream.h"
 #include "Character.h"
 #include "DrawImage.h"
+#include "ItemImageCreateDlg.h"
 
 #define DHT_NONE		0x00
 #define DHT_CLOSE		0x01
 #define DHT_MIN			0x02
 #define DHT_CAPTION		0x03
+
+class CColorHeaderCtrl : public CHeaderCtrl
+{
+public:
+	void SetColors(COLORREF clrBk, COLORREF clrText) { m_clrBk = clrBk; m_clrText = clrText; }
+
+protected:
+	afx_msg void OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnBeginTrack(NMHDR* pNMHDR, LRESULT* pResult);
+	DECLARE_MESSAGE_MAP()
+
+private:
+	int m_nLastVisible = -1;
+
+	COLORREF m_clrBk = RGB(70, 110, 180);
+	COLORREF m_clrText = RGB(255, 255, 255);
+	CFont m_fontBold;
+};
 
 // CAvatarImageToolDlg 대화 상자
 class CAvatarImageToolDlg : public CDialogEx
@@ -45,6 +64,11 @@ protected:
 	CListCtrl	m_ctrlItemList;
 	CListCtrl	m_ctrlItemDrawList;
 
+	CColorHeaderCtrl	m_hdrAvatar;
+	CColorHeaderCtrl	m_hdrItem;
+	CColorHeaderCtrl	m_hdrItemDraw;
+	CColorHeaderCtrl	m_hdrCharGeneral;
+
 	// 생성된 메시지 맵 함수
 	virtual BOOL OnInitDialog();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
@@ -65,7 +89,9 @@ protected:
 	afx_msg void OnLeftDraw();
 	afx_msg void OnRightDraw();
 	afx_msg void OnSelchangeDrawstyle();
+	afx_msg void OnSelchangeAvatarBg();
 	afx_msg void OnImageFileCreatetoolControl();
+	afx_msg void OnCustomdrawListSelect(NMHDR* pNMHDR, LRESULT* pResult);
 
 	DECLARE_MESSAGE_MAP()
 
@@ -77,6 +103,7 @@ private:
 	void	ItemListInit();
 	void	SubTypeListInit();
 	void	ExprListInit();
+	void	BgListInit();
 	void	CharacterDrawGeneralItemList();
 	void	CharacterDrawGeneralItemListUpdate(int nItemNumber);
 	void	ItemDrawListUpdate(int nItemNumber);
@@ -91,6 +118,7 @@ private:
 	int			m_nSubType;
 	int			m_nGender;
 	int			m_nExpression;
+	int			m_nAvatarBg;
 	int			m_nDrawStyle;
 
 	int			m_nAvatar;
@@ -118,5 +146,8 @@ private:
 	CItemDataCombo		m_ctrlSubTypeList;
 	CItemDataCombo		m_ctrlGenderList;
 	CItemDataCombo		m_ctrlExprList;
+	CItemDataCombo		m_ctrlAvatarBgList;
 	CItemDataCombo		m_ctrlDrawStyleList;
+
+	CItemImageCreateDlg* m_pItemImageCreateDlg;
 };

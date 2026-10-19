@@ -85,9 +85,6 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Image\Deflate.h">
       <Filter>UtilCore\Image</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\Library\UtilCore\Image\FileManager.h">
-      <Filter>UtilCore\Image</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\Library\UtilCore\Image\GifCodec.h">
       <Filter>UtilCore\Image</Filter>
     </ClInclude>
@@ -130,6 +127,7 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WebUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="ItemImageCreateDlg.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
@@ -172,9 +170,6 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Image\Deflate.cpp">
       <Filter>UtilCore\Image</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\Library\UtilCore\Image\FileManager.cpp">
-      <Filter>UtilCore\Image</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\Library\UtilCore\Image\GifCodec.cpp">
       <Filter>UtilCore\Image</Filter>
     </ClCompile>
@@ -211,6 +206,7 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WebUtil.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
+    <ClCompile Include="ItemImageCreateDlg.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="AvatarImageTool.rc">

@@ -9,13 +9,139 @@
 #include "afxdialogex.h"
 #include "AvatarInfoMemDBEx.h"
 
-#ifdef _DEBUG
-#define new DEBUG_NEW
-#endif
-
 CCharacterInfoMemDBEx   g_CharacterInfoMem;
 CItemInfoListMemDBEx	g_ItemInfoListMem;
 CExpressionInfoMemDBEx	g_ExpressionInfoMem;
+
+//*************************************************************************
+//
+static COLORREF GetListColor(UINT_PTR nID)
+{
+	switch( nID )
+	{
+	case IDC_AVATAR_LIST:				return RGB(70, 110, 180);	// 파랑
+	case IDC_ITEM_LIST:					return RGB(60, 140, 90);	// 초록
+	case IDC_ITEMDRAW_LIST:				return RGB(190, 100, 40);	// 주황
+	case IDC_CHAR_GENERAL_ITEM_LIST:	return RGB(130, 80, 160);	// 보라
+	}
+	return RGB(70, 110, 180);
+}
+
+//*************************************************************************
+// 쿼리 구간에서 token(예: "char=")으로 시작하는 값을 추출
+static BOOL GetQueryValue(const TCHAR* ptszQuery, const TCHAR* ptszToken, TCHAR* ptszOut, size_t nOutLen)
+{
+	const size_t nTokenLen = _tcslen(ptszToken);
+	const TCHAR* p = ptszQuery;
+
+	while( *p )
+	{
+		const TCHAR* pEnd = _tcschr(p, _T('&'));
+		const size_t nSegLen = pEnd ? static_cast<size_t>(pEnd - p) : _tcslen(p);
+
+		if( nSegLen >= nTokenLen && _tcsncmp(p, ptszToken, nTokenLen) == 0 )
+		{
+			const size_t nValLen = nSegLen - nTokenLen;
+			if( nValLen == 0 || nValLen >= nOutLen ) return FALSE;	// 비었거나 버퍼 초과
+
+			_tcsncpy_s(ptszOut, nOutLen, p + nTokenLen, nValLen);
+			return TRUE;
+		}
+
+		if( !pEnd ) break;
+		p = pEnd + 1;
+	}
+	return FALSE;
+}
+
+BEGIN_MESSAGE_MAP(CColorHeaderCtrl, CHeaderCtrl)
+	ON_NOTIFY_REFLECT(NM_CUSTOMDRAW, OnCustomDraw)
+	ON_NOTIFY_REFLECT(HDN_BEGINTRACKA, OnBeginTrack)
+	ON_NOTIFY_REFLECT(HDN_BEGINTRACKW, OnBeginTrack)
+	ON_NOTIFY_REFLECT(HDN_DIVIDERDBLCLICKA, OnBeginTrack)
+	ON_NOTIFY_REFLECT(HDN_DIVIDERDBLCLICKW, OnBeginTrack)
+END_MESSAGE_MAP()
+
+void CColorHeaderCtrl::OnCustomDraw(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	LPNMCUSTOMDRAW pCD = reinterpret_cast<LPNMCUSTOMDRAW>(pNMHDR);
+	CDC* pDC = CDC::FromHandle(pCD->hdc);
+
+	switch( pCD->dwDrawStage )
+	{
+	case CDDS_PREPAINT:
+	{
+		m_nLastVisible = -1;
+		for( int k = GetItemCount() - 1; k >= 0; k-- )
+		{
+			CRect rcItem;
+			GetItemRect(k, &rcItem);
+			if( rcItem.Width() > 0 ) { m_nLastVisible = k; break; }
+		}
+
+		// 굵은 글꼴은 한 번만 생성
+		if( m_fontBold.GetSafeHandle() == nullptr )
+		{
+			LOGFONT lf = {};
+			CFont* pFont = GetFont();
+			if( pFont && pFont->GetLogFont(&lf) )
+			{
+				lf.lfWeight = FW_BOLD;
+
+				// lfHeight는 음수(문자 높이)가 일반적이라 절댓값을 줄임. 예: -13 -> -11
+				lf.lfHeight = (lf.lfHeight < 0) ? lf.lfHeight + 2 : lf.lfHeight - 2;
+
+				m_fontBold.CreateFontIndirect(&lf);
+			}
+		}
+
+		CRect rcAll;
+		GetClientRect(&rcAll);
+		pDC->FillSolidRect(&rcAll, m_clrBk);
+		pDC->FillSolidRect(rcAll.left, rcAll.bottom - 1, rcAll.Width(), 1, RGB(120, 126, 138));	// 아래 구분선
+		*pResult = CDRF_NOTIFYITEMDRAW;
+		break;
+	}
+
+	case CDDS_ITEMPREPAINT:
+	{
+		CRect rc(pCD->rc);
+		if( rc.Width() > 0 )			// 폭 0인 번호 컬럼은 건너뜀
+		{
+			TCHAR tszText[64] = { 0 };
+			HDITEM hdi = {};
+			hdi.mask = HDI_TEXT | HDI_FORMAT;
+			hdi.pszText = tszText;
+			hdi.cchTextMax = _countof(tszText);
+			GetItem(static_cast<int>(pCD->dwItemSpec), &hdi);
+
+			CFont* pOld = pDC->SelectObject(m_fontBold.GetSafeHandle() ? &m_fontBold : GetFont());
+			pDC->SetBkMode(TRANSPARENT);
+			pDC->SetTextColor(m_clrText);
+
+			CRect rcText(rc);
+			rcText.DeflateRect(4, 0, 4, 1);
+			pDC->DrawText(tszText, -1, &rcText, DT_SINGLELINE | DT_VCENTER | DT_CENTER | DT_END_ELLIPSIS);
+			pDC->SelectObject(pOld);
+
+			// 컬럼 사이 세로 구분선 (마지막 컬럼은 제외)
+			if( static_cast<int>(pCD->dwItemSpec) != m_nLastVisible )
+				pDC->FillSolidRect(rc.right - 1, rc.top + 3, 1, rc.Height() - 8, RGB(160, 165, 175));
+		}
+		*pResult = CDRF_SKIPDEFAULT;
+		break;
+	}
+
+	default:
+		*pResult = CDRF_DODEFAULT;
+		break;
+	}
+}
+
+void CColorHeaderCtrl::OnBeginTrack(NMHDR* /*pNMHDR*/, LRESULT* pResult)
+{
+	*pResult = TRUE;		// 크기 조절 취소
+}
 
 // CAvatarImageToolDlg 대화 상자
 
@@ -38,6 +164,7 @@ CAvatarImageToolDlg::CAvatarImageToolDlg(CWnd* pParent /*=nullptr*/)
 	m_nGender = 0;
 	m_nDrawStyle = 0;
 	m_nExpression = 0;
+	m_nAvatarBg = 0;
 	m_tszEncString[0] = '\0';
 }
 
@@ -64,20 +191,29 @@ BEGIN_MESSAGE_MAP(CAvatarImageToolDlg, CDialogEx)
 
 	ON_NOTIFY(NM_DBLCLK, IDC_AVATAR_LIST, OnDblclkAvatarList)
 	ON_NOTIFY(NM_DBLCLK, IDC_ITEM_LIST, OnDblclkItemList)
+	ON_NOTIFY(NM_CLICK, IDC_ITEMDRAW_LIST, OnClickItemdrawList)
+
+	ON_NOTIFY(NM_CUSTOMDRAW, IDC_AVATAR_LIST, OnCustomdrawListSelect)
+	ON_NOTIFY(NM_CUSTOMDRAW, IDC_ITEM_LIST, OnCustomdrawListSelect)
+	ON_NOTIFY(NM_CUSTOMDRAW, IDC_ITEMDRAW_LIST, OnCustomdrawListSelect)
+	ON_NOTIFY(NM_CUSTOMDRAW, IDC_CHAR_GENERAL_ITEM_LIST, OnCustomdrawListSelect)
+
 	ON_CBN_SELCHANGE(IDC_SUBTYPE, OnSelchangeSubtype)
 	ON_CBN_SELCHANGE(IDC_GENDER, OnSelchangeGender)
 	ON_WM_LBUTTONDOWN()
 	ON_WM_LBUTTONUP()
 	ON_WM_MOUSEMOVE()
-	ON_BN_CLICKED(IDC_LIST_DELETE, OnListDelete)
-	ON_NOTIFY(NM_CLICK, IDC_ITEMDRAW_LIST, OnClickItemdrawList)
+
 	ON_CBN_SELCHANGE(IDC_EXPRESSION, OnSelchangeExpression)
+	ON_BN_CLICKED(IDC_LIST_DELETE, OnListDelete)
+
+	ON_CBN_SELCHANGE(IDC_DRAWSTYLE, OnSelchangeDrawstyle)
+	ON_CBN_SELCHANGE(IDC_AVATAR_BG, OnSelchangeAvatarBg)
+
+	ON_BN_CLICKED(IDC_IMAGE_FILE_CREATETOOL_CONTROL, OnImageFileCreatetoolControl)
 	ON_BN_CLICKED(IDC_LEFT_DRAW, OnLeftDraw)
 	ON_BN_CLICKED(IDC_RIGHT_DRAW, OnRightDraw)
-	ON_CBN_SELCHANGE(IDC_DRAWSTYLE, OnSelchangeDrawstyle)
-	//ON_BN_CLICKED(IDC_IMAGE_FILE_CREATETOOL_CONTROL, OnImageFileCreatetoolControl)
 END_MESSAGE_MAP()
-
 
 // CAvatarImageToolDlg 메시지 처리기
 
@@ -96,6 +232,7 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 	m_ctrlGenderList.Init(m_hWnd, IDC_GENDER);
 	m_ctrlSubTypeList.Init(m_hWnd, IDC_SUBTYPE);
 	m_ctrlExprList.Init(m_hWnd, IDC_EXPRESSION);
+	m_ctrlAvatarBgList.Init(m_hWnd, IDC_AVATAR_BG);
 	m_ctrlDrawStyleList.Init(m_hWnd, IDC_DRAWSTYLE);
 
 	// TODO: 여기에 추가 초기화 작업을 추가합니다.
@@ -132,13 +269,13 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 
 	LV_COLUMN lvcolumn;
 
-	const TCHAR* ptszText01[] = { _T("아바타 캐릭터 리스트") };
+	const TCHAR* ptszText01[] = { _T("캐릭터 리스트") };
 
 	lvcolumn.mask = LVCF_FMT | LVCF_SUBITEM | LVCF_TEXT | LVCF_WIDTH;
 	lvcolumn.fmt = LVCFMT_RIGHT;
 	lvcolumn.pszText = const_cast<LPTSTR>(ptszText01[0]);
 	lvcolumn.iSubItem = 0;
-	lvcolumn.cx = 150;
+	lvcolumn.cx = 136;
 	m_ctrlAvatarList.InsertColumn(0, &lvcolumn);
 
 	const TCHAR* ptszText02[] = { _T("아이템 명"), _T("번호") };
@@ -148,11 +285,11 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 		lvcolumn.mask = LVCF_FMT | LVCF_SUBITEM | LVCF_TEXT | LVCF_WIDTH;
 		lvcolumn.fmt = LVCFMT_LEFT;
 
-		lvcolumn.pszText = const_cast<LPTSTR>(ptszText02[0]);
+		lvcolumn.pszText = const_cast<LPTSTR>(ptszText02[i]);
 		lvcolumn.iSubItem = i;
 
-		if( i == 0 )		lvcolumn.cx = 175;
-		else if( i == 1 )	lvcolumn.cx = 0;
+		if( i == 0 ) lvcolumn.cx = 163;
+		else if( i == 1 ) lvcolumn.cx = 55;
 
 		m_ctrlItemList.InsertColumn(i, &lvcolumn);
 	}
@@ -164,11 +301,11 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 		lvcolumn.mask = LVCF_FMT | LVCF_SUBITEM | LVCF_TEXT | LVCF_WIDTH;
 		lvcolumn.fmt = LVCFMT_LEFT;
 
-		lvcolumn.pszText = const_cast<LPTSTR>(ptszText03[0]);
+		lvcolumn.pszText = const_cast<LPTSTR>(ptszText03[i]);
 		lvcolumn.iSubItem = i;
 
-		if( i == 0 )		lvcolumn.cx = 175;
-		else if( i == 1 )	lvcolumn.cx = 0;
+		if( i == 0 ) lvcolumn.cx = 163;
+		else if( i == 1 ) lvcolumn.cx = 55;
 
 		m_ctrlCharacterGeneralItemList.InsertColumn(i, &lvcolumn);
 	}
@@ -180,13 +317,31 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 		lvcolumn.mask = LVCF_FMT | LVCF_SUBITEM | LVCF_TEXT | LVCF_WIDTH;
 		lvcolumn.fmt = LVCFMT_LEFT;
 
-		lvcolumn.pszText = const_cast<LPTSTR>(ptszText04[0]);
+		lvcolumn.pszText = const_cast<LPTSTR>(ptszText04[i]);
 		lvcolumn.iSubItem = i;
 
-		if( i == 0 )		lvcolumn.cx = 175;
-		else if( i == 1 )	lvcolumn.cx = 0;
+		if( i == 0 ) lvcolumn.cx = 163;
+		else if( i == 1 ) lvcolumn.cx = 55;
 
 		m_ctrlItemDrawList.InsertColumn(i, &lvcolumn);
+	}
+
+	struct { CListCtrl* pList; CColorHeaderCtrl* pHdr; UINT nID; } hdrs[] =
+	{
+		{ &m_ctrlAvatarList,				&m_hdrAvatar,		IDC_AVATAR_LIST },
+		{ &m_ctrlItemList,					&m_hdrItem,			IDC_ITEM_LIST },
+		{ &m_ctrlItemDrawList,				&m_hdrItemDraw,		IDC_ITEMDRAW_LIST },
+		{ &m_ctrlCharacterGeneralItemList,	&m_hdrCharGeneral,	IDC_CHAR_GENERAL_ITEM_LIST },
+	};
+
+	for( auto& h : hdrs )
+	{
+		CHeaderCtrl* pRaw = h.pList->GetHeaderCtrl();
+		if( pRaw == nullptr ) continue;
+
+		h.pHdr->SubclassWindow(pRaw->GetSafeHwnd());
+		h.pHdr->SetColors(RGB(208, 214, 226), RGB(30, 40, 60));
+		h.pHdr->Invalidate();
 	}
 
 	GenderListInit();
@@ -194,6 +349,7 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 	SubTypeListInit();
 	ItemListInit();
 	ExprListInit();
+	BgListInit();
 	DrawStyleListInit();
 	CharacterDrawGeneralItemList();
 	OnLeftDraw();
@@ -237,7 +393,7 @@ void CAvatarImageToolDlg::OnPaint()
 		{
 			ImageProcessor xImage;
 			xImage.Load("Image/wallpaper.png");
-			Win32Draw::DrawToDC(dc.GetSafeHdc(), xImage.Buffer(), 0, 0, 800, 600);
+			Win32Draw::DrawToDC(dc.GetSafeHdc(), xImage.Buffer(), 0, 0, 820, 600);
 		}
 		catch( const ImageException& ) {}
 
@@ -245,7 +401,7 @@ void CAvatarImageToolDlg::OnPaint()
 		{
 			ImageProcessor Title;
 			Title.Load("Image/Title.png");
-			Win32Draw::DrawToDC(dc.GetSafeHdc(), Title.Buffer(), 0, 0, 800, 50);
+			Win32Draw::DrawToDC(dc.GetSafeHdc(), Title.Buffer(), 0, 0, 820, 50);
 		}
 		catch( const ImageException& ) {}
 
@@ -255,6 +411,39 @@ void CAvatarImageToolDlg::OnPaint()
 		ImageDraw(AVATARITEM_IMAGE_EXPR_LAYER);
 		ImageDraw(AVATARITEM_IMAGE_UNDER_LAYER);
 		ImageDraw(AVATARITEM_IMAGE_TOTAL_LAYER);
+	}
+}
+
+//***************************************************************************
+//
+void CAvatarImageToolDlg::OnCustomdrawListSelect(NMHDR* pNMHDR, LRESULT* pResult)
+{
+	LPNMLVCUSTOMDRAW pCD = reinterpret_cast<LPNMLVCUSTOMDRAW>(pNMHDR);
+	*pResult = CDRF_DODEFAULT;
+
+	switch( pCD->nmcd.dwDrawStage )
+	{
+	case CDDS_PREPAINT:
+		*pResult = CDRF_NOTIFYITEMDRAW;
+		break;
+
+	case CDDS_ITEMPREPAINT:
+		*pResult = CDRF_NOTIFYSUBITEMDRAW;
+		break;
+
+	case (CDDS_ITEMPREPAINT | CDDS_SUBITEM):
+	{
+		CListCtrl* pList = static_cast<CListCtrl*>(GetDlgItem(static_cast<int>(pNMHDR->idFrom)));
+		if( pList == nullptr ) break;
+
+		if( pList->GetItemState(static_cast<int>(pCD->nmcd.dwItemSpec), LVIS_SELECTED) & LVIS_SELECTED )
+		{
+			pCD->clrText = RGB(255, 255, 255);
+			pCD->clrTextBk = GetListColor(pNMHDR->idFrom);
+			pCD->nmcd.uItemState &= ~(CDIS_SELECTED | CDIS_FOCUS);	// 시스템 선택 색/포커스 점선 제거
+		}
+		break;
+	}
 	}
 }
 
@@ -645,7 +834,7 @@ void CAvatarImageToolDlg::ExprListInit()
 {
 	const TCHAR* ptszExpression[] =
 	{
-		_T("표정"),
+		_T("----- 표정 -----"),
 		_T("하하1"), _T("하하2"), _T("하하3"), _T("하하4"), _T("하하5"), _T("하하6"),
 		_T("우씨1"), _T("우씨2"), _T("우씨3"), _T("우씨4"), _T("우씨5"), _T("우씨6"),
 		_T("으앙1"), _T("으앙2"), _T("으앙3"), _T("으앙4"), _T("으앙5"), _T("으앙6"),
@@ -658,6 +847,31 @@ void CAvatarImageToolDlg::ExprListInit()
 		m_ctrlExprList.AddString(ptszExpression[i], i);
 
 	m_ctrlExprList.SelectItemData(0);
+}
+
+//***************************************************************************
+//
+void CAvatarImageToolDlg::BgListInit()
+{
+	int nIndex = 0;
+
+	CItemInfoList	ItemInfoList;
+
+	m_ctrlAvatarBgList.AddString(_T("-------- 배경 --------"), nIndex);
+	for( int i = 0; i < g_ItemInfoListMem.GetCount(); i++ )
+	{
+		memset(&ItemInfoList, 0, sizeof(ItemInfoList));
+
+		g_ItemInfoListMem.Search(i, ItemInfoList);
+
+		if( ItemInfoList.m_ItemImageInfo.m_nSubType == 10 )
+		{
+			nIndex++;
+			m_ctrlAvatarBgList.AddString(ItemInfoList.m_ItemImageInfo.m_tszName, nIndex);
+		}
+	}
+
+	m_ctrlAvatarBgList.SelectItemData(0);
 }
 
 //***************************************************************************
@@ -716,6 +930,23 @@ void CAvatarImageToolDlg::OnSelchangeExpression()
 	else m_nExpression = 0;
 }
 
+//***************************************************************************
+//
+void CAvatarImageToolDlg::OnSelchangeAvatarBg()
+{
+	// TODO: Add your control notification handler code here
+	int		nItemNumber = 0;
+	int		nIndex = 0;
+
+	nIndex = static_cast<int>(m_ctrlAvatarBgList.GetCurSelData());
+
+	if( nIndex > 0 )
+	{
+		m_nAvatarBg = nIndex - 1;
+		OnLeftDraw();
+	}
+	else m_nAvatarBg = 0;
+}
 //***************************************************************************
 //
 void CAvatarImageToolDlg::OnSelchangeDrawstyle()
@@ -919,6 +1150,18 @@ void CAvatarImageToolDlg::ItemDrawListUpdate(int nItemNumber)
 
 //***************************************************************************
 //
+void CAvatarImageToolDlg::OnImageFileCreatetoolControl()
+{
+	// TODO: Add your control notification handler code here
+	if( m_pItemImageCreateDlg->IsWindowVisible() )
+		m_pItemImageCreateDlg->ShowWindow(SW_HIDE);
+	else m_pItemImageCreateDlg->ShowWindow(SW_SHOW);
+
+	InvalidateRect(NULL);
+}
+
+//***************************************************************************
+//
 void CAvatarImageToolDlg::OnLeftDraw()
 {
 	// TODO: Add your control notification handler code here
@@ -999,33 +1242,6 @@ BOOL CAvatarImageToolDlg::DrawingImage(const TCHAR* ptszDirection)
 	memcpy(m_bUnderBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nUnderBufferSize);
 
 	return TRUE;
-}
-
-//*************************************************************************
-// 쿼리 구간에서 token(예: "char=")으로 시작하는 값을 추출
-static BOOL GetQueryValue(const TCHAR* ptszQuery, const TCHAR* ptszToken, TCHAR* ptszOut, size_t nOutLen)
-{
-	const size_t nTokenLen = _tcslen(ptszToken);
-	const TCHAR* p = ptszQuery;
-
-	while( *p )
-	{
-		const TCHAR* pEnd = _tcschr(p, _T('&'));
-		const size_t nSegLen = pEnd ? static_cast<size_t>(pEnd - p) : _tcslen(p);
-
-		if( nSegLen >= nTokenLen && _tcsncmp(p, ptszToken, nTokenLen) == 0 )
-		{
-			const size_t nValLen = nSegLen - nTokenLen;
-			if( nValLen == 0 || nValLen >= nOutLen ) return FALSE;	// 비었거나 버퍼 초과
-
-			_tcsncpy_s(ptszOut, nOutLen, p + nTokenLen, nValLen);
-			return TRUE;
-		}
-
-		if( !pEnd ) break;
-		p = pEnd + 1;
-	}
-	return FALSE;
 }
 
 //*************************************************************************

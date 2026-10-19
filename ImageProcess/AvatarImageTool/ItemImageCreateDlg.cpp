@@ -5,7 +5,7 @@
 //***************************************************************************
 
 #include "pch.h"
-#include "AvatarImage.h"
+#include "framework.h"
 #include "ItemImageCreateDlg.h"
 
 CItemImageCreateDlg::CItemImageCreateDlg()
@@ -138,19 +138,19 @@ void CItemImageCreateDlg::OnInitDialog()
     lvc.mask = LVCF_FMT | LVCF_SUBITEM | LVCF_TEXT | LVCF_WIDTH;
     lvc.fmt = LVCFMT_LEFT;
 
-    TCHAR* ptszText01[] = { _T("아이템 명"), _T("번호") };
+    const TCHAR* ptszText01[] = { _T("아이템 명"), _T("번호") };
     for( int i = 0; i < 2; i++ )
     {
-        lvc.pszText = ptszText01[i];
+        lvc.pszText = const_cast<LPTSTR>(ptszText01[i]);
         lvc.iSubItem = i;
         lvc.cx = (i == 0) ? 155 : 0;
         ListView_InsertColumn(m_hCtrlItemList, i, &lvc);
     }
 
-    TCHAR* ptszText02[] = { _T("아이템 명"), _T("번호") };
+    const TCHAR* ptszText02[] = { _T("아이템 명"), _T("번호") };
     for( int i = 0; i < 2; i++ )
     {
-        lvc.pszText = ptszText02[i];
+        lvc.pszText = const_cast<LPTSTR>(ptszText02[i]);
         lvc.iSubItem = i;
         lvc.cx = (i == 0) ? 175 : 0;
         ListView_InsertColumn(m_hCtrlItemDrawList, i, &lvc);
@@ -207,8 +207,16 @@ void CItemImageCreateDlg::OnPaint()
 
     if( m_nBufSize > 0 )
     {
-        CxImage xImage(m_bBuffer, m_nBufSize, CXIMAGE_FORMAT_PNG);
-        xImage.Draw2(hdc, 10, 30, xImage.GetWidth(), xImage.GetHeight());
+        try
+        {
+            ImageProcessor xImage;
+            xImage.LoadFromMemory(m_bBuffer, static_cast<size_t>(m_nBufSize));
+            Win32Draw::DrawToDCAlpha(hdc, xImage.Buffer(), xImage.Width(), xImage.Height());	// 원본 크기 (= GetWidth/GetHeight)
+        }
+        catch( const ImageException& )
+        {
+            // TODO: 디코딩 실패 처리
+        }
     }
 
     EndPaint(m_hWnd, &ps);
@@ -246,7 +254,7 @@ void CItemImageCreateDlg::OnRightButton()
 
 void CItemImageCreateDlg::SubTypeListInit()
 {
-    TCHAR* ptszSubType[] = {
+    const TCHAR* ptszSubType[] = {
         _T("전체타입"), _T("몸"), _T("표정"), _T("가발"), _T("모자"), _T("상의"), _T("하의"), _T("신발"), _T("무기"), _T("장식")
     };
 
@@ -276,7 +284,7 @@ void CItemImageCreateDlg::ItemListInit()
 
     ListView_DeleteAllItems(m_hCtrlItemList);
 
-    for( int i = 0; i < g_ItemInfoListMem.GetMaxSize(); i++ )
+    for( int i = 0; i < g_ItemInfoListMem.GetCount(); i++ )
     {
         memset(&ItemInfoList, 0, sizeof(ItemInfoList));
         g_ItemInfoListMem.Search(i, ItemInfoList);
@@ -299,7 +307,7 @@ void CItemImageCreateDlg::ItemListInit()
 
                     int nInserted = ListView_InsertItem(m_hCtrlItemList, &lvi);
 
-                    _stprintf(tszIndex, _T("%d"), ItemInfoList.m_ItemImageInfo.m_nItemNumber);
+                    _sntprintf_s(tszIndex, _countof(tszIndex), _TRUNCATE, _T("%d"), ItemInfoList.m_ItemImageInfo.m_nItemNumber);
                     ListView_SetItemText(m_hCtrlItemList, nInserted, 1, tszIndex);
                 }
             }
@@ -324,7 +332,7 @@ void CItemImageCreateDlg::OnDblclkItemlist(LPNMHDR pNMHDR)
         TCHAR tszBuffer[16] = { 0 };
         ListView_GetItemText(m_hCtrlItemList, nIndex, 1, tszBuffer, sizeof(tszBuffer) / sizeof(TCHAR));
 
-        int nItemNumber[SM_4LEAF_AVATAR_SERVER_MAX_EQUIPMENTS] = { 0 };
+        int nItemNumber[AVATARITEM_MAX_EQUIPMENTS] = { 0 };
         nItemNumber[0] = _ttoi(tszBuffer);
 
         CImageInfo ImageInfo;
@@ -399,7 +407,7 @@ void CItemImageCreateDlg::OnListMove()
         ListView_DeleteAllItems(m_hCtrlItemDrawList);
         CItemInfoList ItemInfoList;
 
-        for( int i = 0; i < g_ItemInfoListMem.GetMaxSize(); i++ )
+        for( int i = 0; i < g_ItemInfoListMem.GetCount(); i++ )
         {
             memset(&ItemInfoList, 0, sizeof(ItemInfoList));
             g_ItemInfoListMem.Search(i, ItemInfoList);
@@ -422,8 +430,8 @@ void CItemImageCreateDlg::OnListMove()
                     lvi.pszText = ItemInfoList.m_ItemImageInfo.m_tszName;
 
                     int nInserted = ListView_InsertItem(m_hCtrlItemDrawList, &lvi);
-
-                    _stprintf(tszIndex, _T("%d"), ItemInfoList.m_ItemImageInfo.m_nItemNumber);
+ 
+                    _sntprintf_s(tszIndex, _countof(tszIndex), _TRUNCATE, _T("%d"), ItemInfoList.m_ItemImageInfo.m_nItemNumber);
                     ListView_SetItemText(m_hCtrlItemDrawList, nInserted, 1, tszIndex);
                 }
             }
@@ -437,18 +445,18 @@ void CItemImageCreateDlg::OnImageFileCreate()
     int nCharacter = 0;
     int nWidth = 0, nHeight = 0;
     int nItemCount = 0;
-    int nItemNumber[SM_4LEAF_AVATAR_SERVER_MAX_EQUIPMENTS] = { 0 };
+    int nItemNumber[AVATARITEM_MAX_EQUIPMENTS] = { 0 };
 
     TCHAR tszBuffer[8];
-    TCHAR tszDirection[SM_4LEAF_AVATAR_SERVER_QUERYSTRING_DIRECTION_STR_LEN];
+    TCHAR tszDirection[AVATARITEM_QUERYSTRING_DIRECTION_STR_LEN];
 
     RECT rRect;
     CDrawImage DrawImage;
 
     UpdateData(TRUE);
 
-    if( m_bLeft ) _stprintf(tszDirection, _T("L"));
-    else _stprintf(tszDirection, _T("R"));
+    if( m_bLeft ) _sntprintf_s(tszDirection, _countof(tszDirection), _TRUNCATE, _T("L"));
+    else _sntprintf_s(tszDirection, _countof(tszDirection), _TRUNCATE, _T("R"));
 
     rRect.top = m_nTop;
     rRect.bottom = m_nBottom;
@@ -475,7 +483,7 @@ void CItemImageCreateDlg::OnImageFileCreate()
         if( nCharacter == 8 ) nCharacter = 17;
         if( nCharacter == 16 ) nCharacter = 18;
 
-        DrawImage.SetItemInfoMemDB(SM_4LEAF_AVATAR_SERVER_IMAGE_TOTAL_LAYER, tszDirection, nCharacter, nExprImageNum, nItemNumber, nItemCount, rRect, nWidth, nHeight);
+        DrawImage.SetItemInfoMemDB(AVATARITEM_IMAGE_TOTAL_LAYER, tszDirection, nCharacter, nExprImageNum, nItemNumber, nItemCount, rRect, nWidth, nHeight);
         Sleep(10);
     }
 }

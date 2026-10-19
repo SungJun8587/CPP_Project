@@ -8,6 +8,7 @@
 #define UC_AVATARIMAGEDEFINE_H
 
 #define AVATARITEM_AVATARINFO_FILEPATH				_T("K:\\GitHub\\CPP\\Project\\ImageProcess\\AvatarImageTool\\Avatar\\")
+#define AVATARITEM_AVATARINFO_BG_FILEPATH			_T("K:\\GitHub\\CPP\\Project\\ImageProcess\\AvatarImageTool\\Avatar\\image\\item\\1\\")
 
 #define AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE						(10*1024)
 #define AVATARITEM_LINK_IMAGE_NUM								7

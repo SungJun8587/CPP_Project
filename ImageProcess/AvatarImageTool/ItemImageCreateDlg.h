@@ -10,6 +10,9 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <tchar.h>
+
+#include "Resource.h"
+#include "AvatarImageDefine.h"
 #include "ItemDataCombo.h"
 
 //***************************************************************************
@@ -70,7 +73,7 @@ private:
     int     m_nSubType;
     int     m_nDelIndex;
     int     m_nBufSize;
-    BYTE    m_bBuffer[SM_MAXBUFFERSIZE];
+    BYTE    m_bBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 };
 
 #endif // ndef __ITEMIMAGECREATEDLG_H__
