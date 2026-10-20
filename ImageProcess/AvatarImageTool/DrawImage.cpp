@@ -1,5 +1,4 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // DrawImage.cpp: implementation of the CDrawImage class.
 //
 //***************************************************************************
@@ -7,12 +6,76 @@
 #include "pch.h"
 #include "DrawImage.h"
 
+#include <fstream>
+#include <memory>
+#include <new>
+
+namespace
+{
+	// 레이어 배열 소유자(어느 경로로 빠져도 자동 해제)
+	using LayerArray = std::unique_ptr<CItemInfoList[]>;
+
+	//***************************************************************************
+	// @brief 레이어 배열을 0으로 초기화해 할당
+	// @param nCount 레이어 개수(SetCanvasInfo로 설정된 전체 레이어 수)
+	// @return 할당된 배열. nCount가 올바르지 않거나 할당에 실패하면 null
+	//***************************************************************************
+	LayerArray AllocLayers(int nCount)
+	{
+		if( nCount <= 0 )
+		{
+			LOG_ERROR(_T(" # CDrawImage canvas is not set (TotalLayer = %d) #"), nCount);
+			return nullptr;
+		}
+
+		LayerArray layers(new(std::nothrow) CItemInfoList[nCount]);
+		if( !layers )
+		{
+			LOG_ERROR(_T(" # CItemInfoList allocation failed (TotalLayer = %d) #"), nCount);
+			return nullptr;
+		}
+
+		memset(layers.get(), 0, sizeof(CItemInfoList) * nCount);
+		return layers;
+	}
+
+	//***************************************************************************
+	// @brief 인코딩된 이미지를 ImageInfo의 캐시 버퍼로 복사
+	// @param pbBuffer 인코딩된 이미지 데이터
+	// @param nLen 인코딩된 이미지 길이(바이트)
+	// @param ImageInfo 복사 대상
+	// @return 복사에 성공하면 TRUE. 인코딩 실패이거나 캐시 버퍼보다 크면 FALSE
+	//***************************************************************************
+	BOOL CopyToImageInfo(const BYTE* pbBuffer, int nLen, CImageInfo& ImageInfo)
+	{
+		ImageInfo.m_CacheMemInfo.m_nBufSize = 0;
+
+		if( pbBuffer == NULL || nLen <= 0 )
+		{
+			LOG_ERROR(_T(" # Image Encode Error #, QueryString = %s, ImageSize = %d "), ImageInfo.m_CacheMemInfo.m_tszRequestImageURL, nLen);
+			return FALSE;
+		}
+
+		if( nLen > static_cast<int>(sizeof(ImageInfo.m_CacheMemInfo.m_bBuffer)) )
+		{
+			LOG_ERROR(_T(" # Image Size Error #, QueryString = %s, ImageSize = %d "), ImageInfo.m_CacheMemInfo.m_tszRequestImageURL, nLen);
+			return FALSE;
+		}
+
+		memcpy(ImageInfo.m_CacheMemInfo.m_bBuffer, pbBuffer, nLen);
+		ImageInfo.m_CacheMemInfo.m_nBufSize = nLen;
+		return TRUE;
+	}
+}
+
 //***************************************************************************
 // Construction/Destruction
 //***************************************************************************
 
 CDrawImage::CDrawImage()
+	: m_nWidth(0), m_nHeight(0), m_nCanvasBit(0), m_nAlphaBit(0), m_nTotalLayer(0), m_nImageType(0)
 {
+	m_tszSprFilelocation[0] = _T('\0');
 }
 
 CDrawImage::CDrawImage(const TCHAR* ptszSprFilePath, int nWidth, int nHeight, int nCanvasBit, int nAlphaBit, int nTotalLayer, int nImageType)
@@ -185,37 +248,29 @@ BOOL CDrawImage::SetCanvas(CItemInfoList*& pItemInfoList, CCanvas& Canvas, int n
 //
 BOOL CDrawImage::SetItemInfoMemDB(int nLayerExpr, TCHAR* tszDirection, int nCharacter, int nExprImageNum, int* pnItemNumber, int nItemCount, RECT rRect, int nWidth, int nHeight)
 {
-	BOOL		bResult = false;
+	LayerArray layers = AllocLayers(m_nTotalLayer);
+	if( !layers ) return false;
 
-	CCharacter				Character;
-	CItemInfoList* pItemInfoList = NULL;
+	CItemInfoList* pItemInfoList = layers.get();
 
-	pItemInfoList = new CItemInfoList[m_nTotalLayer];
-
-	memset(pItemInfoList, 0, sizeof(CItemInfoList) * m_nTotalLayer);
+	CCharacter	Character;
 
 	if( !Character.SetEquipments(pnItemNumber, nItemCount, pItemInfoList) )
 		return false;
 
-	bResult = Draw(nLayerExpr, tszDirection, nCharacter, nExprImageNum, rRect, nWidth, nHeight, pItemInfoList);
-
-	if( pItemInfoList ) delete[]pItemInfoList;
-
-	return bResult;
+	return Draw(nLayerExpr, tszDirection, nCharacter, nExprImageNum, rRect, nWidth, nHeight, pItemInfoList);
 }
 
 //*************************************************************************
 //
 BOOL CDrawImage::SetItemInfoMemDB(int nLayerExpr, int nDrawType, TCHAR* tszDirection, int nCharacter, int nExpression, int* pnItemNumber, int nItemCount, CImageInfo& ImageInfo)
 {
-	BOOL		bResult = false;
+	LayerArray layers = AllocLayers(m_nTotalLayer);
+	if( !layers ) return false;
 
-	CCharacter			Character;
-	CItemInfoList* pItemInfoList = NULL;
+	CItemInfoList* pItemInfoList = layers.get();
 
-	pItemInfoList = new CItemInfoList[m_nTotalLayer];
-
-	memset(pItemInfoList, 0, sizeof(CItemInfoList) * m_nTotalLayer);
+	CCharacter	Character;
 
 	Character.SetCharacter(nCharacter);
 	Character.SetExpression(nExpression);
@@ -223,29 +278,19 @@ BOOL CDrawImage::SetItemInfoMemDB(int nLayerExpr, int nDrawType, TCHAR* tszDirec
 	if( !Character.SetEquipments(pnItemNumber, nItemCount, pItemInfoList) )
 		return false;
 
-	bResult = Draw(nLayerExpr, nDrawType, tszDirection, pItemInfoList, ImageInfo);
-
-	if( pItemInfoList )
-	{
-		delete[]pItemInfoList;
-		pItemInfoList = NULL;
-	}
-
-	return bResult;
+	return Draw(nLayerExpr, nDrawType, tszDirection, pItemInfoList, ImageInfo);
 }
 
 //*************************************************************************
 //
 BOOL CDrawImage::SetItemInfoMemDB(int nLayerExpr, int nDrawType, TCHAR* tszDirection, int nCharacter, int nExpression, int* pnItemNumber, int nItemCount, BYTE*& pbBuffer, int& nBufferSize)
 {
-	BOOL		bResult = false;
+	LayerArray layers = AllocLayers(m_nTotalLayer);
+	if( !layers ) return false;
 
-	CCharacter			Character;
-	CItemInfoList* pItemInfoList = NULL;
+	CItemInfoList* pItemInfoList = layers.get();
 
-	pItemInfoList = new CItemInfoList[m_nTotalLayer];
-
-	memset(pItemInfoList, 0, sizeof(CItemInfoList) * m_nTotalLayer);
+	CCharacter	Character;
 
 	Character.SetCharacter(nCharacter);
 	Character.SetExpression(nExpression);
@@ -253,29 +298,19 @@ BOOL CDrawImage::SetItemInfoMemDB(int nLayerExpr, int nDrawType, TCHAR* tszDirec
 	if( !Character.SetEquipments(pnItemNumber, nItemCount, pItemInfoList) )
 		return false;
 
-	bResult = Draw(nLayerExpr, nDrawType, tszDirection, pItemInfoList, pbBuffer, nBufferSize);
-
-	if( pItemInfoList )
-	{
-		delete[]pItemInfoList;
-		pItemInfoList = NULL;
-	}
-
-	return bResult;
+	return Draw(nLayerExpr, nDrawType, tszDirection, pItemInfoList, pbBuffer, nBufferSize);
 }
 
 //*************************************************************************
 //
 BOOL CDrawImage::SetItemInfoMemDB(AVATAR_DRAWING_ITEM_INFO DrawItemInfo, CImageInfo& ImageInfo)
 {
-	BOOL		bResult = false;
+	LayerArray layers = AllocLayers(m_nTotalLayer);
+	if( !layers ) return false;
 
-	CCharacter			Character;
-	CItemInfoList* pItemInfoList = NULL;
+	CItemInfoList* pItemInfoList = layers.get();
 
-	pItemInfoList = new CItemInfoList[m_nTotalLayer];
-
-	memset(pItemInfoList, 0, sizeof(CItemInfoList) * m_nTotalLayer);
+	CCharacter	Character;
 
 	Character.SetCharacter(DrawItemInfo.m_nCharacter);
 	Character.SetExpression(DrawItemInfo.m_nExpression);
@@ -283,29 +318,19 @@ BOOL CDrawImage::SetItemInfoMemDB(AVATAR_DRAWING_ITEM_INFO DrawItemInfo, CImageI
 	if( !Character.SetEquipments(DrawItemInfo.m_nItemNumber, DrawItemInfo.m_nItemCount, pItemInfoList) )
 		return false;
 
-	bResult = Draw(DrawItemInfo, pItemInfoList, ImageInfo);
-
-	if( pItemInfoList )
-	{
-		delete[]pItemInfoList;
-		pItemInfoList = NULL;
-	}
-
-	return bResult;
+	return Draw(DrawItemInfo, pItemInfoList, ImageInfo);
 }
 
 //*************************************************************************
 //
 BOOL CDrawImage::SetItemInfoMemDB(AVATAR_DRAWING_ITEM_INFO DrawItemInfo, BYTE*& pbBuffer, int& nBufferSize)
 {
-	BOOL		bResult = false;
+	LayerArray layers = AllocLayers(m_nTotalLayer);
+	if( !layers ) return false;
 
-	CCharacter			Character;
-	CItemInfoList* pItemInfoList = NULL;
+	CItemInfoList* pItemInfoList = layers.get();
 
-	pItemInfoList = new CItemInfoList[m_nTotalLayer];
-
-	memset(pItemInfoList, 0, sizeof(CItemInfoList) * m_nTotalLayer);
+	CCharacter	Character;
 
 	Character.SetCharacter(DrawItemInfo.m_nCharacter);
 	Character.SetExpression(DrawItemInfo.m_nExpression);
@@ -313,71 +338,43 @@ BOOL CDrawImage::SetItemInfoMemDB(AVATAR_DRAWING_ITEM_INFO DrawItemInfo, BYTE*& 
 	if( !Character.SetEquipments(DrawItemInfo.m_nItemNumber, DrawItemInfo.m_nItemCount, pItemInfoList) )
 		return false;
 
-	bResult = Draw(DrawItemInfo, pItemInfoList, pbBuffer, nBufferSize);
-
-	if( pItemInfoList )
-	{
-		delete[]pItemInfoList;
-		pItemInfoList = NULL;
-	}
-
-	return bResult;
+	return Draw(DrawItemInfo, pItemInfoList, pbBuffer, nBufferSize);
 }
 
 //*************************************************************************
 //
 BOOL CDrawImage::SetItemInfoMemDB(int* pnSrcItem, int nSrcSize, CImageInfo& ImageInfo)
 {
-	BOOL		bResult = false;
+	LayerArray layers = AllocLayers(m_nTotalLayer);
+	if( !layers ) return false;
 
-	CCharacter			Character;
-	CItemInfoList* pItemInfoList = NULL;
+	CItemInfoList* pItemInfoList = layers.get();
 
-	pItemInfoList = new CItemInfoList[m_nTotalLayer];
-
-	memset(pItemInfoList, 0, sizeof(CItemInfoList) * m_nTotalLayer);
+	CCharacter	Character;
 
 	Character.SetCharacter(0);
 	Character.SetExpression(0);
 	Character.SetEquipments(pnSrcItem, nSrcSize, pItemInfoList);
 
-	bResult = Draw(pItemInfoList, ImageInfo);
-
-	if( pItemInfoList )
-	{
-		delete[]pItemInfoList;
-		pItemInfoList = NULL;
-	}
-
-	return bResult;
+	return Draw(pItemInfoList, ImageInfo);
 }
 
 //*************************************************************************
 //
 BOOL CDrawImage::SetItemInfoMemDB(int* pnSrcItem, int nSrcSize, BYTE*& pbBuffer, int& nBufferSize)
 {
-	BOOL		bResult = false;
+	LayerArray layers = AllocLayers(m_nTotalLayer);
+	if( !layers ) return false;
 
-	CCharacter			Character;
-	CItemInfoList* pItemInfoList = NULL;
+	CItemInfoList* pItemInfoList = layers.get();
 
-	pItemInfoList = new CItemInfoList[m_nTotalLayer];
-
-	memset(pItemInfoList, 0, sizeof(CItemInfoList) * m_nTotalLayer);
+	CCharacter	Character;
 
 	Character.SetCharacter(0);
 	Character.SetExpression(0);
 	Character.SetEquipments(pnSrcItem, nSrcSize, pItemInfoList);
 
-	bResult = Draw(pItemInfoList, pbBuffer, nBufferSize);
-
-	if( pItemInfoList )
-	{
-		delete[]pItemInfoList;
-		pItemInfoList = NULL;
-	}
-
-	return bResult;
+	return Draw(pItemInfoList, pbBuffer, nBufferSize);
 }
 
 //***************************************************************************
@@ -425,6 +422,11 @@ BOOL CDrawImage::Draw(int nLayerExpr, TCHAR* tszDirection, int nCharacter, int n
 	Canvas.FilterImage();
 
 	int nFilelen = Canvas.Encode(pbBuffer);
+	if( pbBuffer == NULL || nFilelen <= 0 )
+	{
+		LOG_ERROR(_T(" # Image Encode Error #, %s, ImageSize = %d "), tszFullpath, nFilelen);
+		return false;
+	}
 
 	std::ofstream outFile(tszFullpath, std::ios::binary);
 	if( outFile ) outFile.write(reinterpret_cast<const char*>(pbBuffer), nFilelen);
@@ -493,10 +495,12 @@ BOOL CDrawImage::Draw(int nLayerExpr, int nDrawType, TCHAR* tszDirection, CItemI
 
 	int nFilelen = Canvas.Encode(pbBuffer);
 
-	memcpy(&ImageInfo.m_CacheMemInfo.m_bBuffer, pbBuffer, sizeof(ImageInfo.m_CacheMemInfo.m_bBuffer));
-	ImageInfo.m_CacheMemInfo.m_nBufSize = nFilelen;
+	// 인코딩된 길이만큼만 복사한다(실패/초과 시 FALSE).
+	BOOL bResult = CopyToImageInfo(pbBuffer, nFilelen, ImageInfo);
 
-	return true;
+	if( pbBuffer ) free(pbBuffer);
+
+	return bResult;
 }
 
 //***************************************************************************
@@ -574,7 +578,7 @@ BOOL CDrawImage::Draw(int nLayerExpr, int nDrawType, TCHAR* tszDirection, CItemI
 
 	nBufferSize = Canvas.Encode(pbBuffer);
 
-	return true;
+	return pbBuffer != NULL && nBufferSize > 0;
 }
 
 //***************************************************************************
@@ -656,19 +660,12 @@ BOOL CDrawImage::Draw(AVATAR_DRAWING_ITEM_INFO DrawItemInfo, CItemInfoList*& pIt
 
 	int nFileLen = Canvas.Encode(pbBuffer);
 
-	if( nFileLen <= AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE )
-	{
-		memcpy(&ImageInfo.m_CacheMemInfo.m_bBuffer, pbBuffer, nFileLen);
-		ImageInfo.m_CacheMemInfo.m_nBufSize = nFileLen;
-	}
-	else
-	{
-		LOG_ERROR(_T(" # Image Size Error #, QueryString = %s, ImageSize = %d "), ImageInfo.m_CacheMemInfo.m_tszRequestImageURL, nFileLen);
-	}
+	// 인코딩된 길이만큼만 복사한다(실패/초과 시 FALSE).
+	BOOL bResult = CopyToImageInfo(pbBuffer, nFileLen, ImageInfo);
 
-	free(pbBuffer);
+	if( pbBuffer ) free(pbBuffer);
 
-	return true;
+	return bResult;
 }
 
 //***************************************************************************
@@ -748,7 +745,7 @@ BOOL CDrawImage::Draw(AVATAR_DRAWING_ITEM_INFO DrawItemInfo, CItemInfoList*& pIt
 
 	nBufferSize = Canvas.Encode(pbBuffer);
 
-	return true;
+	return pbBuffer != NULL && nBufferSize > 0;
 }
 
 //***************************************************************************
@@ -767,19 +764,12 @@ BOOL CDrawImage::Draw(CItemInfoList*& pItemInfoList, CImageInfo& ImageInfo)
 
 	int nFileLen = Canvas.Encode(pbBuffer);
 
-	if( nFileLen <= MAX_BUFFER_SIZE )
-	{
-		memcpy(&ImageInfo.m_CacheMemInfo.m_bBuffer, pbBuffer, nFileLen);
-		ImageInfo.m_CacheMemInfo.m_nBufSize = nFileLen;
-	}
-	else
-	{
-		LOG_ERROR(_T(" # Image Size Error #, QueryString = %s, ImageSize = %d "), ImageInfo.m_CacheMemInfo.m_tszRequestImageURL, nFileLen);
-	}
+	// 인코딩된 길이만큼만 복사한다(실패/초과 시 FALSE).
+	BOOL bResult = CopyToImageInfo(pbBuffer, nFileLen, ImageInfo);
 
-	free(pbBuffer);
+	if( pbBuffer ) free(pbBuffer);
 
-	return true;
+	return bResult;
 }
 
 //***************************************************************************
@@ -796,5 +786,5 @@ BOOL CDrawImage::Draw(CItemInfoList*& pItemInfoList, BYTE*& pbBuffer, int& nBuff
 
 	nBufferSize = Canvas.Encode(pbBuffer);
 
-	return true;
+	return pbBuffer != NULL && nBufferSize > 0;
 }

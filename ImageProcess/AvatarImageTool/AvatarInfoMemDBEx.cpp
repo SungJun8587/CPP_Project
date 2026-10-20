@@ -4,13 +4,8 @@
 //
 //***************************************************************************
 
-
 #include "pch.h"
 #include "AvatarInfoMemDBEx.h"
-
-#include <cstdarg>
-#include <cstdlib>
-#include <climits>
 
 //***************************************************************************
 // 내부 도구
@@ -139,6 +134,21 @@ namespace
 	inline std::uint64_t KeyOf(int nHigh, int nLow)
 	{
 		return (static_cast<std::uint64_t>(static_cast<std::uint32_t>(nHigh)) << 32) | static_cast<std::uint32_t>(nLow);
+	}
+
+	//-----------------------------------------------------------------------
+	// 아이템 행 분류 : 배경(DSIST_BACKGROUND)은 CAvatarBgInfoMemDBEx, 나머지는 CItemInfoListMemDBEx
+	//-----------------------------------------------------------------------
+	inline bool IsBackgroundRow(const CItemInfoList& row)
+	{
+		return row.m_ItemImageInfo.m_nSubType == static_cast<int>(DSIST_BACKGROUND);
+	}
+
+	// stable 하게 제거하므로 남은 행의 파일 순서(같은 아이템 번호의 레이어 행 순서)가 유지된다.
+	template<class Pred>
+	void EraseRowsIf(std::vector<CItemInfoList>& rows, Pred pred)
+	{
+		rows.erase(std::remove_if(rows.begin(), rows.end(), pred), rows.end());
 	}
 }
 
@@ -361,6 +371,8 @@ BOOL CItemInfoListMemDBEx::Init(long lSize, const CItemInfoList* pItemInfoList)
 
 BOOL CItemInfoListMemDBEx::Init(std::vector<CItemInfoList>&& rows)
 {
+	EraseRowsIf(rows, IsBackgroundRow);	// 배경 행은 CAvatarBgInfoMemDBEx 담당
+
 	CKeyedTable<CItemInfoList> table;
 	table.Build(std::move(rows), [](const CItemInfoList& r) { return KeyOf(r.m_ItemImageInfo.m_nItemNumber); });
 
@@ -562,6 +574,95 @@ int CItemInfoListMemDBEx::GetImages(int nItemNumber, std::vector<CItemInfoList>&
 	}
 
 	return nCount;
+}
+
+//***************************************************************************
+// CAvatarBgInfoMemDBEx
+//***************************************************************************
+BOOL CAvatarBgInfoMemDBEx::Init(long /*lSize*/)
+{
+	RemoveAll();
+	return TRUE;
+}
+
+BOOL CAvatarBgInfoMemDBEx::Init(long lSize, const CItemInfoList* pItemInfoList)
+{
+	if( pItemInfoList == NULL || lSize <= 0 ) return FALSE;
+
+	return Init(std::vector<CItemInfoList>(pItemInfoList, pItemInfoList + lSize));
+}
+
+BOOL CAvatarBgInfoMemDBEx::Init(std::vector<CItemInfoList>&& rows)
+{
+	EraseRowsIf(rows, [](const CItemInfoList& r) { return !IsBackgroundRow(r); });	// 배경이 아닌 행은 CItemInfoListMemDBEx 담당
+
+	CKeyedTable<CItemInfoList> table;
+	table.Build(std::move(rows), [](const CItemInfoList& r) { return KeyOf(r.m_ItemImageInfo.m_nItemNumber); });
+
+	{
+		PRWriteLockGuard guard(m_RWLock);
+		m_Table.Swap(table);
+	}
+
+	return TRUE;
+}
+
+BOOL CAvatarBgInfoMemDBEx::Load(const TCHAR* ptszFile)
+{
+	std::vector<CItemInfoList> rows;
+	if( !ReadItemImageInfoList(ptszFile, rows) ) return FALSE;
+
+	return Init(std::move(rows));
+}
+
+BOOL CAvatarBgInfoMemDBEx::LoadItemInfoFile(const TCHAR* ptszFile)
+{
+	std::vector<CItemInfoList> rows;
+	if( !ReadItemInfoFile(ptszFile, rows) ) return FALSE;
+
+	return Init(std::move(rows));
+}
+
+void CAvatarBgInfoMemDBEx::RemoveAll(void)
+{
+	CKeyedTable<CItemInfoList> old;
+	{
+		PRWriteLockGuard guard(m_RWLock);
+		old.Swap(m_Table);
+	}
+
+	LOG_INFO(_T(" # CAvatarBgInfoMemDB RemoveAll #, Count = %zu "), old.Size());
+}
+
+size_t CAvatarBgInfoMemDBEx::GetCount(void) const
+{
+	PRReadLockGuard guard(m_RWLock);
+	return m_Table.Size();
+}
+
+int CAvatarBgInfoMemDBEx::Search(int nItemNumber, CItemInfoList& ItemInfoList) const
+{
+	if( nItemNumber < 0 ) return -1;
+
+	PRReadLockGuard guard(m_RWLock);
+
+	const int nPos = m_Table.Find(KeyOf(nItemNumber));
+	if( nPos >= 0 ) ItemInfoList = m_Table.At(nPos);
+
+	return nPos;
+}
+
+int CAvatarBgInfoMemDBEx::GetAll(std::vector<CItemInfoList>& out) const
+{
+	PRReadLockGuard guard(m_RWLock);
+
+	const size_t nCount = m_Table.Size();
+	out.reserve(out.size() + nCount);
+
+	for( size_t i = 0; i < nCount; ++i )
+		out.push_back(m_Table.At(i));
+
+	return static_cast<int>(nCount);
 }
 
 //***************************************************************************

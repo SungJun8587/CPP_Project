@@ -9,5 +9,6 @@
 extern	CCharacterInfoMemDBEx   g_CharacterInfoMem;
 extern	CItemInfoListMemDBEx	g_ItemInfoListMem;
 extern  CExpressionInfoMemDBEx	g_ExpressionInfoMem;
+extern	CAvatarBgInfoMemDBEx	g_AvatarBgInfoListMem;
 
 #endif // ndef __AVATARIMAGETOOLEXTERNALL_H__

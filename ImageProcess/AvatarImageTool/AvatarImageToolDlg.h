@@ -5,11 +5,15 @@
 #pragma once
 #include <afxcmn.h>
 
+#include <set>
+
 #include "AvatarImageDefine.h"
 #include "AvatarImageStream.h"
 #include "Character.h"
 #include "DrawImage.h"
 #include "ItemImageCreateDlg.h"
+
+#define IDT_GIF_ANIM	1001		// 배경 GIF 애니메이션 타이머
 
 #define DHT_NONE		0x00
 #define DHT_CLOSE		0x01
@@ -71,6 +75,7 @@ protected:
 
 	// 생성된 메시지 맵 함수
 	virtual BOOL OnInitDialog();
+	afx_msg void OnDestroy();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
@@ -92,6 +97,7 @@ protected:
 	afx_msg void OnSelchangeAvatarBg();
 	afx_msg void OnImageFileCreatetoolControl();
 	afx_msg void OnCustomdrawListSelect(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 
 	DECLARE_MESSAGE_MAP()
 
@@ -107,8 +113,12 @@ private:
 	void	CharacterDrawGeneralItemList();
 	void	CharacterDrawGeneralItemListUpdate(int nItemNumber);
 	void	ItemDrawListUpdate(int nItemNumber);
+	void	StartGifBackground(int nItemNumber);
+	void	StopGifBackground();
 
 	void	ImageDraw(int nCheck);
+	void	SetBodyAvatar(const BYTE* pBuf, int nSize);
+	void	DrawBody(CDC& dc);
 	BOOL	DrawingImage(const TCHAR* ptszDirection);
 	BOOL	GetDrawingInfo(const TCHAR* ptszImageInfo, AVATAR_DRAWING_ITEM_INFO& DrawItemInfo);
 	DWORD	HitTest(CPoint point);
@@ -122,15 +132,17 @@ private:
 	int			m_nDrawStyle;
 
 	int			m_nAvatar;
-	int			m_nBufSize;
+	int			m_nTotalBufferSize;
 	int			m_nAboveBufferSize;
 	int			m_nExprBufferSize;
 	int			m_nUnderBufferSize;
+	int			m_nBufferSize;
 
-	BYTE		m_bBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
+	BYTE		m_bTotalBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 	BYTE		m_bAboveBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 	BYTE		m_bExprBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 	BYTE		m_bUnderBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
+	BYTE		m_bBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 
 	TCHAR		m_tszEncString[AVATARITEM_QUERYSTRING_DATA_STR_ENC_LEN];
 
@@ -150,4 +162,10 @@ private:
 	CItemDataCombo		m_ctrlDrawStyleList;
 
 	CItemImageCreateDlg* m_pItemImageCreateDlg;
+
+	// 전신 영역 배경 GIF + 아바타
+	GifAnimation					m_gifBg;
+	ImageProcessor					m_imgAvatar;
+	bool							m_bAvatarReady = false;
+	CRect							m_rcBody;
 };

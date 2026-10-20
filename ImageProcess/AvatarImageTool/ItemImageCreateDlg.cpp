@@ -94,6 +94,9 @@ INT_PTR CItemImageCreateDlg::HandleMessage(UINT uMsg, WPARAM wParam, LPARAM lPar
 
         switch( wID )
         {
+        case IDCANCEL:					
+            OnClose();
+            return TRUE;
         case IDC_MAN: OnMan(); return TRUE;
         case IDC_WOMAN: OnWoman(); return TRUE;
         case IDC_LEFTBUTTON: OnLeftButton(); return TRUE;
@@ -202,6 +205,8 @@ void CItemImageCreateDlg::UpdateData(BOOL bSaveAndValidate)
 
 void CItemImageCreateDlg::OnPaint()
 {
+    int nX = 10, nY = 30;
+
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(m_hWnd, &ps);
 
@@ -211,7 +216,7 @@ void CItemImageCreateDlg::OnPaint()
         {
             ImageProcessor xImage;
             xImage.LoadFromMemory(m_bBuffer, static_cast<size_t>(m_nBufSize));
-            Win32Draw::DrawToDCAlpha(hdc, xImage.Buffer(), xImage.Width(), xImage.Height());	// 원본 크기 (= GetWidth/GetHeight)
+            Win32Draw::DrawToDCAlpha(hdc, xImage.Buffer(), nX, nY);
         }
         catch( const ImageException& )
         {
@@ -338,6 +343,7 @@ void CItemImageCreateDlg::OnDblclkItemlist(LPNMHDR pNMHDR)
         CImageInfo ImageInfo;
         CDrawImage DrawImage;
 
+        DrawImage.SetCanvasInfo(AVATARITEM_AVATARINFO_FILEPATH, AVATARITEM_IMAGE_SIZE_WIDTH, AVATARITEM_IMAGE_SIZE_HEIGHT, 24, 8, AVATARITEM_IMAGE_LAYER_TOTAL, 0);
         DrawImage.SetItemInfoMemDB(nItemNumber, 1, ImageInfo);
         m_nBufSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
         memcpy(m_bBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nBufSize);
@@ -447,7 +453,7 @@ void CItemImageCreateDlg::OnImageFileCreate()
     int nItemCount = 0;
     int nItemNumber[AVATARITEM_MAX_EQUIPMENTS] = { 0 };
 
-    TCHAR tszBuffer[8];
+    TCHAR tszBuffer[8] = { 0 };
     TCHAR tszDirection[AVATARITEM_QUERYSTRING_DIRECTION_STR_LEN];
 
     RECT rRect;
@@ -472,6 +478,7 @@ void CItemImageCreateDlg::OnImageFileCreate()
 
     for( int i = 0; i < nCount; i++ )
     {
+        tszBuffer[0] = _T('\0');
         ListView_GetItemText(m_hCtrlItemDrawList, i, 1, tszBuffer, sizeof(tszBuffer) / sizeof(TCHAR));
         nItemNumber[0] = _ttoi(tszBuffer);
         nItemCount = 1;
@@ -483,6 +490,7 @@ void CItemImageCreateDlg::OnImageFileCreate()
         if( nCharacter == 8 ) nCharacter = 17;
         if( nCharacter == 16 ) nCharacter = 18;
 
+        DrawImage.SetCanvasInfo(AVATARITEM_AVATARINFO_FILEPATH, AVATARITEM_IMAGE_SIZE_WIDTH, AVATARITEM_IMAGE_SIZE_HEIGHT, 24, 8, AVATARITEM_IMAGE_LAYER_TOTAL, 0);
         DrawImage.SetItemInfoMemDB(AVATARITEM_IMAGE_TOTAL_LAYER, tszDirection, nCharacter, nExprImageNum, nItemNumber, nItemCount, rRect, nWidth, nHeight);
         Sleep(10);
     }

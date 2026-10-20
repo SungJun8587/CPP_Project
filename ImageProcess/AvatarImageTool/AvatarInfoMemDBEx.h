@@ -8,10 +8,11 @@
 #define AVATARINFOMEMDBEX_H
 
 #include <Thread/PlatformLock.h>
+#include <Util/Log.h>
+#include <Util/FileUtil.h>
 #include <Util/KeyedTable.h>
 #include <Util/TextFieldParser.h>
 #include <Util/DelimitedRowFile.h>
-#include <Util/FileUtil.h>
 
 #include <tchar.h>
 #include <cstdio>
@@ -22,32 +23,35 @@
 #include <algorithm>
 #include <utility>
 #include <cctype>
+#include <cstdarg>
+#include <cstdlib>
+#include <climits>
 
 //***************************************************************************
 //
 enum
 {	// 그리는 방식
-	DRAW_TYPE_WHOLEBODY = 0,	// 전체
-	DRAW_TYPE_BUST,				// 흉상			
-	DRAW_TYPE_FACE,				// 머리			
-	DRAW_TYPE_REDUCEFACE,		// 줄인 머리				
-	DRAW_TYPE_ICONFACE,			// 머리 아이콘	
+	DRAW_TYPE_WHOLEBODY = 0,	//전체
+	DRAW_TYPE_BUST,				//흉상			
+	DRAW_TYPE_FACE,				//머리			
+	DRAW_TYPE_REDUCEFACE,		//줄인 머리				
+	DRAW_TYPE_ICONFACE,			//머리 아이콘	
 };
 
 //***************************************************************************
 //
 enum DressItemSubType
 {
-	DSIST_BODY = 1,					// 몸
-	DSIST_EXPRESSION,				// 표정
-	DSIST_WIG,						// 가발
-	DSIST_CAP,                  	// 모자
-	DSIST_JACKET,					// 상의
-	DSIST_PANTS,					// 하의
-	DSIST_SHOE,						// 신발
-	DSIST_WEAPON,					// 무기
-	DSIST_DECORATION,				// 장식		
-	DSIST_BACKGROUND				// 배경
+	DSIST_BODY = 1,	//몸
+	DSIST_EXPRESSION,				//표정
+	DSIST_WIG,						//가발
+	DSIST_CAP,                  	//모자
+	DSIST_JACKET,					//상의
+	DSIST_PANTS,					//하의
+	DSIST_SHOE,						//신발
+	DSIST_WEAPON,					//무기
+	DSIST_DECORATION,				//장식		
+	DSIST_BACKGROUND				//배경
 };
 
 //***************************************************************************
@@ -171,6 +175,8 @@ private:
 // CItemInfoListMemDBEx : iteminfo.txt(탭 구분), ItemInfoFile.txt(쉼표 구분)
 //  - 두 파일은 컬럼 순서만 다르며 동일한 CItemInfoList 행으로 캐싱된다.
 //  - 같은 아이템 번호가 레이어별로 여러 행 존재할 수 있다.
+//  - 배경(m_nSubType == DSIST_BACKGROUND) 행은 담지 않는다(CAvatarBgInfoMemDBEx 담당).
+//    Init/Load 입력에 배경 행이 섞여 있으면 걸러낸다.
 //***************************************************************************
 class CItemInfoListMemDBEx
 {
@@ -211,6 +217,34 @@ private:
 
 	CKeyedTable<CItemInfoList>	m_Table;	// 로드된 행 + 정렬 인덱스(읽기 전용, 리로드 시 교체됨)
 	mutable PRWLock	m_RWLock;		// CItemInfoList 캐시 보호용 읽기/쓰기 락
+};
+
+//***************************************************************************
+// CAvatarBgInfoMemDBEx : iteminfo.txt(탭 구분), ItemInfoFile.txt(쉼표 구분) 중
+//                        배경(m_nSubType == DSIST_BACKGROUND) 행만 캐싱
+//  - 행 형식과 파일 형식은 CItemInfoListMemDBEx와 같다.
+//  - Init/Load 입력에 배경이 아닌 행이 섞여 있으면 걸러낸다.
+//  - 파일에 배경 행이 없으면 Load는 빈 DB로 TRUE를 반환한다.
+//***************************************************************************
+class CAvatarBgInfoMemDBEx
+{
+public:
+	BOOL		Init(long lSize = 3000);
+	BOOL		Init(long lSize, const CItemInfoList* pItemInfoList);
+	BOOL		Init(std::vector<CItemInfoList>&& rows);
+	BOOL		Load(const TCHAR* ptszFile);				// iteminfo.txt
+	BOOL		LoadItemInfoFile(const TCHAR* ptszFile);	// ItemInfoFile.txt
+
+	void		RemoveAll(void);
+	size_t		GetCount(void) const;
+
+	// 첫 번째 일치 행을 복사하고 그 인덱스를 반환, 없으면 -1
+	int			Search(int nItemNumber, CItemInfoList& ItemInfoList) const;
+	int			GetAll(std::vector<CItemInfoList>& out) const;
+
+private:
+	CKeyedTable<CItemInfoList>	m_Table;	// 로드된 배경 행 + 정렬 인덱스(읽기 전용, 리로드 시 교체됨)
+	mutable PRWLock	m_RWLock;		// 배경 캐시 보호용 읽기/쓰기 락
 };
 
 //***************************************************************************

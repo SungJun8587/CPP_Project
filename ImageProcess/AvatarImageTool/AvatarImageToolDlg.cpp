@@ -12,6 +12,7 @@
 CCharacterInfoMemDBEx   g_CharacterInfoMem;
 CItemInfoListMemDBEx	g_ItemInfoListMem;
 CExpressionInfoMemDBEx	g_ExpressionInfoMem;
+CAvatarBgInfoMemDBEx	g_AvatarBgInfoListMem;
 
 //*************************************************************************
 //
@@ -25,6 +26,57 @@ static COLORREF GetListColor(UINT_PTR nID)
 	case IDC_CHAR_GENERAL_ITEM_LIST:	return RGB(130, 80, 160);	// 보라
 	}
 	return RGB(70, 110, 180);
+}
+
+//*************************************************************************
+// GIF 프레임 지연시간(ms) 변환. delayCs는 1/100초 단위, 0~1이면 브라우저 관례대로 100ms
+static UINT GifDelayMs(const GifCodec::Frame& fr)
+{
+	return (fr.delayCs <= 1) ? 100 : static_cast<UINT>(fr.delayCs) * 10;
+}
+
+//*************************************************************************
+// 애니메이션 GIF를 모든 프레임(합성 완료)으로 디코드. nDestW/nDestH > 0 이면 프레임마다 리사이즈
+static bool LoadGifFrames(const TCHAR* ptszPath, std::vector<GifCodec::Frame>& out, int nDestW = 0, int nDestH = 0)
+{
+	out.clear();
+
+	FILE* fp = nullptr;
+	if( _tfopen_s(&fp, ptszPath, _T("rb")) != 0 || fp == nullptr ) return false;
+
+	std::vector<uint8_t> bytes;
+	uint8_t tmp[4096];
+	size_t n = 0;
+	while( (n = fread(tmp, 1, sizeof(tmp), fp)) > 0 )
+		bytes.insert(bytes.end(), tmp, tmp + n);
+	fclose(fp);
+
+	if( bytes.empty() ) return false;
+
+	try
+	{
+		GifCodec codec;
+		out = codec.DecodeAllFrames(bytes.data(), bytes.size());
+
+		if( nDestW > 0 && nDestH > 0 )
+		{
+			for( auto& fr : out )
+			{
+				if( static_cast<int>(fr.image.Width()) == nDestW && static_cast<int>(fr.image.Height()) == nDestH ) continue;
+
+				ImageProcessor proc(std::move(fr.image));
+				proc.Resize(static_cast<uint32_t>(nDestW), static_cast<uint32_t>(nDestH), ResizeMethod::Bilinear);
+				fr.image = std::move(proc.Buffer());
+			}
+		}
+	}
+	catch( const ImageException& )
+	{
+		out.clear();
+		return false;
+	}
+
+	return !out.empty();
 }
 
 //*************************************************************************
@@ -150,15 +202,15 @@ CAvatarImageToolDlg::CAvatarImageToolDlg(CWnd* pParent /*=nullptr*/)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 
-	//m_pItemImageCreateDlg = NULL;
+	m_pItemImageCreateDlg = NULL;
 	*m_bAboveBuffer = NULL;
 	*m_bExprBuffer = NULL;
 	*m_bUnderBuffer = NULL;
-	*m_bBuffer = NULL;
-	m_nBufSize = 0;
+	*m_bTotalBuffer = NULL;
 	m_nAboveBufferSize = 0;
 	m_nExprBufferSize = 0;
 	m_nUnderBufferSize = 0;
+	m_nTotalBufferSize = 0;
 	m_nAvatar = 0;
 	m_nSubType = 0;
 	m_nGender = 0;
@@ -188,6 +240,9 @@ BEGIN_MESSAGE_MAP(CAvatarImageToolDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+
+	ON_WM_TIMER()
+	ON_WM_DESTROY()
 
 	ON_NOTIFY(NM_DBLCLK, IDC_AVATAR_LIST, OnDblclkAvatarList)
 	ON_NOTIFY(NM_DBLCLK, IDC_ITEM_LIST, OnDblclkItemList)
@@ -249,16 +304,22 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 	if( pCharacterInfo ) { delete[] pCharacterInfo; pCharacterInfo = nullptr; }
 
 	_sntprintf_s(tszTargetFile, _countof(tszTargetFile), _TRUNCATE, _T("%s%s"), AVATARITEM_AVATARINFO_FILEPATH, _T("iteminfo.txt"));
-	ReadItemImageInfoList(tszTargetFile, pItemInfoList, nSize);
-	if( pItemInfoList && nSize > 0 )
+
+	std::vector<CItemInfoList> rows;
+	if( !ReadItemImageInfoList(tszTargetFile, rows) )
 	{
-		// std::sort 등으로 정렬 안전성 확보 필요
-		std::sort(pItemInfoList, pItemInfoList + nSize, [](const CItemInfoList& a, const CItemInfoList& b) {
-			return a.m_ItemImageInfo.m_nItemImageSeq < b.m_ItemImageInfo.m_nItemImageSeq; // 실제 멤버 변수명으로 변경
-			});
+		LOG_ERROR(_T(" # iteminfo.txt Load Fail #, %s "), tszTargetFile);
+		return FALSE;
 	}
-	g_ItemInfoListMem.Init(nSize, pItemInfoList);
-	if( pItemInfoList ) { delete[] pItemInfoList; pItemInfoList = nullptr; }
+
+	// 같은 아이템 번호 행(레이어)의 상대 순서를 시퀀스 기준으로 맞춘다.
+	// stable_sort 이므로 시퀀스가 같은 행은 파일 순서가 유지된다.
+	std::stable_sort(rows.begin(), rows.end(), [](const CItemInfoList& a, const CItemInfoList& b) {
+		return a.m_ItemImageInfo.m_nItemImageSeq < b.m_ItemImageInfo.m_nItemImageSeq;
+		});
+
+	g_AvatarBgInfoListMem.Init(std::vector<CItemInfoList>(rows));
+	g_ItemInfoListMem.Init(std::move(rows));
 
 	_sntprintf_s(tszTargetFile, _countof(tszTargetFile), _TRUNCATE, _T("%s%s"), AVATARITEM_AVATARINFO_FILEPATH, _T("expressioninfo.txt"));
 	ReadExpressionInfo(tszTargetFile, pExpressionInfo, nSize);
@@ -344,6 +405,13 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 		h.pHdr->Invalidate();
 	}
 
+	m_pItemImageCreateDlg = new(std::nothrow) CItemImageCreateDlg;
+	if( m_pItemImageCreateDlg && !m_pItemImageCreateDlg->Create(m_hWnd, IDD_IMAGEFILECREATE_DIALOG) )
+	{
+		delete m_pItemImageCreateDlg;
+		m_pItemImageCreateDlg = nullptr;
+	}
+
 	GenderListInit();
 	CharacterListInit();
 	SubTypeListInit();
@@ -354,7 +422,19 @@ BOOL CAvatarImageToolDlg::OnInitDialog()
 	CharacterDrawGeneralItemList();
 	OnLeftDraw();
 
+	m_rcBody.SetRect(440, 56, 440 + AVATARITEM_IMAGE_SIZE_WIDTH, 56 + AVATARITEM_IMAGE_SIZE_HEIGHT);
+
 	return TRUE;  // 포커스를 컨트롤에 설정하지 않으면 TRUE를 반환합니다.
+}
+
+void CAvatarImageToolDlg::OnDestroy()
+{
+	KillTimer(IDT_GIF_ANIM);
+
+	delete m_pItemImageCreateDlg;
+	m_pItemImageCreateDlg = nullptr;
+
+	CDialogEx::OnDestroy();
 }
 
 void CAvatarImageToolDlg::OnSysCommand(UINT nID, LPARAM lParam)
@@ -410,8 +490,22 @@ void CAvatarImageToolDlg::OnPaint()
 		ImageDraw(AVATARITEM_IMAGE_ABOVE_LAYER);
 		ImageDraw(AVATARITEM_IMAGE_EXPR_LAYER);
 		ImageDraw(AVATARITEM_IMAGE_UNDER_LAYER);
-		ImageDraw(AVATARITEM_IMAGE_TOTAL_LAYER);
+		DrawBody(dc);
 	}
+}
+
+//***************************************************************************
+// GIF 프레임 진행 (프레임마다 지연시간이 달라 타이머를 매번 다시 건다)
+void CAvatarImageToolDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	if( nIDEvent == IDT_GIF_ANIM && m_gifBg.IsAnimated() )
+	{
+		m_gifBg.Advance();
+		if( !IsIconic() ) { CClientDC dc(this); DrawBody(dc); }
+		SetTimer(IDT_GIF_ANIM, m_gifBg.CurrentDelayMs(), nullptr);
+		return;
+	}
+	CDialogEx::OnTimer(nIDEvent);
 }
 
 //***************************************************************************
@@ -475,12 +569,6 @@ void CAvatarImageToolDlg::ImageDraw(int nCheck)
 		pBuffer = m_bUnderBuffer;
 		nBufferSize = m_nUnderBufferSize;
 	}
-	else
-	{
-		nX = 20 + nWidth * 3 + 60;
-		pBuffer = m_bBuffer;
-		nBufferSize = m_nBufSize;
-	}
 
 	if( pBuffer == nullptr || nBufferSize <= 0 ) return;	// 기존 CxImage는 빈 버퍼를 조용히 무시
 
@@ -496,6 +584,60 @@ void CAvatarImageToolDlg::ImageDraw(int nCheck)
 	{
 		// TODO: 디코딩 실패 처리
 	}
+}
+
+//***************************************************************************
+// 전신 아바타(m_bBuffer) 디코드 → m_imgAvatar. 실패하면 아바타 없이 배경만 그린다.
+void CAvatarImageToolDlg::SetBodyAvatar(const BYTE* pBuf, int nSize)
+{
+	m_bAvatarReady = false;
+	if( pBuf == nullptr || nSize <= 0 ) return;
+
+	try
+	{
+		m_imgAvatar.LoadFromMemory(pBuf, static_cast<size_t>(nSize));
+		m_bAvatarReady = true;
+	}
+	catch( const ImageException& ) {}
+}
+
+//***************************************************************************
+// 전신 영역 그리기: 메모리 DC에 배경(회색 → GIF 현재 프레임 → 아바타)을 합성한 뒤 한 번에 BitBlt (깜빡임 방지)
+void CAvatarImageToolDlg::DrawBody(CDC& dc)
+{
+	const int w = m_rcBody.Width();
+	const int h = m_rcBody.Height();
+	if( w <= 0 || h <= 0 ) return;
+
+	const bool bHasBg = !m_gifBg.Empty();
+	if( !bHasBg && !m_bAvatarReady ) return;		// 그릴 것이 없으면 월페이퍼를 그대로 둔다
+
+	CDC mem;
+	CBitmap bmp;
+	if( !mem.CreateCompatibleDC(&dc) ) return;
+	if( !bmp.CreateCompatibleBitmap(&dc, w, h) ) return;
+	CBitmap* pOldBmp = mem.SelectObject(&bmp);
+
+	if( bHasBg )
+	{
+		mem.FillSolidRect(0, 0, w, h, RGB(172, 172, 172));		// GIF 투명 픽셀 아래 기본색
+		Win32Draw::DrawToDCAlpha(mem.GetSafeHdc(), m_gifBg.Current(), 0, 0, w, h);
+	}
+	else
+	{
+		// 배경 없음: OnPaint에서 이미 그려진 월페이퍼를 바탕으로 사용 (알파 합성이 월페이퍼 위로 비친다)
+		mem.BitBlt(0, 0, w, h, &dc, m_rcBody.left, m_rcBody.top, SRCCOPY);
+	}
+
+	if( m_bAvatarReady )
+	{
+		const int aw = static_cast<int>(m_imgAvatar.Buffer().Width());
+		const int ah = static_cast<int>(m_imgAvatar.Buffer().Height());
+		Win32Draw::DrawToDCAlpha(mem.GetSafeHdc(), m_imgAvatar.Buffer(), (w - aw) / 2, h - ah);
+	}
+
+	dc.BitBlt(m_rcBody.left, m_rcBody.top, w, h, &mem, 0, 0, SRCCOPY);
+	mem.SelectObject(pOldBmp);
 }
 
 //***************************************************************************
@@ -853,24 +995,18 @@ void CAvatarImageToolDlg::ExprListInit()
 //
 void CAvatarImageToolDlg::BgListInit()
 {
-	int nIndex = 0;
+	m_ctrlAvatarBgList.AddString(_T("-------- 배경 --------"), 0);
 
-	CItemInfoList	ItemInfoList;
+	std::vector<CItemInfoList> bgList;
+	g_AvatarBgInfoListMem.GetAll(bgList);
 
-	m_ctrlAvatarBgList.AddString(_T("-------- 배경 --------"), nIndex);
-	for( int i = 0; i < g_ItemInfoListMem.GetCount(); i++ )
+	std::set<int> seen;
+	for( const CItemInfoList& item : bgList )
 	{
-		memset(&ItemInfoList, 0, sizeof(ItemInfoList));
-
-		g_ItemInfoListMem.Search(i, ItemInfoList);
-
-		if( ItemInfoList.m_ItemImageInfo.m_nSubType == 10 )
-		{
-			nIndex++;
-			m_ctrlAvatarBgList.AddString(ItemInfoList.m_ItemImageInfo.m_tszName, nIndex);
-		}
+		const int nNo = item.m_ItemImageInfo.m_nItemNumber;
+		if( seen.insert(nNo).second )
+			m_ctrlAvatarBgList.AddString(item.m_ItemImageInfo.m_tszName, nNo);
 	}
-
 	m_ctrlAvatarBgList.SelectItemData(0);
 }
 
@@ -935,18 +1071,11 @@ void CAvatarImageToolDlg::OnSelchangeExpression()
 void CAvatarImageToolDlg::OnSelchangeAvatarBg()
 {
 	// TODO: Add your control notification handler code here
-	int		nItemNumber = 0;
-	int		nIndex = 0;
-
-	nIndex = static_cast<int>(m_ctrlAvatarBgList.GetCurSelData());
-
-	if( nIndex > 0 )
-	{
-		m_nAvatarBg = nIndex - 1;
-		OnLeftDraw();
-	}
-	else m_nAvatarBg = 0;
+	m_nAvatarBg = static_cast<int>(m_ctrlAvatarBgList.GetCurSelData());	// 0 = 없음, 그 외 아이템 번호
+	if( m_nAvatarBg > 0 ) StartGifBackground(m_nAvatarBg);
+	else StopGifBackground();
 }
+
 //***************************************************************************
 //
 void CAvatarImageToolDlg::OnSelchangeDrawstyle()
@@ -1153,6 +1282,8 @@ void CAvatarImageToolDlg::ItemDrawListUpdate(int nItemNumber)
 void CAvatarImageToolDlg::OnImageFileCreatetoolControl()
 {
 	// TODO: Add your control notification handler code here
+	if( m_pItemImageCreateDlg == nullptr ) return;
+
 	if( m_pItemImageCreateDlg->IsWindowVisible() )
 		m_pItemImageCreateDlg->ShowWindow(SW_HIDE);
 	else m_pItemImageCreateDlg->ShowWindow(SW_SHOW);
@@ -1223,8 +1354,9 @@ BOOL CAvatarImageToolDlg::DrawingImage(const TCHAR* ptszDirection)
 
 	DrawItemInfo.m_nLayerExpr = AVATARITEM_IMAGE_TOTAL_LAYER;
 	if( !DrawImage.SetItemInfoMemDB(DrawItemInfo, ImageInfo) ) return FALSE;
-	m_nBufSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
-	memcpy(m_bBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nBufSize);
+	m_nTotalBufferSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
+	memcpy(m_bTotalBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nTotalBufferSize);
+	SetBodyAvatar(m_bTotalBuffer, m_nTotalBufferSize);
 
 	DrawItemInfo.m_nLayerExpr = AVATARITEM_IMAGE_ABOVE_LAYER;
 	if( !DrawImage.SetItemInfoMemDB(DrawItemInfo, ImageInfo) ) return FALSE;
@@ -1330,4 +1462,28 @@ BOOL CAvatarImageToolDlg::GetDrawingInfo(const TCHAR* ptszImageInfo, AVATAR_DRAW
 	_tcsncpy_s(DrawItemInfo.m_tszRequestImageURL, _countof(DrawItemInfo.m_tszRequestImageURL), ptszImageInfo, _TRUNCATE);
 
 	return TRUE;
+}
+
+void CAvatarImageToolDlg::StopGifBackground()
+{
+	KillTimer(IDT_GIF_ANIM);
+	m_gifBg.Clear();
+	InvalidateRect(m_rcBody, FALSE);
+}
+
+void CAvatarImageToolDlg::StartGifBackground(int nItemNumber)
+{
+	StopGifBackground();
+
+	CItemInfoList info;
+	if( g_AvatarBgInfoListMem.Search(nItemNumber, info) < 0 ) return;
+
+	TCHAR tszPath[FULLPATH_STRLEN];
+	_sntprintf_s(tszPath, _countof(tszPath), _TRUNCATE, _T("%s%s"), AVATARITEM_AVATARINFO_BG_FILEPATH, info.m_ItemImageInfo.m_tszSprFileName);
+
+	if( !m_gifBg.LoadFile(tszPath, m_rcBody.Width(), m_rcBody.Height()) ) return;
+
+	if( m_gifBg.IsAnimated() )
+		SetTimer(IDT_GIF_ANIM, m_gifBg.CurrentDelayMs(), nullptr);
+	InvalidateRect(m_rcBody, FALSE);
 }

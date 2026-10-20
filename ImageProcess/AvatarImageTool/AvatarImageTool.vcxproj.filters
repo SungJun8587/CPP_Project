@@ -128,6 +128,9 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="ItemImageCreateDlg.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Image\GifAnimation.h">
+      <Filter>UtilCore\Image</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
@@ -207,6 +210,9 @@
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
     <ClCompile Include="ItemImageCreateDlg.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Image\GifAnimation.cpp">
+      <Filter>UtilCore\Image</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="AvatarImageTool.rc">
