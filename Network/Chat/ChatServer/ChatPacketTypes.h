@@ -79,7 +79,8 @@ constexpr BYTE kDbCallIdent_GetRoomInfo = 212;			// DBGetRoomInfoRequest.h — �
 constexpr BYTE kDbCallIdent_ListRoomsPage = 213;		// DBListRoomsPageRequest.h — 방 목록 페이지 조회(전체/내가 참여한 방, 이름 검색)
 constexpr BYTE kDbCallIdent_RecordRoomJoin = 214;		// DBRecordRoomJoinRequest.h — 방 입장 기록(내가 참여한 방 목록의 근거)
 constexpr BYTE kDbCallIdent_ListRoomMembersPage = 215;	// DBListRoomMembersPageRequest.h — 방의 입장 이력이 있는 유저 목록 페이지 조회(접속 상태는 DB가 아니라 서버 메모리에서 붙임)
-// 다음 새 값은 216부터 시작할 것.
+constexpr BYTE kDbCallIdent_Friend = 216;				// DBFriendRequest.h — 친구 요청/수락/거절/삭제/목록/차단(연산은 EFriendOp로 구분)
+// 다음 새 값은 217부터 시작할 것.
 
 //***************************************************************************
 // @brief 로비 및 룸 식별 상수
@@ -168,6 +169,37 @@ enum class EDeleteMessageResult : uint8_t
 };
 
 //***************************************************************************
+// @brief 계정당 최대 친구 수. 친구 요청/수락 시 서버가 양쪽 모두 검사한다.
+//***************************************************************************
+constexpr int32_t kMaxFriends = 200;
+
+//***************************************************************************
+// @brief 받은 친구 요청 목록 한 페이지의 최대 크기. 클라이언트가 더 큰 값을
+//        요청해도 서버가 이 값으로 줄여서 처리한다.
+//***************************************************************************
+constexpr int32_t kMaxPendingPageSize = 50;
+
+//***************************************************************************
+// @brief 친구 기능(요청/수락/거절/삭제/목록/차단) 처리 결과 열거형
+// @details 친구 기능 Res 패킷의 reason 필드에 설정됩니다.
+//***************************************************************************
+enum class EFriendResult : uint8_t
+{
+	Ok = 0,
+	DbError = 1,			// DB 처리 오류 (재시도 가능)
+	UserNotFound = 2,		// 대상 계정 없음
+	SelfTarget = 3,			// 자기 자신을 대상으로 지정
+	AlreadyFriends = 4,		// 이미 친구
+	AlreadyRequested = 5,	// 이미 요청을 보낸 상태
+	NoPendingRequest = 6,	// 수락/거절할 대기 요청이 없음
+	NotFriends = 7,			// 친구가 아님 (삭제 대상 아님)
+	BlockedByMe = 8,		// 내가 차단한 상대 (먼저 차단 해제 필요)
+	FriendLimit = 9,		// 친구 수 상한 초과 (본인 또는 상대)
+	AlreadyBlocked = 10,	// 이미 차단됨
+	NotBlocked = 11,		// 차단 목록에 없음
+};
+
+//***************************************************************************
 // @brief 채팅 서버 패킷 타입 식별자 열거형.
 // @details 각 패킷 헤더(PacketHeader::type)에 매핑되는 식별자 목록입니다.
 //***************************************************************************
@@ -228,6 +260,33 @@ enum class EChatPacketType : uint16_t
 	// [추가] 방 입장 시 서버가 자동으로 스트리밍해주는 과거 대화 기록.
 	ChatHistoryItemRes = 44,				// Server -> Client, 기록 항목 단건(가변 개수 스트리밍) — 요청자에게만
 	ChatHistoryEndRes = 45,					// Server -> Client, 기록 전송 완료 — 요청자에게만
+
+	// [추가] 친구 요청/수락/거절/삭제/목록 조회/차단. (46은 비어 있음)
+	// 대상 지정: 친구 요청·차단은 닉네임, 그 외는 목록/알림으로 받은 publicId.
+	FriendRequestReq = 50,					// Client -> Server, 닉네임으로 친구 요청
+	FriendRequestRes = 51,					// Server -> Client, 친구 요청 결과 응답
+	FriendRespondReq = 52,					// Client -> Server, 받은 친구 요청 수락/거절
+	FriendRespondRes = 53,					// Server -> Client, 수락/거절 결과 응답
+	FriendRemoveReq = 54,					// Client -> Server, 친구 삭제 요청
+	FriendRemoveRes = 55,					// Server -> Client, 친구 삭제 결과 응답
+	FriendListReq = 56,						// Client -> Server, 친구 목록 조회 요청
+	FriendListItemRes = 57,					// Server -> Client, 친구 목록 항목 단건 응답(가변 개수 스트리밍)
+	FriendListEndRes = 58,					// Server -> Client, 친구 목록 전송 완료
+	FriendPendingListReq = 59,				// Client -> Server, 받은 친구 요청 목록 한 페이지 조회 요청
+	FriendPendingItemRes = 60,				// Server -> Client, 받은 요청 항목 단건 응답(가변 개수 스트리밍)
+	FriendPendingEndRes = 61,				// Server -> Client, 받은 요청 한 페이지 전송 완료(다음 페이지 유무 통지)
+	FriendRequestNotify = 62,				// Server -> Client, 친구 요청 도착 알림
+	FriendAcceptedNotify = 63,				// Server -> Client, 내 요청이 수락됨(또는 요청이 맞물려 즉시 친구)
+	FriendRemovedNotify = 64,				// Server -> Client, 친구 관계 해제 알림(상대의 삭제 또는 차단)
+	FriendStatusNotify = 65,				// Server -> Client, 접속 중인 친구의 접속/종료 알림
+	BlockReq = 66,							// Client -> Server, 닉네임으로 차단 요청
+	BlockRes = 67,							// Server -> Client, 차단 결과 응답
+	UnblockReq = 68,						// Client -> Server, 차단 해제 요청
+	UnblockRes = 69,						// Server -> Client, 차단 해제 결과 응답
+	BlockListReq = 70,						// Client -> Server, 차단 목록 조회 요청
+	BlockListItemRes = 71,					// Server -> Client, 차단 목록 항목 단건 응답(가변 개수 스트리밍)
+	BlockListEndRes = 72,					// Server -> Client, 차단 목록 전송 완료
+	FriendProfileChangedNotify = 73,		// Server -> Client, 접속 중인 친구의 닉네임/프로필 이미지 변경 알림
 };
 
 //***************************************************************************

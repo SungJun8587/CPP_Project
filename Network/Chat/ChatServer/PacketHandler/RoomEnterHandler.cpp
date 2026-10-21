@@ -122,8 +122,13 @@ namespace
 						if( session == nullptr )
 							return;
 
+						int32 sentCount = 0;
 						for( const CChatServerMain::SChatHistoryEntry& entry : history )
 						{
+							// [추가] 내가 차단한 사용자의 과거 메시지는 보내지 않는다.
+							if( session->IsBlockingHex(entry.senderPublicId) )
+								continue;
+
 							ChatHistoryItemResPacket itemRes{};
 							itemRes.size = sizeof(itemRes);
 							itemRes.type = static_cast<uint16>(EChatPacketType::ChatHistoryItemRes);
@@ -141,13 +146,14 @@ namespace
 							::memcpy(itemRes.message, entry.message.data(), messageCopyLen);
 
 							session->Send(&itemRes, sizeof(itemRes));
+							++sentCount;
 						}
 
 						ChatHistoryEndResPacket endRes{};
 						endRes.size = sizeof(endRes);
 						endRes.type = static_cast<uint16>(EChatPacketType::ChatHistoryEndRes);
 						endRes.roomId = roomId;
-						endRes.totalCount = static_cast<int32>(history.size());
+						endRes.totalCount = sentCount;	// 차단으로 건너뛴 항목을 뺀, 실제로 보낸 개수
 						session->Send(&endRes, sizeof(endRes));
 					});
 			});

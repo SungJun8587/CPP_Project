@@ -1,11 +1,18 @@
 ﻿
-// AvatarImageToolDlg.h: 헤더 파일
+//***************************************************************************
+// AvatarImageToolDlg.h : interface for the CAvatarImageToolDlg class.
 //
+//***************************************************************************
 
-#pragma once
+#ifndef AVATARIMAGETOOLDLG_H
+#define AVATARIMAGETOOLDLG_H
+
 #include <afxcmn.h>
 
 #include <set>
+
+#include <Image/ImageProcessor.h>
+#include <Image/GifAnimation.h>
 
 #include "AvatarImageDefine.h"
 #include "AvatarImageStream.h"
@@ -43,7 +50,7 @@ class CAvatarImageToolDlg : public CDialogEx
 {
 // 생성입니다.
 public:
-	CAvatarImageToolDlg(CWnd* pParent = nullptr);	// 표준 생성자입니다.
+	CAvatarImageToolDlg(CWnd* pParent = nullptr);	
 
 // 대화 상자 데이터입니다.
 #ifdef AFX_DESIGN_TIME
@@ -53,8 +60,6 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 지원입니다.
 
-
-// 구현입니다.
 protected:
 	HICON		m_hIcon;
 
@@ -73,7 +78,8 @@ protected:
 	CColorHeaderCtrl	m_hdrItemDraw;
 	CColorHeaderCtrl	m_hdrCharGeneral;
 
-	// 생성된 메시지 맵 함수
+	// Generated message map functions
+	//{{AFX_MSG(CAvatarImageToolDlg)
 	virtual BOOL OnInitDialog();
 	afx_msg void OnDestroy();
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
@@ -86,8 +92,6 @@ protected:
 	afx_msg void OnLButtonDown(UINT nFlags, CPoint point);
 	afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 	afx_msg void OnMouseMove(UINT nFlags, CPoint point);
-	DWORD HitTest(CPoint point) const;
-	void  DrawTitleButtons(CDC& dc);
 	afx_msg void OnListDelete();
 	afx_msg void OnClickItemdrawList(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnSelchangeExpression();
@@ -95,14 +99,16 @@ protected:
 	afx_msg void OnRightDraw();
 	afx_msg void OnSelchangeDrawstyle();
 	afx_msg void OnSelchangeAvatarBg();
+	afx_msg void OnImageFileCreate();
 	afx_msg void OnImageFileCreatetoolControl();
 	afx_msg void OnCustomdrawListSelect(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnTimer(UINT_PTR nIDEvent);
-
+	//}}AFX_MSG
 	DECLARE_MESSAGE_MAP()
 
-
 private:
+	DWORD	HitTest(CPoint point);
+
 	void	GenderListInit();
 	void    CharacterListInit();
 	void	DrawStyleListInit();
@@ -119,9 +125,10 @@ private:
 	void	ImageDraw(int nCheck);
 	void	SetBodyAvatar(const BYTE* pBuf, int nSize);
 	void	DrawBody(CDC& dc);
+	void	DrawTitleButtons(CDC& dc);
 	BOOL	DrawingImage(const TCHAR* ptszDirection);
 	BOOL	GetDrawingInfo(const TCHAR* ptszImageInfo, AVATAR_DRAWING_ITEM_INFO& DrawItemInfo);
-	DWORD	HitTest(CPoint point);
+	BOOL	SaveAvatarPng(const TCHAR* ptszPath);
 
 private:
 	int			m_nDelIndex;
@@ -130,19 +137,17 @@ private:
 	int			m_nExpression;
 	int			m_nAvatarBg;
 	int			m_nDrawStyle;
-
 	int			m_nAvatar;
+
 	int			m_nTotalBufferSize;
 	int			m_nAboveBufferSize;
 	int			m_nExprBufferSize;
 	int			m_nUnderBufferSize;
-	int			m_nBufferSize;
 
 	BYTE		m_bTotalBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 	BYTE		m_bAboveBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 	BYTE		m_bExprBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 	BYTE		m_bUnderBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
-	BYTE		m_bBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 
 	TCHAR		m_tszEncString[AVATARITEM_QUERYSTRING_DATA_STR_ENC_LEN];
 
@@ -154,6 +159,7 @@ private:
 
 	BOOL		m_bManAvatar;
 	BOOL		m_bWomanAvatar;
+	BOOL		m_bAvatarReady;
 
 	CItemDataCombo		m_ctrlSubTypeList;
 	CItemDataCombo		m_ctrlGenderList;
@@ -164,8 +170,9 @@ private:
 	CItemImageCreateDlg* m_pItemImageCreateDlg;
 
 	// 전신 영역 배경 GIF + 아바타
-	GifAnimation					m_gifBg;
-	ImageProcessor					m_imgAvatar;
-	bool							m_bAvatarReady = false;
-	CRect							m_rcBody;
+	GifAnimation		m_gifBg;
+	ImageProcessor		m_imgAvatar;
+	CRect				m_rcBody;
 };
+
+#endif // ndef AVATARIMAGETOOLDLG_H

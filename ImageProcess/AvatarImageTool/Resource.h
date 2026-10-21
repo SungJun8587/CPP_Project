@@ -66,6 +66,7 @@
 #define IDC_HEIGHT                      1035
 #define IDC_EXPLORER                    1049
 #define IDC_AVATAR_BG					1050	
+#define IDC_IMAGE_PREVIEW				1051
 
 // Next default values for new objects
 // 

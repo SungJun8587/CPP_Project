@@ -243,6 +243,13 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
+    <ClCompile Include="ChatServerMainFriend.cpp" />
+    <ClCompile Include="PacketHandler\ChatFriendHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\FriendDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -539,6 +546,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h">
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
+    <ClInclude Include="DBFriendRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

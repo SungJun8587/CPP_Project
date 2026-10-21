@@ -41,7 +41,13 @@ namespace
 					return;
 
 				if( result == ELoginResult::Ok && wasActive )
+				{
 					session->UpdateProfileImageUrl(std::string());
+
+					// 대표 이미지가 사라졌으므로(기본 이미지로 돌아감) 접속 중인 친구들에게 알린다.
+					if( CChatServerMain* srv = session->GetServer() )
+						srv->NotifyFriendProfileChanged(session);
+				}
 
 				DeleteProfileImageResPacket res{};
 				res.size = sizeof(res);

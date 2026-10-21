@@ -202,11 +202,11 @@ CAvatarImageToolDlg::CAvatarImageToolDlg(CWnd* pParent /*=nullptr*/)
 {
 	m_hIcon = AfxGetApp()->LoadIcon(IDR_MAINFRAME);
 
-	m_pItemImageCreateDlg = NULL;
-	*m_bAboveBuffer = NULL;
-	*m_bExprBuffer = NULL;
-	*m_bUnderBuffer = NULL;
-	*m_bTotalBuffer = NULL;
+	memset(m_bAboveBuffer, 0, sizeof(m_bAboveBuffer));
+	memset(m_bExprBuffer, 0, sizeof(m_bExprBuffer));
+	memset(m_bUnderBuffer, 0, sizeof(m_bUnderBuffer));
+	memset(m_bTotalBuffer, 0, sizeof(m_bTotalBuffer));
+
 	m_nAboveBufferSize = 0;
 	m_nExprBufferSize = 0;
 	m_nUnderBufferSize = 0;
@@ -217,12 +217,19 @@ CAvatarImageToolDlg::CAvatarImageToolDlg(CWnd* pParent /*=nullptr*/)
 	m_nDrawStyle = 0;
 	m_nExpression = 0;
 	m_nAvatarBg = 0;
-	m_tszEncString[0] = '\0';
+	m_tszEncString[0] = _T('\0');
+
+	m_bManAvatar = true;
+	m_bWomanAvatar = false;
+	m_bAvatarReady = false;
+
+	m_pItemImageCreateDlg = nullptr;
 }
 
 void CAvatarImageToolDlg::DoDataExchange(CDataExchange* pDX)
 {
 	CDialog::DoDataExchange(pDX);
+
 	//{{AFX_DATA_MAP(CAvatarImageToolDlg)
 	DDX_Control(pDX, IDCANCEL, m_ctrlCancel);
 	DDX_Control(pDX, IDC_LIST_DELETE, m_ctrlListDelete);
@@ -232,7 +239,6 @@ void CAvatarImageToolDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_AVATAR_LIST, m_ctrlAvatarList);
 	DDX_Control(pDX, IDC_ITEMDRAW_LIST, m_ctrlItemDrawList);
 	DDX_Control(pDX, IDC_ITEM_LIST, m_ctrlItemList);
-
 	//}}AFX_DATA_MAP
 }
 
@@ -243,6 +249,10 @@ BEGIN_MESSAGE_MAP(CAvatarImageToolDlg, CDialogEx)
 
 	ON_WM_TIMER()
 	ON_WM_DESTROY()
+
+	ON_WM_LBUTTONDOWN()
+	ON_WM_LBUTTONUP()
+	ON_WM_MOUSEMOVE()
 
 	ON_NOTIFY(NM_DBLCLK, IDC_AVATAR_LIST, OnDblclkAvatarList)
 	ON_NOTIFY(NM_DBLCLK, IDC_ITEM_LIST, OnDblclkItemList)
@@ -255,19 +265,16 @@ BEGIN_MESSAGE_MAP(CAvatarImageToolDlg, CDialogEx)
 
 	ON_CBN_SELCHANGE(IDC_SUBTYPE, OnSelchangeSubtype)
 	ON_CBN_SELCHANGE(IDC_GENDER, OnSelchangeGender)
-	ON_WM_LBUTTONDOWN()
-	ON_WM_LBUTTONUP()
-	ON_WM_MOUSEMOVE()
-
 	ON_CBN_SELCHANGE(IDC_EXPRESSION, OnSelchangeExpression)
+
 	ON_BN_CLICKED(IDC_LIST_DELETE, OnListDelete)
 
 	ON_CBN_SELCHANGE(IDC_DRAWSTYLE, OnSelchangeDrawstyle)
 	ON_CBN_SELCHANGE(IDC_AVATAR_BG, OnSelchangeAvatarBg)
 
-	ON_BN_CLICKED(IDC_IMAGE_FILE_CREATETOOL_CONTROL, OnImageFileCreatetoolControl)
 	ON_BN_CLICKED(IDC_LEFT_DRAW, OnLeftDraw)
 	ON_BN_CLICKED(IDC_RIGHT_DRAW, OnRightDraw)
+	ON_BN_CLICKED(IDC_IMAGEFILECREATE, OnImageFileCreate)
 END_MESSAGE_MAP()
 
 // CAvatarImageToolDlg 메시지 처리기
@@ -698,8 +705,8 @@ void CAvatarImageToolDlg::OnLButtonUp(UINT nFlags, CPoint point)
 
 	if( hit != pressed ) return;		// 누른 버튼 위에서 뗐을 때만 동작
 
-	if( pressed == DHT_CLOSE )		OnCancel();
-	else if( pressed == DHT_MIN )	ShowWindow(SW_MINIMIZE);
+	if( pressed == DHT_CLOSE ) OnCancel();
+	else if( pressed == DHT_MIN ) ShowWindow(SW_MINIMIZE);
 }
 
 //***************************************************************************
@@ -762,9 +769,6 @@ void CAvatarImageToolDlg::GenderListInit()
 	{
 		_T("남자"), _T("여자")
 	};
-
-	m_bManAvatar = true;
-	m_bWomanAvatar = false;
 
 	for( int i = 0; i < 2; i++ )
 		m_ctrlGenderList.AddString(ptszSubType[i], i);
@@ -1279,20 +1283,6 @@ void CAvatarImageToolDlg::ItemDrawListUpdate(int nItemNumber)
 
 //***************************************************************************
 //
-void CAvatarImageToolDlg::OnImageFileCreatetoolControl()
-{
-	// TODO: Add your control notification handler code here
-	if( m_pItemImageCreateDlg == nullptr ) return;
-
-	if( m_pItemImageCreateDlg->IsWindowVisible() )
-		m_pItemImageCreateDlg->ShowWindow(SW_HIDE);
-	else m_pItemImageCreateDlg->ShowWindow(SW_SHOW);
-
-	InvalidateRect(NULL);
-}
-
-//***************************************************************************
-//
 void CAvatarImageToolDlg::OnLeftDraw()
 {
 	// TODO: Add your control notification handler code here
@@ -1306,6 +1296,35 @@ void CAvatarImageToolDlg::OnRightDraw()
 {
 	// TODO: Add your control notification handler code here
 	DrawingImage(_T("R"));
+	InvalidateRect(NULL);
+}
+
+//***************************************************************************
+//
+void CAvatarImageToolDlg::OnImageFileCreate()
+{
+	TCHAR tszDefName[64];
+	_sntprintf_s(tszDefName, _countof(tszDefName), _TRUNCATE, _T("avatar_%d.png"), m_nAvatar);
+
+	CFileDialog dlg(FALSE, _T("png"), tszDefName, OFN_OVERWRITEPROMPT, _T("PNG (*.png)|*.png||"), this);
+	if( dlg.DoModal() == IDOK )
+	{
+		if( !SaveAvatarPng(dlg.GetPathName()) )
+			AfxMessageBox(_T("PNG 저장에 실패했습니다."));
+	}
+}
+
+//***************************************************************************
+//
+void CAvatarImageToolDlg::OnImageFileCreatetoolControl()
+{
+	// TODO: Add your control notification handler code here
+	if( m_pItemImageCreateDlg == nullptr ) return;
+
+	if( m_pItemImageCreateDlg->IsWindowVisible() )
+		m_pItemImageCreateDlg->ShowWindow(SW_HIDE);
+	else m_pItemImageCreateDlg->ShowWindow(SW_SHOW);
+
 	InvalidateRect(NULL);
 }
 
@@ -1486,4 +1505,45 @@ void CAvatarImageToolDlg::StartGifBackground(int nItemNumber)
 	if( m_gifBg.IsAnimated() )
 		SetTimer(IDT_GIF_ANIM, m_gifBg.CurrentDelayMs(), nullptr);
 	InvalidateRect(m_rcBody, FALSE);
+}
+
+//***************************************************************************
+// 전신 아바타(m_bTotalBuffer)만 PNG로 저장. 배경 GIF/월페이퍼는 포함되지 않는다.
+BOOL CAvatarImageToolDlg::SaveAvatarPng(const TCHAR* ptszPath)
+{
+	if( ptszPath == nullptr ) return FALSE;
+	if( m_nTotalBufferSize <= 0 || m_nTotalBufferSize > static_cast<int>(sizeof(m_bTotalBuffer)) ) return FALSE;
+
+	const uint8_t* pData = m_bTotalBuffer;
+	size_t nSize = static_cast<size_t>(m_nTotalBufferSize);
+
+	std::vector<uint8_t> reencoded;
+	static const uint8_t kPngSig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+
+	if( nSize < sizeof(kPngSig) || memcmp(pData, kPngSig, sizeof(kPngSig)) != 0 )
+	{
+		// PNG가 아니면 디코드 후 PNG로 다시 인코딩
+		try
+		{
+			ImageProcessor img;
+			img.LoadFromMemory(pData, nSize);
+
+			PngCodec codec;
+			reencoded = codec.Encode(img.Buffer());
+		}
+		catch( const std::exception& )
+		{
+			return FALSE;
+		}
+		if( reencoded.empty() ) return FALSE;
+
+		pData = reencoded.data();
+		nSize = reencoded.size();
+	}
+
+	std::ofstream fs(std::filesystem::path(ptszPath), std::ios::binary);
+	if( !fs ) return FALSE;
+
+	fs.write(reinterpret_cast<const char*>(pData), static_cast<std::streamsize>(nSize));
+	return fs.good() ? TRUE : FALSE;
 }

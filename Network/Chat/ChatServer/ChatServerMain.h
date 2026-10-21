@@ -16,6 +16,7 @@
 #include "ChatPacket.h"
 #include "DBListProfileImagesRequest.h"
 #include "DBListRoomsRequest.h"
+#include "DBFriendRequest.h"		// EFriendOp, SFriendOpResult
 
 //***************************************************************************
 // @brief 방 멤버 목록 조회(GetRoomMembers()) 결과 항목.
@@ -635,7 +636,35 @@ public:
 	//***************************************************************************
 	bool RoomExists(int32 roomId) const;
 
+	//***************************************************************************
+	// [추가 — 친구 기능] 구현은 ChatServerMainFriend.cpp
+	//***************************************************************************
+
+	// @brief 접속 중인 친구에게 바뀐 닉네임/프로필 이미지를 알립니다(세션 값 갱신 직후 호출).
+	void NotifyFriendProfileChanged(const std::shared_ptr<CChatSession>& session);
+
+	// @brief 같은 방 수신자에게 채팅 패킷을 보냅니다. 발신자를 차단한 수신자는 제외합니다.
+	void BroadcastChatToRoom(int32 roomId, const std::array<BYTE, kPublicIdBytes>& senderPublicId,
+		const void* data, uint16 size);
+
+	// @brief 로그인 완료 시 접속 세션 레지스트리 등록 + 친구에게 접속 알림 + 차단 목록 로드.
+	void OnFriendLogin(const std::shared_ptr<CChatSession>& session);
+
+	// @brief 세션 종료 시 레지스트리 해제 + 친구에게 접속 종료 알림.
+	void OnFriendLogout(const CChatSession* session);
+
+	// @brief publicId로 접속 중인 세션을 찾습니다(없으면 nullptr).
+	std::shared_ptr<CChatSession> FindOnlineSession(const std::array<BYTE, kPublicIdBytes>& publicId) const;
+
+	// @brief 친구 DB 연산을 비동기로 요청합니다. page/pageSize는 ListPending 전용.
+	void RequestFriendOp(
+		const std::array<BYTE, kPublicIdBytes>& actor, EFriendOp op,
+		const std::array<BYTE, kPublicIdBytes>* targetId, const std::string& targetNickname,
+		std::function<void(const SFriendOpResult& result)> onComplete,
+		int32 page = 0, int32 pageSize = 0);
+
 private:
+	void NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online);
 	std::string BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const;
 
 	//***************************************************************************
@@ -726,6 +755,10 @@ private:
 	//***************************************************************************
 	mutable std::mutex	_onlineMutex;
 	std::unordered_set<std::string>	_onlinePublicIdsHex;
+
+	// [추가 — 친구 기능] publicId 16진 -> 접속 세션. _onlineMutex로 함께 보호한다.
+	// 친구 접속 알림/온라인 조회/프로필 변경 알림 대상 찾기용(단일 프로세스 한정).
+	std::unordered_map<std::string, std::weak_ptr<CChatSession>>	_onlineSessions;
 
 	//***************************************************************************
 	// @brief [추가] 동적으로 생성/삭제되는 방의 메타데이터(이름/방장) —

@@ -23,6 +23,8 @@ namespace
 	//          보냈는데, 이제 방 개념이 생기면서 "발신자와 같은 방에 있는
 	//          사람"으로만 좁힌다 — session.GetRoomId()가 로비(0)든 특정
 	//          룸이든 동일한 방식으로 처리된다(로비도 그냥 방 하나).
+	//          [추가 — 차단] 발신자를 차단한 수신자에게는 전달하지 않는다
+	//          (CChatServerMain::BroadcastChatToRoom() 참고).
 	//***************************************************************************
 	void HandleChat(CChatSession& session, const PacketHeader* header)
 	{
@@ -52,7 +54,7 @@ namespace
 			// 발신자/방 정보를 서버가 짧게 기억해둔다(영구 저장 아님 —
 			// ChatServerMain.h::kMaxTrackedMessages 참고).
 			outPacket.messageId = server->RegisterOutgoingMessage(session.GetPublicId(), session.GetRoomId());
-			server->BroadcastToRoom(session.GetRoomId(), &outPacket, outPacket.size);
+			server->BroadcastChatToRoom(session.GetRoomId(), session.GetPublicId(), &outPacket, outPacket.size);
 
 			// [추가] 방(로비 제외) 대화 기록을 Redis에 남긴다 — 나중에
 			// RoomEnterHandler.cpp가 입장 시 자동으로 이 기록을 스트리밍해준다.

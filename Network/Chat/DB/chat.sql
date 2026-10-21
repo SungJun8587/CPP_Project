@@ -99,9 +99,7 @@ CREATE TABLE user_profile_images
 
 	INDEX idx_user_profile_images_public_id (user_public_id),
 	INDEX idx_user_profile_images_public_id_status (user_public_id, status),
-	CONSTRAINT fk_user_profile_images_user
-		FOREIGN KEY (user_public_id) REFERENCES users (public_id)
-		ON DELETE CASCADE
+	CONSTRAINT fk_user_profile_images_user FOREIGN KEY (user_public_id) REFERENCES users (public_id) ON DELETE CASCADE
 )
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
@@ -131,9 +129,7 @@ CREATE TABLE rooms
 	created_at      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '방 생성 시각',
  
 	INDEX idx_rooms_owner_public_id (owner_public_id),
-	CONSTRAINT fk_rooms_owner
-		FOREIGN KEY (owner_public_id) REFERENCES users (public_id)
-		ON DELETE CASCADE
+	CONSTRAINT fk_rooms_owner FOREIGN KEY (owner_public_id) REFERENCES users (public_id) ON DELETE CASCADE
 )
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
@@ -158,17 +154,67 @@ CREATE TABLE IF NOT EXISTS room_members
  
 	PRIMARY KEY (room_id, user_public_id),
 	INDEX idx_room_members_user (user_public_id, last_entered_at),
-	CONSTRAINT fk_room_members_room
-		FOREIGN KEY (room_id) REFERENCES rooms (room_id)
-		ON DELETE CASCADE,
-	CONSTRAINT fk_room_members_user
-		FOREIGN KEY (user_public_id) REFERENCES users (public_id)
-		ON DELETE CASCADE
+	CONSTRAINT fk_room_members_room FOREIGN KEY (room_id) REFERENCES rooms (room_id) ON DELETE CASCADE,
+	CONSTRAINT fk_room_members_user FOREIGN KEY (user_public_id) REFERENCES users (public_id) ON DELETE CASCADE
 )
 ENGINE = InnoDB
 DEFAULT CHARSET = utf8mb4
 COLLATE = utf8mb4_unicode_ci
 COMMENT = '사용자별 방 입장 기록';
+
+
+-- ---------------------------------------------------------------------------
+-- friendships : 수락된 친구 관계. 한 쌍당 정확히 한 행이며 user_a < user_b
+--   (문자열 비교, 둘 다 소문자 16진 32자)로 정규화해서 저장한다 — 그래서
+--   (A,B)와 (B,A)가 중복 저장될 수 없고, 조회는 양쪽 컬럼을 모두 본다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS friendships
+(
+	user_a      CHAR(32) NOT NULL COMMENT '정규화된 쌍의 작은 쪽 public_id',
+	user_b      CHAR(32) NOT NULL COMMENT '정규화된 쌍의 큰 쪽 public_id',
+	created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '친구가 된 시각',
+ 
+	PRIMARY KEY (user_a, user_b),
+	INDEX idx_friendships_user_b (user_b),
+	CONSTRAINT fk_friendships_a FOREIGN KEY (user_a) REFERENCES users (public_id) ON DELETE CASCADE,
+	CONSTRAINT fk_friendships_b FOREIGN KEY (user_b) REFERENCES users (public_id) ON DELETE CASCADE
+)
+ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci
+COMMENT = '친구 관계(정규화된 쌍당 1행)';
+ 
+-- ---------------------------------------------------------------------------
+-- friend_requests : 대기 중인 친구 요청 (from_id -> to_id). 수락/거절/취소 시 삭제.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS friend_requests
+(
+	from_id     CHAR(32) NOT NULL COMMENT '요청 보낸 계정 public_id',
+	to_id       CHAR(32) NOT NULL COMMENT '요청 받은 계정 public_id',
+	created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '요청 시각',
+ 
+	PRIMARY KEY (from_id, to_id),
+	INDEX idx_friend_requests_to (to_id, created_at),
+	CONSTRAINT fk_friend_requests_from FOREIGN KEY (from_id) REFERENCES users (public_id) ON DELETE CASCADE,
+	CONSTRAINT fk_friend_requests_to   FOREIGN KEY (to_id)   REFERENCES users (public_id) ON DELETE CASCADE
+)
+ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci
+COMMENT = '대기 중인 친구 요청';
+ 
+-- ---------------------------------------------------------------------------
+-- user_blocks : 차단 (blocker_id가 blocked_id를 차단). 방향성이 있다.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_blocks
+(
+	blocker_id  CHAR(32) NOT NULL COMMENT '차단한 계정 public_id',
+	blocked_id  CHAR(32) NOT NULL COMMENT '차단당한 계정 public_id',
+	created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '차단 시각',
+ 
+	PRIMARY KEY (blocker_id, blocked_id),
+	INDEX idx_user_blocks_blocked (blocked_id),
+	CONSTRAINT fk_user_blocks_blocker FOREIGN KEY (blocker_id) REFERENCES users (public_id) ON DELETE CASCADE,
+	CONSTRAINT fk_user_blocks_blocked FOREIGN KEY (blocked_id) REFERENCES users (public_id) ON DELETE CASCADE
+)
+ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci
+COMMENT = '차단 목록(방향성 있음)';
 
 -- ---------------------------------------------------------------------------
 -- (선택) 애플리케이션 접속 계정 생성 — demo(ChatServer.cpp)의 CDBNode 설정과
@@ -188,3 +234,8 @@ COMMENT = '사용자별 방 입장 기록';
 
 -- 접속 계정에 권한이 필요하면(이미 chat. * 전체 권한이면 불필요):
 --   GRANT SELECT, INSERT, UPDATE, DELETE ON chat. room_members TO 'chat_user'@'%';
+
+
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON chat_db.friendships TO 'chat_user'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON chat_db.friend_requests TO 'chat_user'@'%';
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON chat_db.user_blocks TO 'chat_user'@'%';

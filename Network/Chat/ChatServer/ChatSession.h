@@ -12,6 +12,9 @@
 
 #include <string>
 #include <array>
+#include <atomic>
+#include <mutex>
+#include <unordered_set>
 
 class CChatServerMain;
 
@@ -121,6 +124,53 @@ public:
 	//***************************************************************************
 	void SetRoomId(int32 roomId) { _roomId = roomId; }
 
+	//***************************************************************************
+	// @brief 이 계정이 차단한 사용자(publicId 16진 소문자 32자) 목록을 통째로 설정합니다.
+	// @details 로그인 직후 CChatServerMain::OnFriendLogin()이 DB에서 읽어 한 번 채운다.
+	//          수신(브로드캐스트) 스레드가 IsBlockingHex()로 읽고 JobQueue 스레드가
+	//          갱신하므로 _blockMutex로 보호한다. MarkLoggedIn()과 같은 좁은 용도 API.
+	//***************************************************************************
+	void SetBlockedUsers(std::unordered_set<std::string> blockedHex)
+	{
+		std::lock_guard<std::mutex> lock(_blockMutex);
+		_blockedUsers = std::move(blockedHex);
+		_hasBlockedUsers.store(!_blockedUsers.empty(), std::memory_order_release);
+	}
+
+	//***************************************************************************
+	// @brief 차단 성공 후 차단 목록에 한 명을 추가합니다(친구 기능 핸들러 전용).
+	//***************************************************************************
+	void AddBlockedUser(const std::string& hex)
+	{
+		std::lock_guard<std::mutex> lock(_blockMutex);
+		_blockedUsers.insert(hex);
+		_hasBlockedUsers.store(true, std::memory_order_release);
+	}
+
+	//***************************************************************************
+	// @brief 차단 해제 후 차단 목록에서 한 명을 제거합니다(친구 기능 핸들러 전용).
+	//***************************************************************************
+	void RemoveBlockedUser(const std::string& hex)
+	{
+		std::lock_guard<std::mutex> lock(_blockMutex);
+		_blockedUsers.erase(hex);
+		_hasBlockedUsers.store(!_blockedUsers.empty(), std::memory_order_release);
+	}
+
+	//***************************************************************************
+	// @brief 이 계정이 해당 사용자(publicId 16진 소문자 32자)를 차단했는지 반환합니다.
+	// @details 채팅 브로드캐스트의 수신자별 필터와 과거 대화 기록 스트리밍에서 호출된다.
+	//          차단 목록이 비어있는 대부분의 세션은 락 없이 곧바로 false를 반환한다.
+	//***************************************************************************
+	bool IsBlockingHex(const std::string& hex) const
+	{
+		if( !_hasBlockedUsers.load(std::memory_order_acquire) )
+			return false;
+
+		std::lock_guard<std::mutex> lock(_blockMutex);
+		return _blockedUsers.find(hex) != _blockedUsers.end();
+	}
+
 private:
 	void	HandlePacket(const PacketHeader* header, size_t bufferSize);
 
@@ -131,6 +181,10 @@ private:
 	std::string		_profileImageUrl;					// 프로필 이미지 URL(변경 가능, 미설정이면 빈 문자열)
 	bool			_loggedIn = false;
 	int32			_roomId = -1;					// 현재 위치. -1=아직 미배정, 0=로비, 1~kMaxRoomId=특정 룸
+
+	mutable std::mutex					_blockMutex;				// _blockedUsers 보호
+	std::unordered_set<std::string>		_blockedUsers;				// 내가 차단한 사용자 publicId(16진). 채팅 수신 필터용
+	std::atomic<bool>					_hasBlockedUsers{ false };	// 비어있는 흔한 경우 락 생략용 힌트
 };
 
 #endif // ndef UC_CHATSESSION_H

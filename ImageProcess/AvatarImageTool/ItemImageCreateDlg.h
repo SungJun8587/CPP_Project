@@ -40,6 +40,7 @@ private:
     void    OnWoman();
     void    OnLeftButton();
     void    OnRightButton();
+    void    OnImagePreview();
     void    OnImageFileCreate();
     void    OnListMove();
     void    OnListDelete();

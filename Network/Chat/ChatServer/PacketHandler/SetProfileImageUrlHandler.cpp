@@ -57,7 +57,13 @@ namespace
 				res.imageId = newImageId;
 
 				if( result == ELoginResult::Ok )
+				{
 					session->UpdateProfileImageUrl(newUrl);
+
+					// 접속 중인 친구들에게 바뀐 프로필 이미지를 알린다(세션 값 갱신 직후).
+					if( CChatServerMain* srv = session->GetServer() )
+						srv->NotifyFriendProfileChanged(session);
+				}
 
 				session->Send(&res, sizeof(res));
 			});

@@ -41,6 +41,10 @@ void CChatSession::OnDisconnected()
 		if( _server != nullptr )
 			_server->LeaveCurrentRoom(this);
 
+		// [추가] 접속 중인 친구들에게 접속 종료를 알리고 친구 알림용 세션 레지스트리에서
+		// 제거한다. _publicId를 읽으므로 _loggedIn을 내리기 전에 호출한다.
+		_server->OnFriendLogout(this);
+
 		_server->OnUserLogout(_publicId);
 		_loggedIn = false;
 	}

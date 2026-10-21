@@ -585,6 +585,271 @@ struct ChatHistoryEndResPacket : PacketHeader
 	int32	totalCount;
 };
 
+//***************************************************************************
+// @brief [추가] 친구 요청 구조체 (Client -> Server).
+// @details 대상을 닉네임으로 지정한다. 상대가 이미 나에게 요청을 보낸 상태면
+//          요청이 맞물려 즉시 친구가 된다(FriendRequestResPacket::autoAccepted).
+//***************************************************************************
+struct FriendRequestReqPacket : PacketHeader
+{
+	char	nickname[kNicknameBytes];	// 친구 요청 대상 닉네임(UTF-8)
+};
+
+//***************************************************************************
+// @brief [추가] 친구 요청 응답 구조체 (Server -> Client, 요청자에게만).
+// @details 상대가 나를 차단한 경우에도 차단 사실을 드러내지 않기 위해 성공으로
+//          응답하며, 이때 상대에게는 아무것도 저장/전달되지 않는다.
+//***************************************************************************
+struct FriendRequestResPacket : PacketHeader
+{
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	uint8	autoAccepted;				// 1: 상대의 기존 요청과 맞물려 즉시 친구가 됨
+	BYTE	publicId[kPublicIdBytes];	// success==1일 때 대상 계정 식별자
+};
+
+//***************************************************************************
+// @brief [추가] 받은 친구 요청 수락/거절 요청 구조체 (Client -> Server).
+//***************************************************************************
+struct FriendRespondReqPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];	// 요청을 보낸 계정 식별자 (받은 요청 목록에서 받은 값)
+	uint8	accept;						// 1: 수락, 0: 거절
+};
+
+//***************************************************************************
+// @brief [추가] 수락/거절 응답 구조체 (Server -> Client, 요청자에게만).
+// @details 거절은 상대에게 알리지 않는다. 수락하면 요청을 보낸 쪽이 접속 중일 때
+//          FriendAcceptedNotifyPacket을 받는다.
+//***************************************************************************
+struct FriendRespondResPacket : PacketHeader
+{
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	uint8	accepted;					// 요청했던 accept 값 그대로
+	BYTE	publicId[kPublicIdBytes];	// 대상 계정 식별자
+	uint8	online;						// 수락 성공 시 새 친구의 현재 접속 여부
+};
+
+//***************************************************************************
+// @brief [추가] 친구 삭제 요청 구조체 (Client -> Server).
+//***************************************************************************
+struct FriendRemoveReqPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];	// 삭제할 친구의 식별자
+};
+
+//***************************************************************************
+// @brief [추가] 친구 삭제 응답 구조체 (Server -> Client, 요청자에게만).
+// @details 삭제되면 상대가 접속 중일 때 FriendRemovedNotifyPacket을 받는다.
+//***************************************************************************
+struct FriendRemoveResPacket : PacketHeader
+{
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	BYTE	publicId[kPublicIdBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 친구 목록 조회 요청 구조체 (Client -> Server).
+// @details 바디 없음. 친구 전체를 한 번에 스트리밍한다(계정당 kMaxFriends 상한).
+//***************************************************************************
+struct FriendListReqPacket : PacketHeader
+{
+};
+
+//***************************************************************************
+// @brief [추가] 친구 목록 항목 단건 응답 구조체 (Server -> Client).
+// @details profileImageUrl이 비어있으면 기본 이미지를 뜻한다. online은 이 서버
+//          프로세스에 로그인해 있는지 여부다.
+//***************************************************************************
+struct FriendListItemResPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];
+	char	nickname[kNicknameBytes];
+	char	profileImageUrl[kProfileImageUrlBytes];
+	uint8	online;						// 1: 접속 중, 0: 오프라인
+};
+
+//***************************************************************************
+// @brief [추가] 친구 목록 전송 완료 응답 구조체 (Server -> Client).
+// @details success==0이면 DB 오류로 중단된 것이므로 그때까지 받은 항목은 무시한다.
+//***************************************************************************
+struct FriendListEndResPacket : PacketHeader
+{
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	int32	totalCount;					// 전송된 총 항목 수
+};
+
+//***************************************************************************
+// @brief [추가] 받은 친구 요청 목록 한 페이지 조회 요청 구조체 (Client -> Server).
+// @details ListRoomsReqPacket과 동일한 페이징 규약이다. 오래된 요청부터 순서대로 나간다.
+//          requestId : 클라이언트가 붙이는 요청 식별자. 응답 패킷(Item/End)이 그대로
+//                      되돌려주므로, 이미 다른 요청으로 넘어간 뒤 늦게 도착한
+//                      응답을 걸러낼 수 있다.
+//          page      : 0부터 시작하는 페이지 번호. 마지막 페이지를 넘으면 서버가
+//                      마지막 페이지로 보정하며, 실제 적용된 값은 End 응답에 담긴다.
+//          pageSize  : 한 페이지 항목 수. 서버가 1~kMaxPendingPageSize로 보정한다.
+//***************************************************************************
+struct FriendPendingListReqPacket : PacketHeader
+{
+	int32	requestId;
+	int32	page;
+	int32	pageSize;
+};
+
+//***************************************************************************
+// @brief [추가] 받은 친구 요청 항목 단건 응답 구조체 (Server -> Client).
+//***************************************************************************
+struct FriendPendingItemResPacket : PacketHeader
+{
+	int32	requestId;								// 요청의 값을 그대로 되돌려줌
+	BYTE	publicId[kPublicIdBytes];				// 요청을 보낸 계정 (수락/거절 시 그대로 사용)
+	char	nickname[kNicknameBytes];
+	char	profileImageUrl[kProfileImageUrlBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 받은 친구 요청 한 페이지 전송 완료 응답 구조체 (Server -> Client).
+// @details totalCount는 이 페이지에 담긴 개수가 아니라 받은 요청 전체 개수다.
+//          page/pageSize는 서버가 보정한 뒤 실제로 적용한 값이다. success==0이면
+//          DB 오류로 중단된 것이므로 그때까지 받은 항목은 무시한다.
+//***************************************************************************
+struct FriendPendingEndResPacket : PacketHeader
+{
+	int32	requestId;
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	int32	totalCount;					// 받은 요청 전체 개수
+	int32	page;
+	int32	pageSize;
+};
+
+//***************************************************************************
+// @brief [추가] 차단 요청 구조체 (Client -> Server).
+// @details 대상을 닉네임으로 지정한다. 차단하면 기존 친구 관계와 양방향 대기
+//          요청이 모두 삭제된다.
+//***************************************************************************
+struct BlockReqPacket : PacketHeader
+{
+	char	nickname[kNicknameBytes];	// 차단할 대상 닉네임(UTF-8)
+};
+
+//***************************************************************************
+// @brief [추가] 차단 응답 구조체 (Server -> Client, 요청자에게만).
+// @details 끊긴 친구 관계는 상대에게 FriendRemovedNotifyPacket(삭제와 동일한
+//          모양)으로만 전달되며 차단 사실은 노출하지 않는다.
+//***************************************************************************
+struct BlockResPacket : PacketHeader
+{
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	BYTE	publicId[kPublicIdBytes];	// success==1일 때 차단된 계정 식별자
+};
+
+//***************************************************************************
+// @brief [추가] 차단 해제 요청 구조체 (Client -> Server).
+//***************************************************************************
+struct UnblockReqPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];	// 차단 해제할 계정 식별자 (차단 목록에서 받은 값)
+};
+
+//***************************************************************************
+// @brief [추가] 차단 해제 응답 구조체 (Server -> Client, 요청자에게만).
+//***************************************************************************
+struct UnblockResPacket : PacketHeader
+{
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	BYTE	publicId[kPublicIdBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 차단 목록 조회 요청 구조체 (Client -> Server).
+// @details 바디 없음. 차단 목록 전체를 한 번에 스트리밍한다.
+//***************************************************************************
+struct BlockListReqPacket : PacketHeader
+{
+};
+
+//***************************************************************************
+// @brief [추가] 차단 목록 항목 단건 응답 구조체 (Server -> Client).
+//***************************************************************************
+struct BlockListItemResPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];
+	char	nickname[kNicknameBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 차단 목록 전송 완료 응답 구조체 (Server -> Client).
+//***************************************************************************
+struct BlockListEndResPacket : PacketHeader
+{
+	uint8	success;					// 1: 성공, 0: 실패
+	uint8	reason;						// EFriendResult
+	int32	totalCount;					// 전송된 총 항목 수
+};
+
+//***************************************************************************
+// @brief [추가] 친구 요청 도착 알림 (Server -> Client, 서버가 자발적으로 전송).
+// @details 받는 사람이 접속 중일 때만 간다. 오프라인이면 다음 접속 후 받은 요청
+//          목록 조회(FriendPendingListReq)로 확인한다.
+//***************************************************************************
+struct FriendRequestNotifyPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];				// 요청을 보낸 계정
+	char	nickname[kNicknameBytes];
+	char	profileImageUrl[kProfileImageUrlBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 친구 성립 알림 (Server -> Client, 서버가 자발적으로 전송).
+// @details 내가 보낸 요청이 수락됐거나, 요청이 맞물려 즉시 친구가 됐을 때 먼저
+//          요청한 쪽에게 간다.
+//***************************************************************************
+struct FriendAcceptedNotifyPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];				// 새로 친구가 된 계정
+	char	nickname[kNicknameBytes];
+	char	profileImageUrl[kProfileImageUrlBytes];
+	uint8	online;
+};
+
+//***************************************************************************
+// @brief [추가] 친구 관계 해제 알림 (Server -> Client, 서버가 자발적으로 전송).
+// @details 상대가 나를 친구에서 삭제했거나 차단했을 때 접속 중인 쪽에게 간다.
+//***************************************************************************
+struct FriendRemovedNotifyPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];				// 관계가 끊어진 상대
+};
+
+//***************************************************************************
+// @brief [추가] 친구 프로필 변경 알림 (Server -> Client, 서버가 자발적으로 전송).
+// @details 친구가 닉네임 또는 대표 프로필 이미지를 바꿨을 때 접속 중인 친구들에게
+//          변경 후의 최신 값 전체를 보낸다(어느 쪽이 바뀌었는지는 구분하지 않음).
+//          profileImageUrl이 비어있으면 기본 이미지를 뜻한다.
+//***************************************************************************
+struct FriendProfileChangedNotifyPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];
+	char	nickname[kNicknameBytes];
+	char	profileImageUrl[kProfileImageUrlBytes];
+};
+
+//***************************************************************************
+// @brief [추가] 친구 접속 상태 알림 (Server -> Client, 서버가 자발적으로 전송).
+// @details 친구가 로그인/접속 종료할 때 접속 중인 친구들에게 간다.
+//***************************************************************************
+struct FriendStatusNotifyPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];
+	uint8	online;									// 1: 접속, 0: 접속 종료
+};
+
 #pragma pack(pop)
 
 #endif // ndef UC_CHATPACKET_H
