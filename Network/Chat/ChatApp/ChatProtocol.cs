@@ -85,6 +85,33 @@ namespace ChatApp
         // [추가] 방 입장 시 서버가 자동으로 스트리밍해주는 과거 대화 기록.
         ChatHistoryItemRes = 44,        // Server -> Client, 기록 항목 단건(가변 개수 스트리밍) — 요청자에게만
         ChatHistoryEndRes = 45,         // Server -> Client, 기록 전송 완료 — 요청자에게만
+
+        // [추가] 친구 기능 — 서버 쪽 ChatPacketTypes.h와 번호를 정확히 맞춰야 한다
+        // (패킷 구조/직렬화는 FriendProtocol.cs).
+        FriendRequestReq = 50,              // Client -> Server, 닉네임으로 친구 요청
+        FriendRequestRes = 51,
+        FriendRespondReq = 52,              // Client -> Server, 받은 요청 수락/거절
+        FriendRespondRes = 53,
+        FriendRemoveReq = 54,               // Client -> Server, 친구 삭제
+        FriendRemoveRes = 55,
+        FriendListReq = 56,                 // Client -> Server, 친구 목록 전체 조회
+        FriendListItemRes = 57,
+        FriendListEndRes = 58,
+        FriendPendingListReq = 59,          // Client -> Server, 받은 요청 목록 한 페이지 조회
+        FriendPendingItemRes = 60,
+        FriendPendingEndRes = 61,
+        FriendRequestNotify = 62,           // Server -> Client, 친구 요청 도착
+        FriendAcceptedNotify = 63,          // Server -> Client, 내 요청이 수락됨(또는 즉시 친구)
+        FriendRemovedNotify = 64,           // Server -> Client, 친구 관계 해제(상대의 삭제/차단)
+        FriendStatusNotify = 65,            // Server -> Client, 친구 접속/종료
+        BlockReq = 66,                      // Client -> Server, 닉네임으로 차단
+        BlockRes = 67,
+        UnblockReq = 68,                    // Client -> Server, 차단 해제
+        UnblockRes = 69,
+        BlockListReq = 70,                  // Client -> Server, 차단 목록 조회
+        BlockListItemRes = 71,
+        BlockListEndRes = 72,
+        FriendProfileChangedNotify = 73,    // Server -> Client, 친구의 닉네임/프로필 이미지 변경
     }
 
     // RoomEnterResPacket::reason 및 방 생성/삭제/이름변경 결과 공용.
@@ -165,7 +192,7 @@ namespace ChatApp
     //***************************************************************************
     // @brief 서버로 보내는 패킷들을 바이트 배열로 조립한다.
     //***************************************************************************
-    public static class PacketBuilder
+    public static partial class PacketBuilder
     {
         //***************************************************************************
         // @brief 고정 크기 UTF-8 필드를 만든다. 마지막 1바이트는 NUL 종단
@@ -826,7 +853,7 @@ namespace ChatApp
     //        포함한 완전한 패킷 하나 전체라고 가정한다(ChatNetworkClient의
     //        수신 루프가 프레이밍을 이미 처리했음).
     //***************************************************************************
-    public static class PacketParser
+    public static partial class PacketParser
     {
         private static string Utf8FromFixed(byte[] fixedBuf)
         {

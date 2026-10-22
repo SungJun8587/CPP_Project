@@ -128,16 +128,16 @@ private:
 	void	DrawTitleButtons(CDC& dc);
 	BOOL	DrawingImage(const TCHAR* ptszDirection);
 	BOOL	GetDrawingInfo(const TCHAR* ptszImageInfo, AVATAR_DRAWING_ITEM_INFO& DrawItemInfo);
-	BOOL	SaveAvatarPng(const TCHAR* ptszPath);
+	BOOL	SaveBodyGif(const TCHAR* ptszPath);
 
 private:
-	int			m_nDelIndex;
-	int			m_nSubType;
+	int			m_nAvatar;
 	int			m_nGender;
 	int			m_nExpression;
+	int			m_nSubType;
+	int			m_nDelIndex;
 	int			m_nAvatarBg;
 	int			m_nDrawStyle;
-	int			m_nAvatar;
 
 	int			m_nTotalBufferSize;
 	int			m_nAboveBufferSize;
@@ -150,6 +150,7 @@ private:
 	BYTE		m_bUnderBuffer[AVATARITEM_AVATAR_IMAGE_BUFFER_SIZE];
 
 	TCHAR		m_tszEncString[AVATARITEM_QUERYSTRING_DATA_STR_ENC_LEN];
+	TCHAR		m_tszDirection[AVATARITEM_QUERYSTRING_DIRECTION_STR_LEN];
 
 	CRect		m_rcClose;
 	CRect		m_rcMin;

@@ -300,6 +300,12 @@
     <Filter Include="DBHandler">
       <UniqueIdentifier>{4d711ee4-30cd-4207-98b7-e690887a91cf}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Common">
+      <UniqueIdentifier>{c60254c7-3838-44dd-8454-dd8ebf6b9030}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Common\Protocol">
+      <UniqueIdentifier>{627becff-0bf5-4cbf-a83f-754a925922b5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -440,7 +446,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommon.h">
       <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="ChatPacket.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.h">
       <Filter>UtilCore\Job</Filter>
     </ClInclude>
@@ -509,7 +514,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
-    <ClInclude Include="ChatPacketTypes.h" />
     <ClInclude Include="DBChangeNicknameRequest.h" />
     <ClInclude Include="DBDeleteProfileImageRequest.h" />
     <ClInclude Include="DBListProfileImagesRequest.h" />
@@ -547,6 +551,21 @@
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
     <ClInclude Include="DBFriendRequest.h" />
+    <ClInclude Include="..\Common\Protocol\ChatPacket.h">
+      <Filter>Common\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\Protocol\ChatPacketTypes.h">
+      <Filter>Common\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatPacketUtil.h" />
+    <ClInclude Include="..\Common\ImageRef.h">
+      <Filter>Common</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatHandlerUtil.h" />
+    <ClInclude Include="RoomValidation.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

@@ -23,10 +23,7 @@ namespace
 	//***************************************************************************
 	void HandleListRoomsReq(CChatSession& session, const PacketHeader* header)
 	{
-		if( !session.IsLoggedIn() )
-			return;
-
-		CChatServerMain* server = session.GetServer();
+		CChatServerMain* server = GetLoggedInServer(session);
 		if( server == nullptr )
 			return;
 
@@ -55,7 +52,7 @@ namespace
 			++keywordLen;
 		const std::string keyword(packet->keyword, keywordLen);
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestListRooms(sessionRef, scope, session.GetPublicId(), keyword, page, pageSize,
@@ -75,30 +72,25 @@ namespace
 					for( const SRoomListEntry& entry : rooms )
 					{
 						ListRoomsItemResPacket itemRes{};
-						itemRes.size = sizeof(itemRes);
-						itemRes.type = static_cast<uint16>(EChatPacketType::ListRoomsItemRes);
+						InitPacket(itemRes, EChatPacketType::ListRoomsItemRes);
 						itemRes.requestId = requestId;
 						itemRes.roomId = entry.roomId;
 
-						const size_t nameCopyLen = (std::min)(entry.name.size(), sizeof(itemRes.name) - 1);
-						::memcpy(itemRes.name, entry.name.data(), nameCopyLen);
+						FixedBuf::CopyStr(itemRes.name, entry.name);
 
-						const size_t nicknameCopyLen = (std::min)(entry.ownerNickname.size(), sizeof(itemRes.ownerNickname) - 1);
-						::memcpy(itemRes.ownerNickname, entry.ownerNickname.data(), nicknameCopyLen);
+						FixedBuf::CopyStr(itemRes.ownerNickname, entry.ownerNickname);
 
 						itemRes.userCount = server->GetRoomUserCount(entry.roomId);
 						itemRes.totalMemberCount = entry.totalMemberCount;
 
-						const size_t imageUrlCopyLen = (std::min)(entry.imageRef.size(), sizeof(itemRes.imageUrl) - 1);
-						::memcpy(itemRes.imageUrl, entry.imageRef.data(), imageUrlCopyLen);
+						FixedBuf::CopyStr(itemRes.imageUrl, entry.imageRef);
 
 						session->Send(&itemRes, sizeof(itemRes));
 					}
 				}
 
 				ListRoomsEndResPacket endRes{};
-				endRes.size = sizeof(endRes);
-				endRes.type = static_cast<uint16>(EChatPacketType::ListRoomsEndRes);
+				InitPacket(endRes, EChatPacketType::ListRoomsEndRes);
 				endRes.requestId = requestId;
 				endRes.scope = static_cast<uint8_t>(scope);
 				endRes.totalCount = (result == ELoginResult::Ok) ? totalCount : 0;

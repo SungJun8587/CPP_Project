@@ -239,17 +239,14 @@ void CChatServerMain::RequestRoomMemberHistoryPage(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOM_MEMBERS_PAGE_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_ListRoomMembersPage,
+	const bool pushed = PushDb<ST_LIST_ROOM_MEMBERS_PAGE_REQ>(kDbCallIdent_ListRoomMembersPage,
 		[roomId, page, pageSize, dispatchToJobQueue](ST_LIST_ROOM_MEMBERS_PAGE_REQ* req)
 		{
 			req->roomId = roomId;
 			req->page = page;
 			req->pageSize = pageSize;
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -325,8 +322,7 @@ void CChatServerMain::BroadcastToRoom(int32 roomId, const void* data, uint16 siz
 void CChatServerMain::NotifyRoomUserCount(int32 roomId, int32 userCount)
 {
 	RoomUserCountNotifyPacket notify{};
-	notify.size = sizeof(notify);
-	notify.type = static_cast<uint16>(EChatPacketType::RoomUserCountNotify);
+	InitPacket(notify, EChatPacketType::RoomUserCountNotify);
 	notify.roomId = roomId;
 	notify.userCount = userCount;
 
@@ -351,9 +347,7 @@ void CChatServerMain::RequestCreateRoom(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_CREATE_ROOM_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_CreateRoom,
+	const bool pushed = PushDb<ST_CREATE_ROOM_REQ>(kDbCallIdent_CreateRoom,
 		[this, ownerPublicId, roomName, jobQueue, onComplete](ST_CREATE_ROOM_REQ* req)
 		{
 			::memcpy(req->ownerPublicId, ownerPublicId.data(), ownerPublicId.size());
@@ -377,8 +371,7 @@ void CChatServerMain::RequestCreateRoom(
 								onComplete(result, newRoomId);
 						});
 				};
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -408,9 +401,7 @@ void CChatServerMain::RequestDeleteRoom(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_ROOM_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_DeleteRoom,
+	const bool pushed = PushDb<ST_DELETE_ROOM_REQ>(kDbCallIdent_DeleteRoom,
 		[this, roomId, requesterPublicId, jobQueue, onComplete](ST_DELETE_ROOM_REQ* req)
 		{
 			req->roomId = roomId;
@@ -434,8 +425,7 @@ void CChatServerMain::RequestDeleteRoom(
 						}
 
 						DeleteRoomNotifyPacket notify{};
-						notify.size = sizeof(notify);
-						notify.type = static_cast<uint16>(EChatPacketType::DeleteRoomNotify);
+						InitPacket(notify, EChatPacketType::DeleteRoomNotify);
 						notify.roomId = roomId;
 						BroadcastToRoom(roomId, &notify, notify.size);
 
@@ -472,8 +462,7 @@ void CChatServerMain::RequestDeleteRoom(
 								onComplete(result);
 						});
 				};
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -498,9 +487,7 @@ void CChatServerMain::RequestRenameRoom(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_RENAME_ROOM_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_RenameRoom,
+	const bool pushed = PushDb<ST_RENAME_ROOM_REQ>(kDbCallIdent_RenameRoom,
 		[this, roomId, requesterPublicId, newName, jobQueue, onComplete](ST_RENAME_ROOM_REQ* req)
 		{
 			req->roomId = roomId;
@@ -519,11 +506,9 @@ void CChatServerMain::RequestRenameRoom(
 						}
 
 						RenameRoomNotifyPacket notify{};
-						notify.size = sizeof(notify);
-						notify.type = static_cast<uint16>(EChatPacketType::RenameRoomNotify);
+						InitPacket(notify, EChatPacketType::RenameRoomNotify);
 						notify.roomId = roomId;
-						const size_t nameCopyLen = (std::min)(newName.size(), sizeof(notify.newName) - 1);
-						::memcpy(notify.newName, newName.data(), nameCopyLen);
+						FixedBuf::CopyStr(notify.newName, newName);
 						BroadcastToRoom(roomId, &notify, notify.size);
 					}
 
@@ -536,8 +521,7 @@ void CChatServerMain::RequestRenameRoom(
 								onComplete(result);
 						});
 				};
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -641,9 +625,7 @@ void CChatServerMain::RequestListRooms(
 			}
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOMS_PAGE_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_ListRoomsPage,
+	const bool pushed = PushDb<ST_LIST_ROOMS_PAGE_REQ>(kDbCallIdent_ListRoomsPage,
 		[scope, requesterPublicId, keyword, page, pageSize, dispatchToJobQueue](ST_LIST_ROOMS_PAGE_REQ* req)
 		{
 			req->scope = scope;
@@ -652,8 +634,7 @@ void CChatServerMain::RequestListRooms(
 			req->page = page;
 			req->pageSize = pageSize;
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -672,15 +653,12 @@ void CChatServerMain::RequestRecordRoomJoin(
 	if( roomId == kLobbyRoomId )
 		return;
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_RECORD_ROOM_JOIN_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_RecordRoomJoin,
+	const bool pushed = PushDb<ST_RECORD_ROOM_JOIN_REQ>(kDbCallIdent_RecordRoomJoin,
 		[roomId, requesterPublicId](ST_RECORD_ROOM_JOIN_REQ* req)
 		{
 			req->roomId = roomId;
 			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 		LOG_ERROR(_T("RequestRecordRoomJoin: DB 요청 큐가 가득 차서 입장 기록을 건너뜀 (roomId=%d)"), roomId);
@@ -696,7 +674,7 @@ void CChatServerMain::RequestRecordRoomJoin(
 		CVector<std::string> args;
 		args.push_back("SADD");
 		args.push_back(BuildRoomMembersKey(roomId));
-		args.push_back(Crypto::CCryptoUtil::ToHex(requesterPublicId.data(), requesterPublicId.size()));
+		args.push_back(PublicIdToHex(requesterPublicId));
 		_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
 	}
 }
@@ -724,9 +702,7 @@ void CChatServerMain::RequestSetRoomImage(
 	// (ToStorableImageRef() 참고). 외부 URL이면 그대로 통과된다.
 	const std::string storableUrl = ToStorableImageRef(newImageUrl);
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SET_ROOM_IMAGE_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_SetRoomImage,
+	const bool pushed = PushDb<ST_SET_ROOM_IMAGE_REQ>(kDbCallIdent_SetRoomImage,
 		[this, roomId, requesterPublicId, storableUrl, jobQueue, onComplete](ST_SET_ROOM_IMAGE_REQ* req)
 		{
 			req->roomId = roomId;
@@ -747,13 +723,11 @@ void CChatServerMain::RequestSetRoomImage(
 
 						// 2) 그 방 멤버 전원에게 브로드캐스트.
 						RoomImageChangedNotifyPacket notify{};
-						notify.size = sizeof(notify);
-						notify.type = static_cast<uint16>(EChatPacketType::RoomImageChangedNotify);
+						InitPacket(notify, EChatPacketType::RoomImageChangedNotify);
 						notify.roomId = roomId;
 
 						const std::string displayUrl = ToDisplayImageUrl(storableUrl);
-						const size_t urlCopyLen = (std::min)(displayUrl.size(), sizeof(notify.imageUrl) - 1);
-						::memcpy(notify.imageUrl, displayUrl.data(), urlCopyLen);
+						FixedBuf::CopyStr(notify.imageUrl, displayUrl);
 
 						BroadcastToRoom(roomId, &notify, notify.size);
 					}
@@ -767,8 +741,7 @@ void CChatServerMain::RequestSetRoomImage(
 								onComplete(result);
 						});
 				};
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -794,9 +767,7 @@ void CChatServerMain::RequestGetRoomInfo(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_GET_ROOM_INFO_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_GetRoomInfo,
+	const bool pushed = PushDb<ST_GET_ROOM_INFO_REQ>(kDbCallIdent_GetRoomInfo,
 		[this, roomId, jobQueue, onComplete](ST_GET_ROOM_INFO_REQ* req)
 		{
 			req->roomId = roomId;
@@ -818,8 +789,7 @@ void CChatServerMain::RequestGetRoomInfo(
 								onComplete(actuallyFound, displayInfo);
 						});
 				};
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -883,9 +853,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 		// 경로(빈 방 자동 삭제)에서도 대화 기록을 같이 지운다.
 		ClearRoomRedisData(roomId);
 
-		PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_ROOM_REQ>(
-			MEMBER_DB_ASYNC,
-			kDbCallIdent_DeleteRoom,
+		PushDb<ST_DELETE_ROOM_REQ>(kDbCallIdent_DeleteRoom,
 			[roomId, leavingPublicId](ST_DELETE_ROOM_REQ* req)
 			{
 				req->roomId = roomId;
@@ -896,8 +864,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 							LOG_ERROR(_T("HandleRoomOwnershipOnLeave: 빈 방(roomId=%d) 자동 삭제 DB 반영 실패(reason=%d) — 인메모리에서는 이미 삭제됨"),
 								roomId, static_cast<int32>(result));
 					};
-			},
-			kMaxDbQueueCapacity);
+			});
 
 		return;
 	}
@@ -915,9 +882,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 			it->second.ownerPublicId = newOwnerPublicId;
 	}
 
-	PushDBAsyncRequest<COdbcAsyncSrv, ST_TRANSFER_ROOM_OWNER_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_TransferRoomOwner,
+	PushDb<ST_TRANSFER_ROOM_OWNER_REQ>(kDbCallIdent_TransferRoomOwner,
 		[roomId, newOwnerPublicId](ST_TRANSFER_ROOM_OWNER_REQ* req)
 		{
 			req->roomId = roomId;
@@ -927,15 +892,12 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 					if( !success )
 						LOG_ERROR(_T("HandleRoomOwnershipOnLeave: 방장 이양(roomId=%d) DB 반영 실패 — 인메모리는 이미 반영됨"), roomId);
 				};
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	RoomOwnerChangedNotifyPacket notify{};
-	notify.size = sizeof(notify);
-	notify.type = static_cast<uint16>(EChatPacketType::RoomOwnerChangedNotify);
+	InitPacket(notify, EChatPacketType::RoomOwnerChangedNotify);
 	notify.roomId = roomId;
-	const size_t nicknameCopyLen = (std::min)(newOwnerNickname.size(), sizeof(notify.newOwnerNickname) - 1);
-	::memcpy(notify.newOwnerNickname, newOwnerNickname.data(), nicknameCopyLen);
+	FixedBuf::CopyStr(notify.newOwnerNickname, newOwnerNickname);
 
 	BroadcastToRoom(roomId, &notify, notify.size);
 }
@@ -950,9 +912,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 //***************************************************************************
 void CChatServerMain::LoadRoomRegistryFromDb()
 {
-	PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_ROOMS_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_ListRooms,
+	PushDb<ST_LIST_ROOMS_REQ>(kDbCallIdent_ListRooms,
 		[this](ST_LIST_ROOMS_REQ* req)
 		{
 			req->onComplete = [this](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
@@ -968,7 +928,7 @@ void CChatServerMain::LoadRoomRegistryFromDb()
 					for( const SRoomListEntry& entry : rooms )
 					{
 						std::array<BYTE, kPublicIdBytes> ownerPublicId{};
-						if( !Crypto::CCryptoUtil::FromHex(entry.ownerPublicId, ownerPublicId.data(), ownerPublicId.size()) )
+						if( !HexToPublicId(entry.ownerPublicId, ownerPublicId) )
 						{
 							LOG_ERROR(_T("LoadRoomRegistryFromDb: roomId=%d의 owner_public_id 16진 디코딩 실패 — 이 방은 건너뜀"), entry.roomId);
 							continue;
@@ -980,6 +940,5 @@ void CChatServerMain::LoadRoomRegistryFromDb()
 
 					LOG_INFO(_T("LoadRoomRegistryFromDb: 방 %d개 로딩 완료"), loadedCount);
 				};
-		},
-		kMaxDbQueueCapacity);
+		});
 }

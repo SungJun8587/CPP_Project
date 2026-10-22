@@ -22,21 +22,17 @@ namespace
 	//***************************************************************************
 	void HandleDeleteChatMessageReq(CChatSession& session, const PacketHeader* header)
 	{
-		if( !session.IsLoggedIn() )
-			return; // 로그인 전 요청은 조용히 무시 — 다른 핸들러들과 동일한 정책
-
 		const DeleteChatMessageReqPacket* packet = reinterpret_cast<const DeleteChatMessageReqPacket*>(header);
 
-		CChatServerMain* server = session.GetServer();
+		CChatServerMain* server = GetLoggedInServer(session);
 		if( server == nullptr )
-			return;
+			return; // 로그인 전 요청은 조용히 무시 — 다른 핸들러들과 동일한 정책
 
 		int32 roomId = 0;
 		const EDeleteMessageResult result = server->TryDeleteMessage(packet->messageId, session.GetPublicId(), roomId);
 
 		DeleteChatMessageResPacket res{};
-		res.size = sizeof(res);
-		res.type = static_cast<uint16>(EChatPacketType::DeleteChatMessageRes);
+		InitPacket(res, EChatPacketType::DeleteChatMessageRes);
 		res.success = (result == EDeleteMessageResult::Ok) ? 1 : 0;
 		res.reason = static_cast<uint8>(result);
 		session.Send(&res, sizeof(res));
@@ -49,8 +45,7 @@ namespace
 		server->RemoveRoomChatMessage(roomId, packet->messageId);
 
 		DeleteChatMessageNotifyPacket notify{};
-		notify.size = sizeof(notify);
-		notify.type = static_cast<uint16>(EChatPacketType::DeleteChatMessageNotify);
+		InitPacket(notify, EChatPacketType::DeleteChatMessageNotify);
 		notify.messageId = packet->messageId;
 		server->BroadcastToRoom(roomId, &notify, notify.size);
 	}

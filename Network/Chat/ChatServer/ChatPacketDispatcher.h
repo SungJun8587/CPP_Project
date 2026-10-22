@@ -8,8 +8,8 @@
 #ifndef UC_CHATPACKETDISPATCHER_H
 #define UC_CHATPACKETDISPATCHER_H
 
-#include "ChatPacket.h"
 #include <Network/PacketDispatcher.h>
+#include "../Common/Protocol/ChatPacket.h"
 
 class CChatSession;
 

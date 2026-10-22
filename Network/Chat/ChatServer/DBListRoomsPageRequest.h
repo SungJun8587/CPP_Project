@@ -8,7 +8,6 @@
 #define UC_DBLISTROOMSPAGEREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"			
 #include "DBListRoomsRequest.h"
 
 #include <functional>

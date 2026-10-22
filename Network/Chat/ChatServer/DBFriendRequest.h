@@ -8,7 +8,6 @@
 #define UC_DBFRIENDREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"	// EFriendResult, kPublicIdBytes, kDbCallIdent_Friend
 
 #include <array>
 #include <functional>

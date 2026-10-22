@@ -8,7 +8,6 @@
 #define UC_DBSIGNUPREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ELoginResult, kPublicIdBytes
 
 #include <functional>
 #include <memory>

@@ -122,6 +122,12 @@
     <Filter Include="UtilCore\Crypto">
       <UniqueIdentifier>{23f5596c-1294-47e9-a247-70fabdd5a067}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Common">
+      <UniqueIdentifier>{2875778f-6652-463c-aca9-0cc7a6d731d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Common\Protocol">
+      <UniqueIdentifier>{1cc1559f-c4c2-466a-80b4-2bac1dc38862}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseDefine.h">
@@ -234,7 +240,6 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="ChatStressSession.h" />
-    <ClInclude Include="ChatPacket.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h">
       <Filter>UtilCore\Crypto</Filter>
     </ClInclude>
@@ -250,7 +255,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
-    <ClInclude Include="ChatPacketTypes.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
@@ -268,6 +272,15 @@
     <ClInclude Include="ChatStressStats.h" />
     <ClInclude Include="ChatStressScheduler.h" />
     <ClInclude Include="ChatStressReporter.h" />
+    <ClInclude Include="..\Common\Protocol\ChatPacket.h">
+      <Filter>Common\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Common\Protocol\ChatPacketTypes.h">
+      <Filter>Common\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

@@ -43,19 +43,17 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ChangeNickname)
 {
 	ST_CHANGE_NICKNAME_REQ* req = static_cast<ST_CHANGE_NICKNAME_REQ*>(pStAsync);
 
-	const size_t newLen = ::strnlen(req->newNickname, sizeof(req->newNickname));
-	const std::string newNickname(req->newNickname, newLen);
+	const std::string newNickname = FixedBuf::ReadStr(req->newNickname);
 
-	std::array<BYTE, kPublicIdBytes> publicId{};
-	::memcpy(publicId.data(), req->publicId, publicId.size());
+	PublicId publicId = ToPublicId(req->publicId);
 
 	// [설계 변경] public_id는 DB에 BINARY(16)이 아니라 CHAR(32)(16진 문자열)로
 	// 저장한다 — token_hash와 동일한 이유(ODBC 바이너리 파라미터 바인딩의
 	// 드라이버별 불확실성 회피). 와이어 프로토콜/세션은 여전히 raw
 	// 16바이트를 쓰고, DB 파라미터 바인딩 시점에만 문자열로 변환한다.
-	const std::string publicIdHex = Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	const std::string publicIdHex = PublicIdToHex(publicId);
 
-	if( !IsValidNickname(req->newNickname, newLen) )
+	if( !IsValidNickname(req->newNickname, newNickname.size()) )
 	{
 		if( req->onComplete )
 			req->onComplete(ELoginResult::InvalidNickname, publicId, newNickname);

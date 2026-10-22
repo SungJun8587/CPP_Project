@@ -19,17 +19,14 @@ namespace
 	//***************************************************************************
 	void HandleDeleteRoomReq(CChatSession& session, const PacketHeader* header)
 	{
-		if( !session.IsLoggedIn() )
-			return;
-
 		const DeleteRoomReqPacket* packet = reinterpret_cast<const DeleteRoomReqPacket*>(header);
 		const int32 roomId = packet->roomId;
 
-		CChatServerMain* server = session.GetServer();
+		CChatServerMain* server = GetLoggedInServer(session);
 		if( server == nullptr )
 			return;
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestDeleteRoom(sessionRef, roomId, session.GetPublicId(),
@@ -40,8 +37,7 @@ namespace
 					return;
 
 				DeleteRoomResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::DeleteRoomRes);
+				InitPacket(res, EChatPacketType::DeleteRoomRes);
 				res.success = (result == ERoomResult::Ok) ? 1 : 0;
 				res.reason = static_cast<uint8>(result);
 				session->Send(&res, sizeof(res));

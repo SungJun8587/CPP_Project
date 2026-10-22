@@ -24,9 +24,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteProfileImage)
 {
 	ST_DELETE_PROFILE_IMAGE_REQ* req = static_cast<ST_DELETE_PROFILE_IMAGE_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> publicId{};
-	::memcpy(publicId.data(), req->publicId, publicId.size());
-	const std::string publicIdHex = Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	PublicId publicId = ToPublicId(req->publicId);
+	const std::string publicIdHex = PublicIdToHex(publicId);
 	_tstring publicIdHexT = Utf8ToTString(publicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());

@@ -17,39 +17,6 @@
 
 namespace
 {
-	using PublicId = std::array<BYTE, kPublicIdBytes>;
-
-	template<size_t N>
-	void CopyStr(char(&dst)[N], const std::string& src)
-	{
-		const size_t len = (std::min)(src.size(), N - 1);
-		::memcpy(dst, src.data(), len);
-		dst[len] = '\0';
-	}
-
-	template<typename TPacket>
-	void InitPacket(TPacket& p, EChatPacketType type)
-	{
-		p.size = sizeof(TPacket);
-		p.type = static_cast<uint16>(type);
-	}
-
-	// 고정폭 char 배열을 NUL 경계 방어 후 문자열화
-	template<size_t N>
-	std::string ReadStr(const char(&src)[N])
-	{
-		char buf[N + 1] = {};
-		::memcpy(buf, src, N);
-		return std::string(buf);
-	}
-
-	PublicId ToPublicId(const BYTE* raw)
-	{
-		PublicId id{};
-		::memcpy(id.data(), raw, id.size());
-		return id;
-	}
-
 	// 요청자 정보 스냅샷 — 요청자가 응답 전에 끊겨도 상대 알림에 쓸 수 있도록 값으로 보관한다.
 	struct SActor
 	{
@@ -62,14 +29,11 @@ namespace
 	// 공통 사전 처리: 로그인된 세션만 허용하고 서버/요청자 스냅샷을 만든다.
 	bool BeginOp(CChatSession& session, CChatServerMain*& server, SActor& actor)
 	{
-		if( !session.IsLoggedIn() )
-			return false;
-
-		server = session.GetServer();
+		server = GetLoggedInServer(session);
 		if( server == nullptr )
 			return false;
 
-		actor.session = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		actor.session = GetSessionRef(session);
 		actor.publicId = session.GetPublicId();
 		actor.nickname = session.GetNickname();
 		actor.profileImageUrl = session.GetProfileImageUrl();
@@ -96,8 +60,8 @@ namespace
 		FriendAcceptedNotifyPacket notify{};
 		InitPacket(notify, EChatPacketType::FriendAcceptedNotify);
 		::memcpy(notify.publicId, newFriend.data(), newFriend.size());
-		CopyStr(notify.nickname, nickname);
-		CopyStr(notify.profileImageUrl, profileImageUrl);
+		FixedBuf::CopyStr(notify.nickname, nickname);
+		FixedBuf::CopyStr(notify.profileImageUrl, profileImageUrl);
 		notify.online = online ? 1 : 0;
 		SendToOnline(server, to, &notify, sizeof(notify));
 	}
@@ -112,7 +76,7 @@ namespace
 		if( !BeginOp(session, server, actor) )
 			return;
 
-		const std::string nickname = ReadStr(packet->nickname);
+		const std::string nickname = FixedBuf::ReadStr(packet->nickname);
 		if( nickname.empty() )
 			return;
 
@@ -134,8 +98,8 @@ namespace
 						FriendRequestNotifyPacket notify{};
 						InitPacket(notify, EChatPacketType::FriendRequestNotify);
 						::memcpy(notify.publicId, actor.publicId.data(), actor.publicId.size());
-						CopyStr(notify.nickname, actor.nickname);
-						CopyStr(notify.profileImageUrl, actor.profileImageUrl);
+						FixedBuf::CopyStr(notify.nickname, actor.nickname);
+						FixedBuf::CopyStr(notify.profileImageUrl, actor.profileImageUrl);
 						SendToOnline(server, res.target.publicId, &notify, sizeof(notify));
 					}
 				}
@@ -176,7 +140,7 @@ namespace
 		const bool accept = (packet->accept != 0);
 
 		server->RequestFriendOp(actor.publicId, accept ? EFriendOp::Accept : EFriendOp::Reject, &target, std::string(),
-			[server, actor, accept](const SFriendOpResult& res)
+			[server, actor, accept, target](const SFriendOpResult& res)
 			{
 				const bool ok = (res.result == EFriendResult::Ok);
 				const bool targetOnline = ok && (server->FindOnlineSession(res.target.publicId) != nullptr);
@@ -197,7 +161,7 @@ namespace
 				out.success = ok ? 1 : 0;
 				out.reason = static_cast<uint8>(res.result);
 				out.accepted = accept ? 1 : 0;
-				::memcpy(out.publicId, res.target.publicId.data(), res.target.publicId.size());
+				::memcpy(out.publicId, target.data(), target.size());	// 요청에 실려온 대상을 그대로 되돌려준다(실패 시에도 클라이언트가 짝지을 수 있도록)
 				out.online = targetOnline ? 1 : 0;
 				me->Send(&out, sizeof(out));
 			});
@@ -259,8 +223,8 @@ namespace
 						FriendListItemResPacket item{};
 						InitPacket(item, EChatPacketType::FriendListItemRes);
 						::memcpy(item.publicId, e.publicId.data(), e.publicId.size());
-						CopyStr(item.nickname, e.nickname);
-						CopyStr(item.profileImageUrl, e.profileImageRef);
+						FixedBuf::CopyStr(item.nickname, e.nickname);
+						FixedBuf::CopyStr(item.profileImageUrl, e.profileImageRef);
 						item.online = (server->FindOnlineSession(e.publicId) != nullptr) ? 1 : 0;
 						me->Send(&item, sizeof(item));
 						++sent;
@@ -303,8 +267,8 @@ namespace
 						InitPacket(item, EChatPacketType::FriendPendingItemRes);
 						item.requestId = requestId;
 						::memcpy(item.publicId, e.publicId.data(), e.publicId.size());
-						CopyStr(item.nickname, e.nickname);
-						CopyStr(item.profileImageUrl, e.profileImageRef);
+						FixedBuf::CopyStr(item.nickname, e.nickname);
+						FixedBuf::CopyStr(item.profileImageUrl, e.profileImageRef);
 						me->Send(&item, sizeof(item));
 					}
 				}
@@ -345,7 +309,7 @@ namespace
 						BlockListItemResPacket item{};
 						InitPacket(item, EChatPacketType::BlockListItemRes);
 						::memcpy(item.publicId, e.publicId.data(), e.publicId.size());
-						CopyStr(item.nickname, e.nickname);
+						FixedBuf::CopyStr(item.nickname, e.nickname);
 						me->Send(&item, sizeof(item));
 						++sent;
 					}
@@ -370,7 +334,7 @@ namespace
 		if( !BeginOp(session, server, actor) )
 			return;
 
-		const std::string nickname = ReadStr(packet->nickname);
+		const std::string nickname = FixedBuf::ReadStr(packet->nickname);
 		if( nickname.empty() )
 			return;
 
@@ -389,7 +353,7 @@ namespace
 
 				// 채팅 수신 필터 갱신 — 이후 이 사용자의 메시지는 이 세션에 전달되지 않는다.
 				if( ok || res.result == EFriendResult::AlreadyBlocked )
-					me->AddBlockedUser(Crypto::CCryptoUtil::ToHex(res.target.publicId.data(), res.target.publicId.size()));
+					me->AddBlockedUser(PublicIdToHex(res.target.publicId));
 
 				BlockResPacket out{};
 				InitPacket(out, EChatPacketType::BlockRes);
@@ -420,7 +384,7 @@ namespace
 					return;
 
 				if( res.result == EFriendResult::Ok || res.result == EFriendResult::NotBlocked )
-					me->RemoveBlockedUser(Crypto::CCryptoUtil::ToHex(target.data(), target.size()));
+					me->RemoveBlockedUser(PublicIdToHex(target));
 
 				UnblockResPacket out{};
 				InitPacket(out, EChatPacketType::UnblockRes);

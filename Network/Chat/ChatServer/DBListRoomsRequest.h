@@ -8,7 +8,6 @@
 #define UC_DBLISTROOMSREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ELoginResult
 
 #include <functional>
 #include <string>

@@ -5,6 +5,7 @@
 //***************************************************************************
 
 #include "pch.h"
+#include "../Common/ImageRef.h"
 #include "FileServerRouter.h"
 
 CFileServerRouter::CFileServerRouter(
@@ -28,7 +29,7 @@ void CFileServerRouter::HandleRequest(std::shared_ptr<CFileServerSession> sessio
 	const std::string_view path = request.GetPath();
 	const bool keepAlive = request.IsKeepAlive();
 
-	constexpr std::string_view kImagesPrefix = "/images/";
+	constexpr std::string_view kImagesPrefix = ImageRef::kImagesPath;
 
 	if( method == "POST" && path == "/upload" )
 	{

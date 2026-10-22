@@ -361,6 +361,15 @@ namespace ChatApp
         private ProfileImageGalleryPanel _galleryPanel;
         private RoomListPanel _roomListPanel;
 
+        // [추가] 친구 패널 — 대화 탭에서 채팅 카드 바로 오른쪽에 붙는다. 이 패널이 보이는
+        // 대화 탭에서만 폼 폭을 ChatTabClientWidth로 넓히고, 다른 탭에서는 BaseClientWidth로
+        // 되돌린다(SelectedIndexChanged 참고).
+        private FriendPanel _friendPanel;
+        private const int BaseClientWidth = 577;
+        private const int FriendPanelLeft = 571;    // 채팅 카드(Left=3, Width=562) 오른쪽 + 6px 간격
+        private const int FriendPanelWidth = 262;
+        private const int ChatTabClientWidth = FriendPanelLeft + FriendPanelWidth + 12;
+
         // [추가] 프로필 이미지 — 로컬 전용(네트워크로 다른 사람에게 전송되지
         // 않음). 프로필 이름별로 이미지 파일 경로를 저장해뒀다가 다음 실행 때
         // 다시 불러온다.
@@ -711,6 +720,7 @@ namespace ChatApp
             // 버튼/라벨의 BackColor/ForeColor는 생성 시점에 굳어있으므로.
             _galleryPanel?.RefreshTheme();
             _roomListPanel?.RefreshTheme();
+            _friendPanel?.RefreshTheme();
 
             Invalidate(true);
         }
@@ -789,7 +799,7 @@ namespace ChatApp
         private void InitializeComponents()
         {
             Text = "채팅 클라이언트 (WinForms)";
-            ClientSize = new Size(577, 704);
+            ClientSize = new Size(BaseClientWidth, 704);
             StartPosition = FormStartPosition.CenterScreen;
             MaximizeBox = false;
             FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -1112,7 +1122,17 @@ namespace ChatApp
             // [수정 — 레이아웃] 시스템 로그(card3)는 더 이상 이 탭에 없다 —
             // 아래 "시스템 로그" 탭으로 옮겼다. groupBox1/groupBox2 두
             // 카드만 이 탭에 남는다.
-            chatPagePanel.Controls.AddRange(new Control[] { groupBox1, groupBox2 });
+            // [추가] 친구 패널 — 두 카드(접속/대화)의 전체 높이(9~613)를 오른쪽에 나란히 쓴다.
+            _friendPanel = new FriendPanel
+            {
+                Left = FriendPanelLeft,
+                Top = 9,
+                Width = FriendPanelWidth,
+                Height = 604,
+            };
+            _friendPanel.Notice += OnFriendNotice;
+
+            chatPagePanel.Controls.AddRange(new Control[] { groupBox1, groupBox2, _friendPanel });
             tabPageChat.Controls.Add(chatPagePanel);
 
             var tabPageGallery = new TabPage("갤러리");
@@ -1269,6 +1289,11 @@ namespace ChatApp
                     tabButtons[i].Invalidate();
                 }
 
+                // 친구 패널은 대화 탭에만 있으므로, 폼 폭도 그 탭에서만 넓힌다.
+                int wantedWidth = tabControl.SelectedTab == tabPageChat ? ChatTabClientWidth : BaseClientWidth;
+                if (ClientSize.Width != wantedWidth)
+                    ClientSize = new Size(wantedWidth, ClientSize.Height);
+
                 if (tabControl.SelectedTab == tabPageGallery)
                     _galleryPanel.RefreshList();
                 else if (tabControl.SelectedTab == tabPageRoomList)
@@ -1349,8 +1374,18 @@ namespace ChatApp
             // 있음)가 전혀 보이지 않게 한다.
             customTabHeader.Location = new Point(0, headerPanel.Height);
             customTabHeader.Width = ClientSize.Width;
-            customTabHeader.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             customTabHeader.BringToFront();
+
+            // 폼 폭이 탭에 따라 바뀌므로(대화 탭에서만 친구 패널 폭만큼 넓어짐) 폭에
+            // 맞춰 따라가야 하는 컨트롤은 앵커 대신 여기서 직접 맞춘다.
+            ClientSizeChanged += (s, e) =>
+            {
+                customTabHeader.Width = ClientSize.Width;
+                btnSkin.Left = headerPanel.ClientSize.Width - btnSkin.Width - 13;
+            };
+
+            // 첫 탭이 대화 탭이므로 시작 폭은 친구 패널을 포함한 폭이다.
+            ClientSize = new Size(ChatTabClientWidth, ClientSize.Height);
 
             // [추가] 서버 동접자수 폴링 — 로그인 성공 시 시작, 연결 끊기면 정지.
             // 39초마다 서버에 물어보는 방식이라(예전의 로그인/로그아웃마다

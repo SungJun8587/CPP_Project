@@ -75,6 +75,7 @@ namespace ChatApp
                     _roomListPanel.MyNickname = _currentNickname; // 방장 관리 메뉴(⚙) 표시 여부 판단용
                     _roomListPanel.MyPublicId = _myPublicId; // 멤버보기 패널에서 "나" 강조 표시용
                     _roomMemberListPanel.AttachClient(_client);
+                    _friendPanel.AttachClient(_client); // 친구/받은 요청/차단 목록을 불러오고 알림 구독 시작
 
                     // 서버가 로그인 직후 자동으로 로비에 배정한다 — 클라이언트도
                     // 그 전제로 현재 위치를 로비로 잡아둔다(서버의 RoomUserCountNotify가
@@ -376,7 +377,19 @@ namespace ChatApp
                 _galleryPanel.DetachClient();
                 _roomListPanel.DetachClient();
                 _roomMemberListPanel.DetachClient();
+                _friendPanel.DetachClient();
             });
+        }
+
+        //***************************************************************************
+        // @brief 친구 패널의 알림(요청 도착, 접속/종료, 처리 결과 등)을 시스템 로그에 기록한다.
+        //***************************************************************************
+        private void OnFriendNotice(string text, FriendNoticeLevel level)
+        {
+            Color color = level == FriendNoticeLevel.Error ? ColorSystemError
+                : level == FriendNoticeLevel.Warning ? ColorSystemWarning
+                : ColorSystemInfo;
+            AppendSystemLog("[친구] " + text, color);
         }
 
         private void OnErrorOccurred(Exception ex)

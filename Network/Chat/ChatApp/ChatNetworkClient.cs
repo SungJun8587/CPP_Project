@@ -62,6 +62,25 @@ namespace ChatApp
         // [추가] 방 입장 시 자동으로 오는 과거 대화 기록.
         public event Action<ChatHistoryItemData> ChatHistoryItemReceived;
         public event Action<ChatHistoryEndData> ChatHistoryEndReceived;
+
+        // [추가] 친구 기능 — 요청/수락/삭제/목록/차단 응답 + 서버 알림.
+        public event Action<FriendRequestResData> FriendRequestResultReceived;
+        public event Action<FriendRespondResData> FriendRespondResultReceived;
+        public event Action<FriendTargetResData> FriendRemoveResultReceived;
+        public event Action<FriendItemData> FriendListItemReceived;
+        public event Action<FriendListEndData> FriendListEndReceived;
+        public event Action<FriendPendingItemData> FriendPendingItemReceived;
+        public event Action<FriendPendingEndData> FriendPendingEndReceived;
+        public event Action<FriendTargetResData> BlockResultReceived;
+        public event Action<FriendTargetResData> UnblockResultReceived;
+        public event Action<BlockItemData> BlockListItemReceived;
+        public event Action<FriendListEndData> BlockListEndReceived;
+        public event Action<FriendRequestNotifyData> FriendRequestNotified;
+        public event Action<FriendAcceptedNotifyData> FriendAcceptedNotified;
+        public event Action<FriendRemovedNotifyData> FriendRemovedNotified;
+        public event Action<FriendProfileChangedNotifyData> FriendProfileChangedNotified;
+        public event Action<FriendStatusNotifyData> FriendStatusNotified;
+
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -160,6 +179,29 @@ namespace ChatApp
         // [추가] 파일 서버에서 이미 삭제된 파일임을 채팅 서버에 알려서,
         // 같은 방/로비의 다른 사람들 화면에서도 지워지도록 브로드캐스트를 유도한다.
         public void RequestDeleteChatMessage(long messageId) => SendRaw(PacketBuilder.BuildDeleteChatMessageReq(messageId));
+
+        // [추가] 친구 기능 요청.
+        public void RequestFriend(string nickname) => SendRaw(PacketBuilder.BuildFriendRequestReq(nickname));
+        public void RespondFriendRequest(byte[] publicId, bool accept) => SendRaw(PacketBuilder.BuildFriendRespondReq(publicId, accept));
+        public void RequestFriendRemove(byte[] publicId) => SendRaw(PacketBuilder.BuildFriendRemoveReq(publicId));
+        public void RequestFriendList() => SendRaw(PacketBuilder.BuildFriendListReq());
+        public void RequestBlock(string nickname) => SendRaw(PacketBuilder.BuildBlockReq(nickname));
+        public void RequestUnblock(byte[] publicId) => SendRaw(PacketBuilder.BuildUnblockReq(publicId));
+        public void RequestBlockList() => SendRaw(PacketBuilder.BuildBlockListReq());
+
+        private int _friendPendingRequestSeq;
+
+        //***************************************************************************
+        // @brief 받은 친구 요청 목록 한 페이지를 요청하고, 이 요청의 식별자를 돌려준다.
+        //        응답(Item/End)이 이 식별자를 그대로 되돌려주므로, 호출부는 마지막으로
+        //        보낸 요청의 식별자와 비교해 오래된 요청의 늦은 응답을 버릴 수 있다.
+        //***************************************************************************
+        public int RequestFriendPendingList(int page, int pageSize)
+        {
+            int requestId = System.Threading.Interlocked.Increment(ref _friendPendingRequestSeq);
+            SendRaw(PacketBuilder.BuildFriendPendingListReq(requestId, page, pageSize));
+            return requestId;
+        }
 
         private void SendRaw(byte[] packet)
         {
@@ -358,6 +400,70 @@ namespace ChatApp
 
                 case PacketType.RoomMemberListEndRes:
                     RoomMemberListEndReceived?.Invoke(PacketParser.ParseRoomMemberListEndRes(full));
+                    break;
+
+                case PacketType.FriendRequestRes:
+                    FriendRequestResultReceived?.Invoke(PacketParser.ParseFriendRequestRes(full));
+                    break;
+
+                case PacketType.FriendRespondRes:
+                    FriendRespondResultReceived?.Invoke(PacketParser.ParseFriendRespondRes(full));
+                    break;
+
+                case PacketType.FriendRemoveRes:
+                    FriendRemoveResultReceived?.Invoke(PacketParser.ParseFriendTargetRes(full));
+                    break;
+
+                case PacketType.FriendListItemRes:
+                    FriendListItemReceived?.Invoke(PacketParser.ParseFriendListItemRes(full));
+                    break;
+
+                case PacketType.FriendListEndRes:
+                    FriendListEndReceived?.Invoke(PacketParser.ParseFriendListEndRes(full));
+                    break;
+
+                case PacketType.FriendPendingItemRes:
+                    FriendPendingItemReceived?.Invoke(PacketParser.ParseFriendPendingItemRes(full));
+                    break;
+
+                case PacketType.FriendPendingEndRes:
+                    FriendPendingEndReceived?.Invoke(PacketParser.ParseFriendPendingEndRes(full));
+                    break;
+
+                case PacketType.BlockRes:
+                    BlockResultReceived?.Invoke(PacketParser.ParseFriendTargetRes(full));
+                    break;
+
+                case PacketType.UnblockRes:
+                    UnblockResultReceived?.Invoke(PacketParser.ParseFriendTargetRes(full));
+                    break;
+
+                case PacketType.BlockListItemRes:
+                    BlockListItemReceived?.Invoke(PacketParser.ParseBlockListItemRes(full));
+                    break;
+
+                case PacketType.BlockListEndRes:
+                    BlockListEndReceived?.Invoke(PacketParser.ParseFriendListEndRes(full));
+                    break;
+
+                case PacketType.FriendRequestNotify:
+                    FriendRequestNotified?.Invoke(PacketParser.ParseFriendRequestNotify(full));
+                    break;
+
+                case PacketType.FriendAcceptedNotify:
+                    FriendAcceptedNotified?.Invoke(PacketParser.ParseFriendAcceptedNotify(full));
+                    break;
+
+                case PacketType.FriendRemovedNotify:
+                    FriendRemovedNotified?.Invoke(PacketParser.ParseFriendRemovedNotify(full));
+                    break;
+
+                case PacketType.FriendProfileChangedNotify:
+                    FriendProfileChangedNotified?.Invoke(PacketParser.ParseFriendProfileChangedNotify(full));
+                    break;
+
+                case PacketType.FriendStatusNotify:
+                    FriendStatusNotified?.Invoke(PacketParser.ParseFriendStatusNotify(full));
                     break;
 
                 default:

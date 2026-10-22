@@ -29,9 +29,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteRoom)
 {
 	ST_DELETE_ROOM_REQ* req = static_cast<ST_DELETE_ROOM_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> requesterPublicId{};
-	::memcpy(requesterPublicId.data(), req->requesterPublicId, requesterPublicId.size());
-	const std::string requesterPublicIdHex = Crypto::CCryptoUtil::ToHex(requesterPublicId.data(), requesterPublicId.size());
+	PublicId requesterPublicId = ToPublicId(req->requesterPublicId);
+	const std::string requesterPublicIdHex = PublicIdToHex(requesterPublicId);
 	_tstring requesterPublicIdHexT = Utf8ToTString(requesterPublicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());

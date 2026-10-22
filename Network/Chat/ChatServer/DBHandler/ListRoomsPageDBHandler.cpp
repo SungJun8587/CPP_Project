@@ -106,9 +106,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomsPage)
 	_tstring ownerHexT;
 	if( joined )
 	{
-		std::array<BYTE, kPublicIdBytes> requesterPublicId{};
-		::memcpy(requesterPublicId.data(), req->requesterPublicId, requesterPublicId.size());
-		ownerHexT = Utf8ToTString(Crypto::CCryptoUtil::ToHex(requesterPublicId.data(), requesterPublicId.size()));
+		PublicId requesterPublicId = ToPublicId(req->requesterPublicId);
+		ownerHexT = Utf8ToTString(PublicIdToHex(requesterPublicId));
 	}
 	_tstring likePatternT;
 	if( hasKeyword )

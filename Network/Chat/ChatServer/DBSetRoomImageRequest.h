@@ -8,7 +8,6 @@
 #define UC_DBSETROOMIMAGEREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"
 
 #include <functional>
 #include <string>

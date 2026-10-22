@@ -256,12 +256,16 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
-    <ClInclude Include="ChatPacket.h" />
+    <ClInclude Include="..\Common\ImageRef.h" />
+    <ClInclude Include="..\Common\Protocol\ChatPacket.h" />
+    <ClInclude Include="..\Common\Protocol\ChatPacketTypes.h" />
+    <ClInclude Include="ChatHandlerUtil.h" />
     <ClInclude Include="ChatPacketDispatcher.h" />
-    <ClInclude Include="ChatPacketTypes.h" />
+    <ClInclude Include="ChatPacketUtil.h" />
     <ClInclude Include="ChatServerConfig.h" />
     <ClInclude Include="ChatServerMain.h" />
     <ClInclude Include="ChatSession.h" />
@@ -285,6 +289,7 @@
     <ClInclude Include="DBTransferRoomOwnerRequest.h" />
     <ClInclude Include="NicknameValidation.h" />
     <ClInclude Include="pch.h" />
+    <ClInclude Include="RoomValidation.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />

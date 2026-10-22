@@ -21,9 +21,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListProfileImages)
 {
 	ST_LIST_PROFILE_IMAGES_REQ* req = static_cast<ST_LIST_PROFILE_IMAGES_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> publicId{};
-	::memcpy(publicId.data(), req->publicId, publicId.size());
-	const std::string publicIdHex = Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	PublicId publicId = ToPublicId(req->publicId);
+	const std::string publicIdHex = PublicIdToHex(publicId);
 	_tstring publicIdHexT = Utf8ToTString(publicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());

@@ -5,6 +5,7 @@
 //***************************************************************************
 
 #include "pch.h"
+#include "../Common/ImageRef.h"
 #include "FileUploadHandler.h"
 
 #include <filesystem>
@@ -234,11 +235,7 @@ void CFileUploadHandler::VerifyAndConsumeUploadToken(const std::string& tokenHex
 //***************************************************************************
 std::string CFileUploadHandler::BuildPublicUrl(const std::string& relativePath) const
 {
-	std::string base = _publicBaseUrl;
-	if( !base.empty() && base.back() == '/' )
-		base.pop_back();
-
-	return base + "/images/" + relativePath;
+	return ImageRef::BuildPublicUrl(_publicBaseUrl, relativePath);
 }
 
 //***************************************************************************

@@ -33,20 +33,6 @@ namespace
 	{
 		return Crypto::CCryptoUtil::HashSHA256(std::string(reinterpret_cast<const char*>(token), len));
 	}
-
-	//***************************************************************************
-	// @brief public_id(원문 16바이트)를 16진 소문자 문자열로 변환합니다.
-	// @details [설계 변경] public_id를 DB에 BINARY(16)이 아니라 CHAR(32)(16진
-	//          문자열)로 저장하기로 했다 — token_hash와 동일한 이유(ODBC
-	//          바이너리 파라미터 바인딩이 드라이버에 따라 불확실할 수 있어,
-	//          이미 검증된 문자열 바인딩 경로로 통일). 와이어 프로토콜
-	//          (ChatPacket.h)이나 세션/클라이언트 로컬 파일은 여전히 raw
-	//          16바이트를 쓴다 — 이 변환은 DB 파라미터 바인딩 시점에만 필요.
-	//***************************************************************************
-	std::string PublicIdToHex(const BYTE* publicId, size_t len)
-	{
-		return Crypto::CCryptoUtil::ToHex(publicId, len);
-	}
 }
 
 //***************************************************************************
@@ -131,7 +117,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 			return EDBReturnType::INVALID;
 		}
 
-		const std::string publicIdHex = PublicIdToHex(newPublicId.data(), newPublicId.size());
+		const std::string publicIdHex = PublicIdToHex(newPublicId);
 		const std::string hashHex = HashTokenHex(newToken.data(), newToken.size());
 
 		if( !guard->PrepareQuery(_T("INSERT INTO users (public_id, nickname, token_hash, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())")) )
@@ -202,7 +188,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 			return EDBReturnType::INVALID;
 		}
 
-		const std::string publicIdHex = PublicIdToHex(req->publicId, sizeof(req->publicId));
+		const std::string publicIdHex = PublicIdToHex(req->publicId);
 		_tstring publicIdHexT = Utf8ToTString(publicIdHex);
 		SQLLEN publicIdLenInd = SQL_NTS;
 		guard->BindParamInput(1, publicIdHexT.c_str(), publicIdLenInd);
@@ -280,8 +266,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		}
 
 		const std::string nickname = TStringToUtf8(_tstring(nicknameBuf));
-		std::array<BYTE, kPublicIdBytes> publicId{};
-		::memcpy(publicId.data(), req->publicId, publicId.size());
+		PublicId publicId = ToPublicId(req->publicId);
 
 		const std::string storedHashHex = TStringToUtf8(_tstring(hashBuf));
 		const std::string providedHashHex = HashTokenHex(req->token, sizeof(req->token));

@@ -8,7 +8,6 @@
 #define UC_DBCHANGENICKNAMEREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ELoginResult, kNicknameBytes, kPublicIdBytes
 
 #include <functional>
 #include <string>

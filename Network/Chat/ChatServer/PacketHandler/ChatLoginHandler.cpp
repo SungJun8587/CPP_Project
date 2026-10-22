@@ -67,7 +67,7 @@ namespace
 			::memcpy(token.data(), packet->token, token.size());
 		}
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSignup(sessionRef, nickname, hasToken, publicId, token,
@@ -81,8 +81,7 @@ namespace
 					return; // 응답이 오기 전에 연결이 끊김 — 더 이상 할 일 없음
 
 				LoginResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::LoginRes);
+				InitPacket(res, EChatPacketType::LoginRes);
 				res.success = (result == ELoginResult::Ok) ? 1 : 0;
 				res.reason = static_cast<uint8>(result);
 
@@ -90,8 +89,7 @@ namespace
 				// AccountDBHandler.cpp가 이미 상황에 맞게 채워서(성공/신규가입
 				// 실패면 해당 닉네임, AccountNotFound처럼 애초에 못 찾은 경우면
 				// 빈 문자열) 넘겨주므로 여기서 추가로 분기할 필요가 없다.
-				const size_t nicknameCopyLen = (std::min)(completedNickname.size(), sizeof(res.nickname) - 1);
-				::memcpy(res.nickname, completedNickname.data(), nicknameCopyLen);
+				FixedBuf::CopyStr(res.nickname, completedNickname);
 
 				if( result == ELoginResult::Ok )
 				{
@@ -99,8 +97,7 @@ namespace
 					::memcpy(res.publicId, completedPublicId.data(), completedPublicId.size());
 					::memcpy(res.token, newToken.data(), newToken.size());
 
-					const size_t urlCopyLen = (std::min)(profileImageUrl.size(), sizeof(res.profileImageUrl) - 1);
-					::memcpy(res.profileImageUrl, profileImageUrl.data(), urlCopyLen);
+					FixedBuf::CopyStr(res.profileImageUrl, profileImageUrl);
 				}
 
 				session->Send(&res, sizeof(res));

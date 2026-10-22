@@ -174,16 +174,17 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="..\Common\Protocol\ChatPacket.h" />
+    <ClInclude Include="..\Common\Protocol\ChatPacketTypes.h" />
     <ClInclude Include="ChatStressAccounts.h" />
     <ClInclude Include="ChatStressConfig.h" />
     <ClInclude Include="ChatStressReporter.h" />
     <ClInclude Include="ChatStressScheduler.h" />
     <ClInclude Include="ChatStressSession.h" />
-    <ClInclude Include="ChatPacket.h" />
-    <ClInclude Include="ChatPacketTypes.h" />
     <ClInclude Include="ChatStressStats.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>

@@ -37,6 +37,7 @@ using namespace std;
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
 #include <Util/ScopeExit.h>
+#include <Util/FixedBufUtil.h>
 
 #include <Memory/RawAllocator.h>
 #include <Memory/Allocator.h>
@@ -64,8 +65,8 @@ using namespace std;
 #include <Network/HTTP/HttpParseUtil.h>
 #include <Network/HTTP/HttpRequestParser.h>
 
-#include "ChatPacketTypes.h"
-#include "ChatPacket.h"
+#include "../Common/Protocol/ChatPacketTypes.h"
+#include "../Common/Protocol/ChatPacket.h"
 #include "ChatStressConfig.h"
 #include "ChatStressStats.h"
 #include "ChatStressReporter.h"

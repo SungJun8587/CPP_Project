@@ -86,6 +86,7 @@ using namespace std;
 
 #include <Redis/RedisCommon.h>
 
+#include "../Common/ImageRef.h"
 #include "FileServerConfig.h"
 #include "FileStorage.h"
 #include "LocalFileStorage.h"

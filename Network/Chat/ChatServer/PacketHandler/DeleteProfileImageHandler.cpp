@@ -18,19 +18,16 @@ namespace
 	//***************************************************************************
 	void HandleDeleteProfileImageReq(CChatSession& session, const PacketHeader* header)
 	{
-		if( !session.IsLoggedIn() )
-			return;
-
 		const DeleteProfileImageReqPacket* packet = reinterpret_cast<const DeleteProfileImageReqPacket*>(header);
 
-		CChatServerMain* server = session.GetServer();
+		CChatServerMain* server = GetLoggedInServer(session);
 		if( server == nullptr )
 			return;
 
 		const std::array<BYTE, kPublicIdBytes> publicId = session.GetPublicId();
 		const int64 imageId = packet->imageId;
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestDeleteProfileImage(sessionRef, publicId, imageId,
@@ -50,8 +47,7 @@ namespace
 				}
 
 				DeleteProfileImageResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::DeleteProfileImageRes);
+				InitPacket(res, EChatPacketType::DeleteProfileImageRes);
 				res.success = (result == ELoginResult::Ok) ? 1 : 0;
 				res.reason = static_cast<uint8>(result);
 				session->Send(&res, sizeof(res));

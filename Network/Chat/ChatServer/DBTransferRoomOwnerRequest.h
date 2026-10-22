@@ -8,7 +8,6 @@
 #define UC_DBTRANSFERROOMOWNERREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// kPublicIdBytes
 
 #include <functional>
 

@@ -162,7 +162,7 @@ void CChatServerMain::RecordRoomChatMessage(
 	if( roomId == kLobbyRoomId || _redisService == nullptr )
 		return;
 
-	const std::string senderPublicIdHex = Crypto::CCryptoUtil::ToHex(senderPublicId.data(), senderPublicId.size());
+	const std::string senderPublicIdHex = PublicIdToHex(senderPublicId);
 	const int64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
 		std::chrono::system_clock::now().time_since_epoch()).count();
 

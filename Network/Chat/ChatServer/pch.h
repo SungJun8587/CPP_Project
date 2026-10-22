@@ -44,6 +44,7 @@ using namespace std;
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
 #include <Util/ScopeExit.h>
+#include <Util/FixedBufUtil.h>
 
 #include <Memory/RawAllocator.h>
 #include <Memory/Allocator.h>
@@ -90,11 +91,14 @@ using namespace std;
 
 #include <Redis/RedisCommon.h>
 
+#include "../Common/Protocol/ChatPacketTypes.h"
+#include "../Common/Protocol/ChatPacket.h"
+#include "../Common/ImageRef.h"
+#include "ChatPacketUtil.h"
 #include "ChatServerConfig.h"
-#include "ChatPacketTypes.h"
-#include "ChatPacket.h"
 #include "ChatPacketDispatcher.h"
 #include "NicknameValidation.h"
+#include "RoomValidation.h"
 #include "DbServiceManager.h"
 #include "DBSignupRequest.h"
 #include "DBChangeNicknameRequest.h"
@@ -110,5 +114,6 @@ using namespace std;
 #include "DBTransferRoomOwnerRequest.h"
 #include "ChatSession.h"
 #include "ChatServerMain.h"
+#include "ChatHandlerUtil.h"
 
 #endif // ndef PCH_H

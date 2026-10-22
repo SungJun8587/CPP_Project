@@ -8,7 +8,6 @@
 #define UC_CHATSTRESSACCOUNTS_H
 
 #include <Crypto/CryptoUtil.h>
-#include "ChatPacket.h"
 #include "ChatStressConfig.h"
 
 #include <array>

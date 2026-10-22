@@ -8,7 +8,6 @@
 #define UC_DBCREATEROOMREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ERoomResult, kPublicIdBytes
 
 #include <functional>
 #include <string>

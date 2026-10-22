@@ -9,7 +9,6 @@
 
 #include <Network/IOCP/IocpSession.h>
 #include <Util/DateTimeUtil.h>
-#include "ChatPacket.h"
 #include "ChatStressConfig.h"
 #include "ChatStressStats.h"
 #include "ChatStressAccounts.h"

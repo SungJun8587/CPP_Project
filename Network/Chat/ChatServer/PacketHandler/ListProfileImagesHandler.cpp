@@ -19,16 +19,13 @@ namespace
 	//***************************************************************************
 	void HandleListProfileImagesReq(CChatSession& session, const PacketHeader* /*header*/)
 	{
-		if( !session.IsLoggedIn() )
-			return;
-
-		CChatServerMain* server = session.GetServer();
+		CChatServerMain* server = GetLoggedInServer(session);
 		if( server == nullptr )
 			return;
 
 		const std::array<BYTE, kPublicIdBytes> publicId = session.GetPublicId();
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestListProfileImages(sessionRef, publicId,
@@ -47,21 +44,18 @@ namespace
 					for( const auto& entry : images )
 					{
 						ListProfileImagesItemResPacket itemRes{};
-						itemRes.size = sizeof(itemRes);
-						itemRes.type = static_cast<uint16>(EChatPacketType::ListProfileImagesItemRes);
+						InitPacket(itemRes, EChatPacketType::ListProfileImagesItemRes);
 						itemRes.imageId = entry.imageId;
 						itemRes.isActive = entry.isActive ? 1 : 0;
 
-						const size_t copyLen = (std::min)(entry.imageRef.size(), sizeof(itemRes.imageRef) - 1);
-						::memcpy(itemRes.imageRef, entry.imageRef.data(), copyLen);
+						FixedBuf::CopyStr(itemRes.imageRef, entry.imageRef);
 
 						session->Send(&itemRes, sizeof(itemRes));
 					}
 				}
 
 				ListProfileImagesEndResPacket endRes{};
-				endRes.size = sizeof(endRes);
-				endRes.type = static_cast<uint16>(EChatPacketType::ListProfileImagesEndRes);
+				InitPacket(endRes, EChatPacketType::ListProfileImagesEndRes);
 				endRes.totalCount = (result == ELoginResult::Ok) ? static_cast<int32>(images.size()) : 0;
 				session->Send(&endRes, sizeof(endRes));
 			});

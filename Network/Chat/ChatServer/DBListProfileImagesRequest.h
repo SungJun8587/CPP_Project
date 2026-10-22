@@ -8,7 +8,6 @@
 #define UC_DBLISTPROFILEIMAGESREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ELoginResult, kPublicIdBytes
 
 #include <functional>
 #include <string>

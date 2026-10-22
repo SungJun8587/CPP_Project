@@ -18,22 +18,6 @@
 #include <cstring>
 #include <unordered_set>
 
-namespace
-{
-	std::string ToKey(const std::array<BYTE, kPublicIdBytes>& publicId)
-	{
-		return Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
-	}
-
-	template<size_t N>
-	void CopyStr(char(&dst)[N], const std::string& src)
-	{
-		const size_t len = (std::min)(src.size(), N - 1);
-		::memcpy(dst, src.data(), len);
-		dst[len] = '\0';
-	}
-}
-
 //***************************************************************************
 // @brief 로그인 완료된 세션을 친구 알림/조회용 레지스트리에 등록하고, 접속 중인 친구에게 접속을 알립니다.
 // @details 같은 계정이 중복 접속하면 가장 마지막 세션이 레지스트리를 차지한다.
@@ -46,7 +30,7 @@ void CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session
 	const std::array<BYTE, kPublicIdBytes> publicId = session->GetPublicId();
 	{
 		std::lock_guard<std::mutex> lock(_onlineMutex);
-		_onlineSessions[ToKey(publicId)] = session;
+		_onlineSessions[PublicIdToHex(publicId)] = session;
 	}
 
 	NotifyFriendPresence(publicId, true);
@@ -63,7 +47,7 @@ void CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session
 
 			std::unordered_set<std::string> blocked;
 			for( const SFriendEntry& entry : res.entries )
-				blocked.insert(ToKey(entry.publicId));
+				blocked.insert(PublicIdToHex(entry.publicId));
 			s->SetBlockedUsers(std::move(blocked));
 		});
 }
@@ -78,7 +62,7 @@ void CChatServerMain::OnFriendLogout(const CChatSession* session)
 		return;
 
 	const std::array<BYTE, kPublicIdBytes> publicId = session->GetPublicId();
-	const std::string key = ToKey(publicId);
+	const std::string key = PublicIdToHex(publicId);
 
 	bool stillOnline = false;
 	{
@@ -104,7 +88,7 @@ void CChatServerMain::OnFriendLogout(const CChatSession* session)
 std::shared_ptr<CChatSession> CChatServerMain::FindOnlineSession(const std::array<BYTE, kPublicIdBytes>& publicId) const
 {
 	std::lock_guard<std::mutex> lock(_onlineMutex);
-	auto it = _onlineSessions.find(ToKey(publicId));
+	auto it = _onlineSessions.find(PublicIdToHex(publicId));
 	return (it != _onlineSessions.end()) ? it->second.lock() : nullptr;
 }
 
@@ -121,8 +105,7 @@ void CChatServerMain::NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes
 				return;
 
 			FriendStatusNotifyPacket notify{};
-			notify.size = sizeof(notify);
-			notify.type = static_cast<uint16>(EChatPacketType::FriendStatusNotify);
+			InitPacket(notify, EChatPacketType::FriendStatusNotify);
 			::memcpy(notify.publicId, publicId.data(), publicId.size());
 			notify.online = online ? 1 : 0;
 
@@ -174,9 +157,7 @@ void CChatServerMain::RequestFriendOp(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_FRIEND_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_Friend,
+	const bool pushed = PushDb<ST_FRIEND_REQ>(kDbCallIdent_Friend,
 		[&actor, op, targetId, &targetNickname, page, pageSize, dispatchToJobQueue](ST_FRIEND_REQ* req)
 		{
 			req->op = op;
@@ -190,12 +171,10 @@ void CChatServerMain::RequestFriendOp(
 			}
 			else
 			{
-				const size_t copyLen = (std::min)(targetNickname.size(), sizeof(req->targetNickname) - 1);
-				::memcpy(req->targetNickname, targetNickname.data(), copyLen);
+				FixedBuf::CopyStr(req->targetNickname, targetNickname);
 			}
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed && onComplete )
 	{
@@ -218,11 +197,10 @@ void CChatServerMain::NotifyFriendProfileChanged(const std::shared_ptr<CChatSess
 	const std::array<BYTE, kPublicIdBytes> publicId = session->GetPublicId();
 
 	FriendProfileChangedNotifyPacket notify{};
-	notify.size = sizeof(notify);
-	notify.type = static_cast<uint16>(EChatPacketType::FriendProfileChangedNotify);
+	InitPacket(notify, EChatPacketType::FriendProfileChangedNotify);
 	::memcpy(notify.publicId, publicId.data(), publicId.size());
-	CopyStr(notify.nickname, session->GetNickname());
-	CopyStr(notify.profileImageUrl, session->GetProfileImageUrl());
+	FixedBuf::CopyStr(notify.nickname, session->GetNickname());
+	FixedBuf::CopyStr(notify.profileImageUrl, session->GetProfileImageUrl());
 
 	RequestFriendOp(publicId, EFriendOp::ListFriends, nullptr, std::string(),
 		[this, notify](const SFriendOpResult& res)
@@ -266,7 +244,7 @@ void CChatServerMain::BroadcastChatToRoom(int32 roomId, const std::array<BYTE, k
 		}
 	}
 
-	const std::string senderKey = ToKey(senderPublicId);	// 수신자마다 다시 변환하지 않도록 한 번만
+	const std::string senderKey = PublicIdToHex(senderPublicId);	// 수신자마다 다시 변환하지 않도록 한 번만
 	for( auto& s : targets )
 	{
 		if( s->IsConnected() && !s->IsBlockingHex(senderKey) )

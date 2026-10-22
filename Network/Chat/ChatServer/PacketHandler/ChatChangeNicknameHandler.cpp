@@ -26,9 +26,6 @@ namespace
 	//***************************************************************************
 	void HandleChangeNicknameReq(CChatSession& session, const PacketHeader* header)
 	{
-		if( !session.IsLoggedIn() )
-			return; // 로그인 전 요청은 조용히 무시 — HandleLoginReq()의 중복 로그인 무시와 대칭되는 정책
-
 		const ChangeNicknameReqPacket* packet = reinterpret_cast<const ChangeNicknameReqPacket*>(header);
 
 		// newNickname이 NUL로 안 끝났을 가능성을 방어(경계값)하기 위해 별도
@@ -42,13 +39,13 @@ namespace
 		if( newNickname.empty() )
 			return; // 로그인 실패와 달리 연결을 끊을 정도의 위반은 아님 — 그냥 무시
 
-		CChatServerMain* server = session.GetServer();
+		CChatServerMain* server = GetLoggedInServer(session);
 		if( server == nullptr )
-			return;
+			return; // 로그인 전 요청은 조용히 무시 — HandleLoginReq()의 중복 로그인 무시와 대칭되는 정책
 
 		const std::array<BYTE, kPublicIdBytes> publicId = session.GetPublicId();
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestChangeNickname(sessionRef, publicId, newNickname,
@@ -59,8 +56,7 @@ namespace
 					return; // 응답이 오기 전에 연결이 끊김 — 더 이상 할 일 없음
 
 				ChangeNicknameResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::ChangeNicknameRes);
+				InitPacket(res, EChatPacketType::ChangeNicknameRes);
 				res.success = (result == ELoginResult::Ok) ? 1 : 0;
 				res.reason = static_cast<uint8>(result);
 

@@ -26,9 +26,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_RecordRoomJoin)
 {
 	ST_RECORD_ROOM_JOIN_REQ* req = static_cast<ST_RECORD_ROOM_JOIN_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> requesterPublicId{};
-	::memcpy(requesterPublicId.data(), req->requesterPublicId, requesterPublicId.size());
-	const _tstring requesterPublicIdHexT = Utf8ToTString(Crypto::CCryptoUtil::ToHex(requesterPublicId.data(), requesterPublicId.size()));
+	PublicId requesterPublicId = ToPublicId(req->requesterPublicId);
+	const _tstring requesterPublicIdHexT = Utf8ToTString(PublicIdToHex(requesterPublicId));
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());
 	if( guard == nullptr )

@@ -8,7 +8,6 @@
 #define UC_CHATSESSION_H
 
 #include <Network/IOCP/IocpSession.h>
-#include "ChatPacket.h"
 
 #include <string>
 #include <array>

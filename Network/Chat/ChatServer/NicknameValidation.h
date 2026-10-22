@@ -7,8 +7,6 @@
 #ifndef UC_NICKNAMEVALIDATION_H
 #define UC_NICKNAMEVALIDATION_H
 
-#include "ChatPacket.h"		// kNicknameBytes
-
 #include <cctype>
 #include <cstdint>
 #include <cstddef>

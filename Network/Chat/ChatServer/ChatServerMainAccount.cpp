@@ -73,13 +73,10 @@ void CChatServerMain::RequestSignup(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SIGNUP_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_Signup,
+	const bool pushed = PushDb<ST_SIGNUP_REQ>(kDbCallIdent_Signup,
 		[&nickname, hasToken, &publicId, &token, dispatchToJobQueue](ST_SIGNUP_REQ* req)
 		{
-			const size_t copyLen = (std::min)(nickname.size(), sizeof(req->nickname) - 1);
-			::memcpy(req->nickname, nickname.data(), copyLen);
+			FixedBuf::CopyStr(req->nickname, nickname);
 			// 나머지는 {} 초기화로 이미 0-채움 → NUL 종단 보장
 
 			req->hasToken = hasToken;
@@ -90,8 +87,7 @@ void CChatServerMain::RequestSignup(
 			}
 
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -136,19 +132,15 @@ void CChatServerMain::RequestChangeNickname(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_CHANGE_NICKNAME_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_ChangeNickname,
+	const bool pushed = PushDb<ST_CHANGE_NICKNAME_REQ>(kDbCallIdent_ChangeNickname,
 		[&publicId, &newNickname, dispatchToJobQueue](ST_CHANGE_NICKNAME_REQ* req)
 		{
 			::memcpy(req->publicId, publicId.data(), publicId.size());
 
-			const size_t newCopyLen = (std::min)(newNickname.size(), sizeof(req->newNickname) - 1);
-			::memcpy(req->newNickname, newNickname.data(), newCopyLen);
+			FixedBuf::CopyStr(req->newNickname, newNickname);
 
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -200,19 +192,15 @@ void CChatServerMain::RequestSetProfileImageUrl(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SET_PROFILE_IMAGE_URL_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_SetProfileImageUrl,
+	const bool pushed = PushDb<ST_SET_PROFILE_IMAGE_URL_REQ>(kDbCallIdent_SetProfileImageUrl,
 		[&publicId, &storableUrl, dispatchToJobQueue](ST_SET_PROFILE_IMAGE_URL_REQ* req)
 		{
 			::memcpy(req->publicId, publicId.data(), publicId.size());
 
-			const size_t urlCopyLen = (std::min)(storableUrl.size(), sizeof(req->url) - 1);
-			::memcpy(req->url, storableUrl.data(), urlCopyLen);
+			FixedBuf::CopyStr(req->url, storableUrl);
 
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -255,7 +243,7 @@ void CChatServerMain::RequestUploadToken(
 	}
 
 	const std::string tokenHex = Crypto::CCryptoUtil::ToHex(randomBytes, sizeof(randomBytes));
-	const std::string publicIdHex = Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	const std::string publicIdHex = PublicIdToHex(publicId);
 	const std::string redisKey = "UploadToken:" + tokenHex;
 	const std::string fileServerUrl = _fileServerUrl;
 
@@ -317,15 +305,12 @@ void CChatServerMain::RequestListProfileImages(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_LIST_PROFILE_IMAGES_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_ListProfileImages,
+	const bool pushed = PushDb<ST_LIST_PROFILE_IMAGES_REQ>(kDbCallIdent_ListProfileImages,
 		[&publicId, dispatchToJobQueue](ST_LIST_PROFILE_IMAGES_REQ* req)
 		{
 			::memcpy(req->publicId, publicId.data(), publicId.size());
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -360,16 +345,13 @@ void CChatServerMain::RequestSelectProfileImage(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_SELECT_PROFILE_IMAGE_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_SelectProfileImage,
+	const bool pushed = PushDb<ST_SELECT_PROFILE_IMAGE_REQ>(kDbCallIdent_SelectProfileImage,
 		[&publicId, imageId, dispatchToJobQueue](ST_SELECT_PROFILE_IMAGE_REQ* req)
 		{
 			::memcpy(req->publicId, publicId.data(), publicId.size());
 			req->imageId = imageId;
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{
@@ -415,16 +397,13 @@ void CChatServerMain::RequestDeleteProfileImage(
 				});
 		};
 
-	const bool pushed = PushDBAsyncRequest<COdbcAsyncSrv, ST_DELETE_PROFILE_IMAGE_REQ>(
-		MEMBER_DB_ASYNC,
-		kDbCallIdent_DeleteProfileImage,
+	const bool pushed = PushDb<ST_DELETE_PROFILE_IMAGE_REQ>(kDbCallIdent_DeleteProfileImage,
 		[&publicId, imageId, dispatchToJobQueue](ST_DELETE_PROFILE_IMAGE_REQ* req)
 		{
 			::memcpy(req->publicId, publicId.data(), publicId.size());
 			req->imageId = imageId;
 			req->onComplete = dispatchToJobQueue;
-		},
-		kMaxDbQueueCapacity);
+		});
 
 	if( !pushed )
 	{

@@ -8,7 +8,6 @@
 #define UC_DBDELETEROOMREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ERoomResult, kPublicIdBytes
 
 #include <functional>
 

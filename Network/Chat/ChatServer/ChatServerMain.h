@@ -13,7 +13,6 @@
 #include <Redis/RedisService.h>
 #include <Redis/RedisServerHeartbeat.h>
 #include <DB/OdbcAsyncSrv.h>
-#include "ChatPacket.h"
 #include "DBListProfileImagesRequest.h"
 #include "DBListRoomsRequest.h"
 #include "DBFriendRequest.h"		// EFriendOp, SFriendOpResult
@@ -821,6 +820,22 @@ private:
 	//        훨씬 보수적으로 낮게 잡았다.
 	//***************************************************************************
 	static constexpr size_t kMaxDbQueueCapacity = 5000;
+
+	//***************************************************************************
+	// @brief 회원 DB 비동기 워커에 요청 하나를 게시합니다(백프레셔 임계값 kMaxDbQueueCapacity 적용).
+	// @details 각 Request*() 메서드가 반복하던
+	//          PushDBAsyncRequest<COdbcAsyncSrv, TReq>(MEMBER_DB_ASYNC, ident, fill, kMaxDbQueueCapacity)
+	//          호출을 한 곳으로 모은 것이다. 게시 실패(false) 시 호출부가 콜백을 직접 호출해
+	//          세션이 응답을 무한정 기다리지 않게 해야 한다.
+	// @param ident kDbCallIdent_* 호출 식별자
+	// @param fill 요청 구조체(TReq*)를 채우는 함수 객체
+	// @return 큐에 게시됐으면 true, 큐 포화/서비스 종료 등으로 거부됐으면 false
+	//***************************************************************************
+	template<typename TReq, typename TFill>
+	static bool PushDb(BYTE ident, TFill&& fill)
+	{
+		return PushDBAsyncRequest<COdbcAsyncSrv, TReq>(MEMBER_DB_ASYNC, ident, std::forward<TFill>(fill), kMaxDbQueueCapacity);
+	}
 };
 
 #endif // ndef UC_CHATSERVERMAIN_H

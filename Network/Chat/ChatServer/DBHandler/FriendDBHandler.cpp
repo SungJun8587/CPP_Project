@@ -137,7 +137,7 @@ namespace
 			int32 idBufLen = static_cast<int32>(sizeof(idBuf));
 			if( !_guard->GetData(1, idBuf, idBufLen) )
 				return false;
-			if( !Crypto::CCryptoUtil::FromHex(TStringToUtf8(_tstring(idBuf)), entry.publicId.data(), entry.publicId.size()) )
+			if( !HexToPublicId(TStringToUtf8(_tstring(idBuf)), entry.publicId) )
 				return false;
 
 			TCHAR nickBuf[kNicknameBytes] = {};
@@ -238,7 +238,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Friend)
 	}
 
 	CFriendSql sql(guard);
-	const std::string me = Crypto::CCryptoUtil::ToHex(req->publicId, sizeof(req->publicId));
+	const std::string me = PublicIdToHex(req->publicId);
 
 	// ── 목록 조회 ──────────────────────────────────────────────────────────
 	switch( req->op )
@@ -283,7 +283,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Friend)
 	bool ok;
 	if( req->hasTargetId )
 	{
-		const std::string targetHex = Crypto::CCryptoUtil::ToHex(req->targetPublicId, sizeof(req->targetPublicId));
+		const std::string targetHex = PublicIdToHex(req->targetPublicId);
 		ok = sql.LoadUser(kSqlUserById, targetHex, out.target, found);
 	}
 	else
@@ -297,7 +297,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Friend)
 	if( !found )
 		return finish(EFriendResult::UserNotFound);
 
-	const std::string target = Crypto::CCryptoUtil::ToHex(out.target.publicId.data(), out.target.publicId.size());
+	const std::string target = PublicIdToHex(out.target.publicId);
 	if( target == me )
 		return finish(EFriendResult::SelfTarget);
 

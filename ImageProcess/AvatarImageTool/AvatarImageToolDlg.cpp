@@ -80,6 +80,51 @@ static bool LoadGifFrames(const TCHAR* ptszPath, std::vector<GifCodec::Frame>& o
 }
 
 //*************************************************************************
+// src를 dst의 (dx, dy)에 알파 합성(source-over). 범위를 벗어난 부분은 잘라낸다.
+static void BlendOver(ImageBuffer& dst, const ImageBuffer& src, int dx, int dy)
+{
+	const int dw = static_cast<int>(dst.Width());
+	const int dh = static_cast<int>(dst.Height());
+	const int sw = static_cast<int>(src.Width());
+	const int sh = static_cast<int>(src.Height());
+
+	for( int y = 0; y < sh; ++y )
+	{
+		const int ty = dy + y;
+		if( ty < 0 || ty >= dh ) continue;
+
+		for( int x = 0; x < sw; ++x )
+		{
+			const int tx = dx + x;
+			if( tx < 0 || tx >= dw ) continue;
+
+			const uint8_t* s = src.At(static_cast<uint32_t>(x), static_cast<uint32_t>(y));
+			const int sa = s[3];
+			if( sa == 0 ) continue;
+
+			const uint8_t* d = dst.At(static_cast<uint32_t>(tx), static_cast<uint32_t>(ty));
+			const int da = d[3];
+
+			if( sa == 255 || da == 0 )
+			{
+				dst.SetPixel(static_cast<uint32_t>(tx), static_cast<uint32_t>(ty), s[0], s[1], s[2], static_cast<uint8_t>(sa));
+				continue;
+			}
+
+			const int oa = sa + (da * (255 - sa) + 127) / 255;
+			const int den = oa * 255;
+			uint8_t c[3];
+			for( int k = 0; k < 3; ++k )
+			{
+				const int num = s[k] * sa * 255 + d[k] * da * (255 - sa);
+				c[k] = static_cast<uint8_t>((num + den / 2) / den);
+			}
+			dst.SetPixel(static_cast<uint32_t>(tx), static_cast<uint32_t>(ty), c[0], c[1], c[2], static_cast<uint8_t>(oa));
+		}
+	}
+}
+
+//*************************************************************************
 // 쿼리 구간에서 token(예: "char=")으로 시작하는 값을 추출
 static BOOL GetQueryValue(const TCHAR* ptszQuery, const TCHAR* ptszToken, TCHAR* ptszOut, size_t nOutLen)
 {
@@ -218,6 +263,7 @@ CAvatarImageToolDlg::CAvatarImageToolDlg(CWnd* pParent /*=nullptr*/)
 	m_nExpression = 0;
 	m_nAvatarBg = 0;
 	m_tszEncString[0] = _T('\0');
+	m_tszDirection[0] = _T('\0');
 
 	m_bManAvatar = true;
 	m_bWomanAvatar = false;
@@ -1304,13 +1350,13 @@ void CAvatarImageToolDlg::OnRightDraw()
 void CAvatarImageToolDlg::OnImageFileCreate()
 {
 	TCHAR tszDefName[64];
-	_sntprintf_s(tszDefName, _countof(tszDefName), _TRUNCATE, _T("avatar_%d.png"), m_nAvatar);
+	_sntprintf_s(tszDefName, _countof(tszDefName), _TRUNCATE, _T("avatar_%d_%s.gif"), m_nAvatar, m_tszDirection);
 
-	CFileDialog dlg(FALSE, _T("png"), tszDefName, OFN_OVERWRITEPROMPT, _T("PNG (*.png)|*.png||"), this);
+	CFileDialog dlg(FALSE, _T("gif"), tszDefName, OFN_OVERWRITEPROMPT, _T("GIF (*.gif)|*.gif||"), this);
 	if( dlg.DoModal() == IDOK )
 	{
-		if( !SaveAvatarPng(dlg.GetPathName()) )
-			AfxMessageBox(_T("PNG 저장에 실패했습니다."));
+		if( !SaveBodyGif(dlg.GetPathName()) )
+			AfxMessageBox(_T("GIF 저장에 실패했습니다."));
 	}
 }
 
@@ -1391,6 +1437,8 @@ BOOL CAvatarImageToolDlg::DrawingImage(const TCHAR* ptszDirection)
 	if( !DrawImage.SetItemInfoMemDB(DrawItemInfo, ImageInfo) ) return FALSE;
 	m_nUnderBufferSize = ImageInfo.m_CacheMemInfo.m_nBufSize;
 	memcpy(m_bUnderBuffer, ImageInfo.m_CacheMemInfo.m_bBuffer, m_nUnderBufferSize);
+
+	_tcsncpy_s(m_tszDirection, _countof(m_tszDirection), ptszDirection, _TRUNCATE);
 
 	return TRUE;
 }
@@ -1508,42 +1556,54 @@ void CAvatarImageToolDlg::StartGifBackground(int nItemNumber)
 }
 
 //***************************************************************************
-// 전신 아바타(m_bTotalBuffer)만 PNG로 저장. 배경 GIF/월페이퍼는 포함되지 않는다.
-BOOL CAvatarImageToolDlg::SaveAvatarPng(const TCHAR* ptszPath)
+// 
+BOOL CAvatarImageToolDlg::SaveBodyGif(const TCHAR* ptszPath)
 {
-	if( ptszPath == nullptr ) return FALSE;
-	if( m_nTotalBufferSize <= 0 || m_nTotalBufferSize > static_cast<int>(sizeof(m_bTotalBuffer)) ) return FALSE;
+	const int w = m_rcBody.Width();
+	const int h = m_rcBody.Height();
+	if( ptszPath == nullptr || w <= 0 || h <= 0 ) return FALSE;
+	if( m_gifBg.Empty() && !m_bAvatarReady ) return FALSE;
 
-	const uint8_t* pData = m_bTotalBuffer;
-	size_t nSize = static_cast<size_t>(m_nTotalBufferSize);
-
-	std::vector<uint8_t> reencoded;
-	static const uint8_t kPngSig[8] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
-
-	if( nSize < sizeof(kPngSig) || memcmp(pData, kPngSig, sizeof(kPngSig)) != 0 )
+	try
 	{
-		// PNG가 아니면 디코드 후 PNG로 다시 인코딩
-		try
-		{
-			ImageProcessor img;
-			img.LoadFromMemory(pData, nSize);
+		const size_t nFrames = m_gifBg.Empty() ? 1 : m_gifBg.FrameCount();
+		std::vector<GifCodec::Frame> frames(nFrames);
 
-			PngCodec codec;
-			reencoded = codec.Encode(img.Buffer());
-		}
-		catch( const std::exception& )
+		for( size_t i = 0; i < nFrames; ++i )
 		{
-			return FALSE;
-		}
-		if( reencoded.empty() ) return FALSE;
+			ImageBuffer canvas(static_cast<uint32_t>(w), static_cast<uint32_t>(h));	// 투명
+			int nDelayCs = 0;
 
-		pData = reencoded.data();
-		nSize = reencoded.size();
+			if( !m_gifBg.Empty() )
+			{
+				for( int y = 0; y < h; ++y )
+					for( int x = 0; x < w; ++x )
+						canvas.SetPixel(x, y, 172, 172, 172, 255);
+
+				BlendOver(canvas, m_gifBg.FrameAt(i).image, 0, 0);
+				nDelayCs = m_gifBg.FrameAt(i).delayCs;
+			}
+
+			if( m_bAvatarReady )
+			{
+				const ImageBuffer& av = m_imgAvatar.Buffer();
+				BlendOver(canvas, av, (w - static_cast<int>(av.Width())) / 2, h - static_cast<int>(av.Height()));
+			}
+
+			frames[i].image = std::move(canvas);
+			frames[i].delayCs = nDelayCs;
+		}
+
+		GifCodec codec;
+		const std::vector<uint8_t> gif = codec.EncodeFrames(frames);
+
+		std::ofstream fs(std::filesystem::path(ptszPath), std::ios::binary);
+		if( !fs ) return FALSE;
+		fs.write(reinterpret_cast<const char*>(gif.data()), static_cast<std::streamsize>(gif.size()));
+		return fs.good() ? TRUE : FALSE;
 	}
-
-	std::ofstream fs(std::filesystem::path(ptszPath), std::ios::binary);
-	if( !fs ) return FALSE;
-
-	fs.write(reinterpret_cast<const char*>(pData), static_cast<std::streamsize>(nSize));
-	return fs.good() ? TRUE : FALSE;
+	catch( const std::exception& )
+	{
+		return FALSE;
+	}
 }

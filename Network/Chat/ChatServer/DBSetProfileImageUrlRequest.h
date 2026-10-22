@@ -8,7 +8,6 @@
 #define UC_DBSETPROFILEIMAGEURLREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
-#include "ChatPacket.h"		// ELoginResult, kPublicIdBytes, kProfileImageUrlBytes
 
 #include <functional>
 #include <string>

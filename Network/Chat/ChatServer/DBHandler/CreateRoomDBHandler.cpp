@@ -32,9 +32,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_CreateRoom)
 {
 	ST_CREATE_ROOM_REQ* req = static_cast<ST_CREATE_ROOM_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> ownerPublicId{};
-	::memcpy(ownerPublicId.data(), req->ownerPublicId, ownerPublicId.size());
-	const std::string ownerPublicIdHex = Crypto::CCryptoUtil::ToHex(ownerPublicId.data(), ownerPublicId.size());
+	PublicId ownerPublicId = ToPublicId(req->ownerPublicId);
+	const std::string ownerPublicIdHex = PublicIdToHex(ownerPublicId);
 	_tstring ownerPublicIdHexT = Utf8ToTString(ownerPublicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());

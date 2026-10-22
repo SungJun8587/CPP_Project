@@ -142,7 +142,7 @@ void CChatServerMain::Stop()
 //***************************************************************************
 std::string CChatServerMain::BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const
 {
-	return "User:" + Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	return "User:" + PublicIdToHex(publicId);
 }
 
 //***************************************************************************
@@ -158,7 +158,7 @@ void CChatServerMain::OnUserLogin(const std::array<BYTE, kPublicIdBytes>& public
 	// 못 쓴다.
 	{
 		std::lock_guard<std::mutex> lock(_onlineMutex);
-		_onlinePublicIdsHex.insert(Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size()));
+		_onlinePublicIdsHex.insert(PublicIdToHex(publicId));
 	}
 
 	if( _redisService == nullptr )
@@ -181,7 +181,7 @@ void CChatServerMain::OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publi
 {
 	{
 		std::lock_guard<std::mutex> lock(_onlineMutex);
-		_onlinePublicIdsHex.erase(Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size()));
+		_onlinePublicIdsHex.erase(PublicIdToHex(publicId));
 	}
 
 	if( _redisService == nullptr )
@@ -200,7 +200,7 @@ void CChatServerMain::OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publi
 bool CChatServerMain::IsUserOnline(const std::array<BYTE, kPublicIdBytes>& publicId) const
 {
 	std::lock_guard<std::mutex> lock(_onlineMutex);
-	return _onlinePublicIdsHex.find(Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size())) != _onlinePublicIdsHex.end();
+	return _onlinePublicIdsHex.find(PublicIdToHex(publicId)) != _onlinePublicIdsHex.end();
 }
 
 //***************************************************************************
@@ -232,17 +232,9 @@ void CChatServerMain::ScheduleFileDeletionIfOwned(const std::string& deletedImag
 	if( deletedImageRef.empty() || _fileServerUrl.empty() || _redisService == nullptr )
 		return;
 
-	// "{fileServerUrl}/images/{상대경로}" 형식만 우리 파일 서버 소유로 본다 —
-	// FileServerMain::BuildPublicUrl()이 만드는 형식과 정확히 일치해야 한다.
-	std::string prefix = _fileServerUrl;
-	if( !prefix.empty() && prefix.back() == '/' )
-		prefix.pop_back();
-	prefix += "/images/";
-
-	if( deletedImageRef.rfind(prefix, 0) != 0 )
-		return; // 외부 URL(사용자가 직접 등록한 URL 등) — 우리가 지울 대상이 아님
-
-	const std::string relativePath = deletedImageRef.substr(prefix.size());
+	// "{fileServerUrl}/images/{상대경로}" 형식만 우리 파일 서버 소유로 본다(ImageRef 규약).
+	// 외부 URL(사용자가 직접 등록한 URL 등)은 우리가 지울 대상이 아니다.
+	const std::string relativePath = ImageRef::ExtractOwnedRelativePath(_fileServerUrl, deletedImageRef);
 	if( relativePath.empty() )
 		return;
 
@@ -263,24 +255,7 @@ void CChatServerMain::ScheduleFileDeletionIfOwned(const std::string& deletedImag
 //***************************************************************************
 std::string CChatServerMain::ToStorableImageRef(const std::string& url) const
 {
-	if( url.empty() || _fileServerUrl.empty() )
-		return url;
-
-	std::string hostPrefix = _fileServerUrl;
-	if( !hostPrefix.empty() && hostPrefix.back() == '/' )
-		hostPrefix.pop_back();
-
-	// "{fileServerUrl}/images/..." -> "/images/..." — 맨 앞 "/"(=/images/의
-	// 시작)는 hostPrefix에 포함시키지 않고 남겨서, 결과가 항상 "/"로
-	// 시작하는 상대 경로가 되게 한다(ToDisplayImageUrl()이 이 "/"로 판별함).
-	if( url.rfind(hostPrefix, 0) == 0 )
-	{
-		const std::string remainder = url.substr(hostPrefix.size());
-		if( !remainder.empty() && remainder.front() == '/' )
-			return remainder;
-	}
-
-	return url; // 외부 URL이거나 형식이 안 맞음 — 그대로 저장(자르지 않음)
+	return ImageRef::ToStorable(_fileServerUrl, url);
 }
 
 //***************************************************************************
@@ -291,12 +266,5 @@ std::string CChatServerMain::ToStorableImageRef(const std::string& url) const
 //***************************************************************************
 std::string CChatServerMain::ToDisplayImageUrl(const std::string& imageRef) const
 {
-	if( imageRef.empty() || _fileServerUrl.empty() || imageRef.front() != '/' )
-		return imageRef;
-
-	std::string hostPrefix = _fileServerUrl;
-	if( !hostPrefix.empty() && hostPrefix.back() == '/' )
-		hostPrefix.pop_back();
-
-	return hostPrefix + imageRef;
+	return ImageRef::ToDisplay(_fileServerUrl, imageRef);
 }

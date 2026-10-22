@@ -147,7 +147,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomMembersPage)
 		const std::string publicIdHex = TStringToUtf8(_tstring(publicIdBuf));
 
 		SRoomMemberHistoryEntry entry;
-		if( !Crypto::CCryptoUtil::FromHex(publicIdHex, entry.publicId.data(), entry.publicId.size()) )
+		if( !HexToPublicId(publicIdHex, entry.publicId) )
 			continue; // 형식이 깨진 값 — 방어적으로 건너뜀
 
 		entry.nickname = TStringToUtf8(_tstring(nicknameBuf));

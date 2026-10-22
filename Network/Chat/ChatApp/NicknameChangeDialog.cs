@@ -101,6 +101,13 @@ namespace ChatApp
             if (string.IsNullOrEmpty(newNick))
                 return;
 
+            if (!NicknameValidator.IsValid(newNick))
+            {
+                _lblStatus.ForeColor = Color.Firebrick;
+                _lblStatus.Text = "닉네임 형식이 올바르지 않습니다(영문/숫자/밑줄/한글, 1~16자).";
+                return;
+            }
+
             _lblStatus.ForeColor = Color.Gray;
             _lblStatus.Text = "변경 요청 중...";
             _client.RequestChangeNickname(newNick);
