@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -120,9 +121,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		const std::string publicIdHex = PublicIdToHex(newPublicId);
 		const std::string hashHex = HashTokenHex(newToken.data(), newToken.size());
 
-		if( !guard->PrepareQuery(_T("INSERT INTO users (public_id, nickname, token_hash, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())")) )
+		if( !DbUtil::PrepareOrClear(guard, _T("INSERT INTO users (public_id, nickname, token_hash, created_at, updated_at) VALUES (?, ?, ?, NOW(), NOW())")) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
@@ -131,13 +131,10 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		_tstring publicIdHexT = Utf8ToTString(publicIdHex);
 		_tstring nicknameT = Utf8ToTString(nickname);
 		_tstring hashHexT = Utf8ToTString(hashHex);
-		SQLLEN publicIdLenInd = SQL_NTS;
-		SQLLEN nicknameLenInd = SQL_NTS;
-		SQLLEN hashHexLenInd = SQL_NTS;
 
-		guard->BindParamInput(1, publicIdHexT.c_str(), publicIdLenInd);
-		guard->BindParamInput(2, nicknameT.c_str(), nicknameLenInd);
-		guard->BindParamInput(3, hashHexT.c_str(), hashHexLenInd);
+		DbUtil::BindString(guard, 1, publicIdHexT);
+		DbUtil::BindString(guard, 2, nicknameT);
+		DbUtil::BindString(guard, 3, hashHexT);
 
 		if( guard->Execute() )
 		{
@@ -160,8 +157,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		guard->ClearStmt();
 		if( guard->PrepareQuery(_T("SELECT 1 FROM users WHERE nickname = ?")) )
 		{
-			SQLLEN checkLenInd = SQL_NTS;
-			guard->BindParamInput(1, nicknameT.c_str(), checkLenInd);
+			DbUtil::BindString(guard, 1, nicknameT);
 
 			if( guard->Execute() && guard->Fetch() )
 			{
@@ -180,9 +176,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 	else
 	{
 		// ── 재접속 검증 ────────────────────────────────────────────
-		if( !guard->PrepareQuery(_T("SELECT nickname, token_hash FROM users WHERE public_id = ?")) )
+		if( !DbUtil::PrepareOrClear(guard, _T("SELECT nickname, token_hash FROM users WHERE public_id = ?")) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
@@ -190,12 +185,10 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 
 		const std::string publicIdHex = PublicIdToHex(req->publicId);
 		_tstring publicIdHexT = Utf8ToTString(publicIdHex);
-		SQLLEN publicIdLenInd = SQL_NTS;
-		guard->BindParamInput(1, publicIdHexT.c_str(), publicIdLenInd);
+		DbUtil::BindString(guard, 1, publicIdHexT);
 
-		if( !guard->Execute() )
+		if( !DbUtil::ExecuteOrClear(guard) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, std::string(), emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
@@ -252,8 +245,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 		std::string profileImageUrl;
 		if( guard->PrepareQuery(_T("SELECT image_ref FROM user_profile_images WHERE user_public_id = ? AND status = 1 LIMIT 1")) )
 		{
-			SQLLEN profileQueryLenInd = SQL_NTS;
-			guard->BindParamInput(1, publicIdHexT.c_str(), profileQueryLenInd);
+			DbUtil::BindString(guard, 1, publicIdHexT);
 
 			if( guard->Execute() && guard->Fetch() )
 			{
@@ -296,23 +288,19 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Signup)
 
 		const std::string rotatedHashHex = HashTokenHex(rotatedToken.data(), rotatedToken.size());
 
-		if( !guard->PrepareQuery(_T("UPDATE users SET token_hash = ?, updated_at = NOW() WHERE public_id = ?")) )
+		if( !DbUtil::PrepareOrClear(guard, _T("UPDATE users SET token_hash = ?, updated_at = NOW() WHERE public_id = ?")) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;
 		}
 
 		_tstring rotatedHashHexT = Utf8ToTString(rotatedHashHex);
-		SQLLEN rotatedHashLenInd = SQL_NTS;
-		SQLLEN publicIdLenInd2 = SQL_NTS;
-		guard->BindParamInput(1, rotatedHashHexT.c_str(), rotatedHashLenInd);
-		guard->BindParamInput(2, publicIdHexT.c_str(), publicIdLenInd2);
+		DbUtil::BindString(guard, 1, rotatedHashHexT);
+		DbUtil::BindString(guard, 2, publicIdHexT);
 
-		if( !guard->Execute() )
+		if( !DbUtil::ExecuteOrClear(guard) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ELoginResult::DbError, nickname, emptyPublicId, emptyToken, std::string());
 			return EDBReturnType::INVALID;

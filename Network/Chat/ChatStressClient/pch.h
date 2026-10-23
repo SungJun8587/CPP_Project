@@ -67,6 +67,7 @@ using namespace std;
 
 #include "../Common/Protocol/ChatPacketTypes.h"
 #include "../Common/Protocol/ChatPacket.h"
+#include "../Common/Protocol/ChatPacketUtil.h"
 #include "ChatStressConfig.h"
 #include "ChatStressStats.h"
 #include "ChatStressReporter.h"

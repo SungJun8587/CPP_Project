@@ -250,6 +250,13 @@
     <ClCompile Include="DBHandler\FriendDBHandler.cpp">
       <Filter>DBHandler</Filter>
     </ClCompile>
+    <ClCompile Include="DBHandler\ConvDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="ChatServerMainConv.cpp" />
+    <ClCompile Include="PacketHandler\ChatConvHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -560,12 +567,16 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="ChatPacketUtil.h" />
     <ClInclude Include="..\Common\ImageRef.h">
       <Filter>Common</Filter>
     </ClInclude>
     <ClInclude Include="ChatHandlerUtil.h" />
     <ClInclude Include="RoomValidation.h" />
+    <ClInclude Include="..\Common\Protocol\ChatPacketUtil.h">
+      <Filter>Common\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="DbHandlerUtil.h" />
+    <ClInclude Include="DBConvRequest.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

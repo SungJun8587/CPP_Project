@@ -31,27 +31,23 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestDeleteProfileImage(sessionRef, publicId, imageId,
-			[sessionWeak](ELoginResult result, int64 /*imageId*/, bool wasActive, const std::string& /*deletedImageRef*/)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				if( result == ELoginResult::Ok && wasActive )
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ELoginResult result, int64 /*imageId*/, bool wasActive, const std::string& /*deletedImageRef*/)
 				{
-					session->UpdateProfileImageUrl(std::string());
+					if( result == ELoginResult::Ok && wasActive )
+					{
+						session->UpdateProfileImageUrl(std::string());
 
-					// 대표 이미지가 사라졌으므로(기본 이미지로 돌아감) 접속 중인 친구들에게 알린다.
-					if( CChatServerMain* srv = session->GetServer() )
-						srv->NotifyFriendProfileChanged(session);
-				}
+						// 대표 이미지가 사라졌으므로(기본 이미지로 돌아감) 접속 중인 친구들에게 알린다.
+						if( CChatServerMain* srv = session->GetServer() )
+							srv->NotifyFriendProfileChanged(session);
+					}
 
-				DeleteProfileImageResPacket res{};
-				InitPacket(res, EChatPacketType::DeleteProfileImageRes);
-				res.success = (result == ELoginResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-				session->Send(&res, sizeof(res));
-			});
+					DeleteProfileImageResPacket res{};
+					InitPacket(res, EChatPacketType::DeleteProfileImageRes);
+					res.success = (result == ELoginResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
+					SendPacket(session, res);
+				}));
 	}
 }
 

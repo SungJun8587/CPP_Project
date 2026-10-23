@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -33,10 +34,9 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetProfileImageUrl)
 	const size_t urlLen = ::strnlen(req->url, sizeof(req->url));
 	const std::string newUrl(req->url, urlLen);
 
-	std::array<BYTE, kPublicIdBytes> publicId{};
-	::memcpy(publicId.data(), req->publicId, publicId.size());
+	PublicId publicId = ToPublicId(req->publicId);
 
-	const std::string publicIdHex = Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	const std::string publicIdHex = PublicIdToHex(publicId);
 	_tstring publicIdHexT = Utf8ToTString(publicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());
@@ -49,20 +49,17 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetProfileImageUrl)
 	}
 
 	// 1) 기존 대표 이미지 해제
-	if( !guard->PrepareQuery(_T("UPDATE user_profile_images SET status = 0 WHERE user_public_id = ? AND status = 1")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("UPDATE user_profile_images SET status = 0 WHERE user_public_id = ? AND status = 1")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, publicId, newUrl, 0);
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN unsetPublicIdLenInd = SQL_NTS;
-	guard->BindParamInput(1, publicIdHexT.c_str(), unsetPublicIdLenInd);
+	DbUtil::BindString(guard, 1, publicIdHexT);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, publicId, newUrl, 0);
 		return EDBReturnType::INVALID;
@@ -79,9 +76,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetProfileImageUrl)
 
 	// 2) 새 URL을 대표로 등록 — file_size는 항상 0. 실제 파일 크기는 이제
 	// 채팅 서버가 알 방법이 없다(이미지 저장을 파일 서버로 분리했으므로).
-	if( !guard->PrepareQuery(_T("INSERT INTO user_profile_images (user_public_id, image_ref, file_size, status) VALUES (?, ?, 0, 1)")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("INSERT INTO user_profile_images (user_public_id, image_ref, file_size, status) VALUES (?, ?, 0, 1)")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, publicId, newUrl, 0);
 		return EDBReturnType::INVALID;
@@ -89,14 +85,11 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetProfileImageUrl)
 
 	_tstring newUrlT = Utf8ToTString(newUrl);
 
-	SQLLEN insertPublicIdLenInd = SQL_NTS;
-	SQLLEN newUrlLenInd = SQL_NTS;
-	guard->BindParamInput(1, publicIdHexT.c_str(), insertPublicIdLenInd);
-	guard->BindParamInput(2, newUrlT.c_str(), newUrlLenInd);
+	DbUtil::BindString(guard, 1, publicIdHexT);
+	DbUtil::BindString(guard, 2, newUrlT);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, publicId, newUrl, 0);
 		return EDBReturnType::INVALID;

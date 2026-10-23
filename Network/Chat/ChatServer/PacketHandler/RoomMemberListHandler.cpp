@@ -31,10 +31,9 @@ namespace
 		for( const SRoomMemberHistoryInfo& member : members )
 		{
 			RoomMemberListItemResPacket itemRes{};
-			itemRes.size = sizeof(itemRes);
-			itemRes.type = static_cast<uint16>(EChatPacketType::RoomMemberListItemRes);
+			InitPacket(itemRes, EChatPacketType::RoomMemberListItemRes);
 			itemRes.requestId = requestId;
-			::memcpy(itemRes.publicId, member.publicId.data(), member.publicId.size());
+			CopyPublicId(itemRes.publicId, member.publicId);
 
 			const size_t nicknameCopyLen = (std::min)(member.nickname.size(), sizeof(itemRes.nickname) - 1);
 			::memcpy(itemRes.nickname, member.nickname.data(), nicknameCopyLen);
@@ -44,19 +43,18 @@ namespace
 
 			itemRes.online = member.online ? 1 : 0;
 
-			session.Send(&itemRes, sizeof(itemRes));
+			SendPacket(session, itemRes);
 		}
 
 		RoomMemberListEndResPacket endRes{};
-		endRes.size = sizeof(endRes);
-		endRes.type = static_cast<uint16>(EChatPacketType::RoomMemberListEndRes);
+		InitPacket(endRes, EChatPacketType::RoomMemberListEndRes);
 		endRes.requestId = requestId;
 		endRes.roomId = roomId;
 		endRes.scope = static_cast<uint8_t>(scope);
 		endRes.totalCount = totalCount;
 		endRes.page = page;
 		endRes.pageSize = pageSize;
-		session.Send(&endRes, sizeof(endRes));
+		SendPacket(session, endRes);
 	}
 
 	//***************************************************************************
@@ -111,21 +109,17 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestRoomMemberHistoryPage(roomId, page, pageSize,
-			[sessionWeak, requestId, roomId, pageSize](ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomMemberHistoryInfo>& members)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				if( result == ELoginResult::Ok )
+			BindSession(sessionWeak, [requestId, roomId, pageSize](const std::shared_ptr<CChatSession>& session, ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomMemberHistoryInfo>& members)
 				{
-					SendMemberListResult(*session, requestId, roomId, ERoomMemberListScope::History, totalCount, resultPage, pageSize, members);
-				}
-				else
-				{
-					SendMemberListResult(*session, requestId, roomId, ERoomMemberListScope::History, 0, 0, pageSize, std::vector<SRoomMemberHistoryInfo>());
-				}
-			});
+					if( result == ELoginResult::Ok )
+					{
+						SendMemberListResult(*session, requestId, roomId, ERoomMemberListScope::History, totalCount, resultPage, pageSize, members);
+					}
+					else
+					{
+						SendMemberListResult(*session, requestId, roomId, ERoomMemberListScope::History, 0, 0, pageSize, std::vector<SRoomMemberHistoryInfo>());
+					}
+				}));
 	}
 
 	//***************************************************************************

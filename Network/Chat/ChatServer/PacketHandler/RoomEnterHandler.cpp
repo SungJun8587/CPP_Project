@@ -43,13 +43,12 @@ namespace
 		if( roomId < 1 || !server->RoomExists(roomId) )
 		{
 			RoomEnterResPacket res{};
-			res.size = sizeof(res);
-			res.type = static_cast<uint16>(EChatPacketType::RoomEnterRes);
+			InitPacket(res, EChatPacketType::RoomEnterRes);
 			res.roomId = roomId;
 			res.success = 0;
 			res.reason = static_cast<uint8>(ERoomResult::InvalidRoomId);
 			res.roomUserCount = 0;
-			session.Send(&res, sizeof(res));
+			SendPacket(session, res);
 			return;
 		}
 
@@ -66,97 +65,85 @@ namespace
 		if( roomId == kLobbyRoomId )
 		{
 			RoomEnterResPacket res{};
-			res.size = sizeof(res);
-			res.type = static_cast<uint16>(EChatPacketType::RoomEnterRes);
+			InitPacket(res, EChatPacketType::RoomEnterRes);
 			res.roomId = roomId;
 			res.success = 1;
 			res.reason = static_cast<uint8>(ERoomResult::Ok);
 			res.roomUserCount = newUserCount;
-			session.Send(&res, sizeof(res));
+			SendPacket(session, res);
 			return;
 		}
 
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestGetRoomInfo(sessionRef, roomId,
-			[server, sessionWeak, roomId, newUserCount](bool found, const SRoomListEntry& info)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				RoomEnterResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::RoomEnterRes);
-				res.roomId = roomId;
-				res.success = 1;
-				res.reason = static_cast<uint8>(ERoomResult::Ok);
-				res.roomUserCount = newUserCount;
-
-				// found==false는 입장 직후 그 방이 삭제된 것 같은 극히 좁은
-				// 경합뿐이다 — 그 경우 roomName 등은 {} 초기화 덕분에 그냥
-				// 빈 문자열로 남는다(클라이언트는 이미 방 삭제 알림도 곧
-				// 받을 것이므로 문제없음).
-				if( found )
+			BindSession(sessionWeak, [server, sessionWeak, roomId, newUserCount](const std::shared_ptr<CChatSession>& session, bool found, const SRoomListEntry& info)
 				{
-					const size_t nameCopyLen = (std::min)(info.name.size(), sizeof(res.roomName) - 1);
-					::memcpy(res.roomName, info.name.data(), nameCopyLen);
+					RoomEnterResPacket res{};
+					InitPacket(res, EChatPacketType::RoomEnterRes);
+					res.roomId = roomId;
+					res.success = 1;
+					res.reason = static_cast<uint8>(ERoomResult::Ok);
+					res.roomUserCount = newUserCount;
 
-					const size_t nicknameCopyLen = (std::min)(info.ownerNickname.size(), sizeof(res.roomOwnerNickname) - 1);
-					::memcpy(res.roomOwnerNickname, info.ownerNickname.data(), nicknameCopyLen);
-
-					const size_t urlCopyLen = (std::min)(info.imageRef.size(), sizeof(res.roomImageUrl) - 1);
-					::memcpy(res.roomImageUrl, info.imageRef.data(), urlCopyLen);
-				}
-
-				session->Send(&res, sizeof(res));
-
-				// [추가] 입장에 성공했으니(여기 도달한 시점엔 이미 확정) 그
-				// 방의 최근 대화 기록을 이 세션에게만(브로드캐스트 아님)
-				// 자동으로 스트리밍해준다 — 카카오톡/디스코드처럼 방에
-				// 들어가자마자 과거 대화가 보이게.
-				server->RequestRoomChatHistory(session, roomId,
-					[sessionWeak, roomId](const std::vector<CChatServerMain::SChatHistoryEntry>& history)
+					// found==false는 입장 직후 그 방이 삭제된 것 같은 극히 좁은
+					// 경합뿐이다 — 그 경우 roomName 등은 {} 초기화 덕분에 그냥
+					// 빈 문자열로 남는다(클라이언트는 이미 방 삭제 알림도 곧
+					// 받을 것이므로 문제없음).
+					if( found )
 					{
-						auto session = sessionWeak.lock();
-						if( session == nullptr )
-							return;
+						const size_t nameCopyLen = (std::min)(info.name.size(), sizeof(res.roomName) - 1);
+						::memcpy(res.roomName, info.name.data(), nameCopyLen);
 
-						int32 sentCount = 0;
-						for( const CChatServerMain::SChatHistoryEntry& entry : history )
-						{
-							// [추가] 내가 차단한 사용자의 과거 메시지는 보내지 않는다.
-							if( session->IsBlockingHex(entry.senderPublicId) )
-								continue;
+						const size_t nicknameCopyLen = (std::min)(info.ownerNickname.size(), sizeof(res.roomOwnerNickname) - 1);
+						::memcpy(res.roomOwnerNickname, info.ownerNickname.data(), nicknameCopyLen);
 
-							ChatHistoryItemResPacket itemRes{};
-							itemRes.size = sizeof(itemRes);
-							itemRes.type = static_cast<uint16>(EChatPacketType::ChatHistoryItemRes);
-							itemRes.roomId = roomId;
-							itemRes.messageId = entry.messageId;
-							itemRes.timestampMs = entry.timestampMs;
+						const size_t urlCopyLen = (std::min)(info.imageRef.size(), sizeof(res.roomImageUrl) - 1);
+						::memcpy(res.roomImageUrl, info.imageRef.data(), urlCopyLen);
+					}
 
-							const size_t nicknameCopyLen = (std::min)(entry.nickname.size(), sizeof(itemRes.nickname) - 1);
-							::memcpy(itemRes.nickname, entry.nickname.data(), nicknameCopyLen);
+					SendPacket(session, res);
 
-							const size_t urlCopyLen = (std::min)(entry.profileImageUrl.size(), sizeof(itemRes.profileImageUrl) - 1);
-							::memcpy(itemRes.profileImageUrl, entry.profileImageUrl.data(), urlCopyLen);
+					// [추가] 입장에 성공했으니(여기 도달한 시점엔 이미 확정) 그
+					// 방의 최근 대화 기록을 이 세션에게만(브로드캐스트 아님)
+					// 자동으로 스트리밍해준다 — 카카오톡/디스코드처럼 방에
+					// 들어가자마자 과거 대화가 보이게.
+					server->RequestRoomChatHistory(session, roomId,
+						BindSession(sessionWeak, [roomId](const std::shared_ptr<CChatSession>& session, const std::vector<CChatServerMain::SChatHistoryEntry>& history)
+							{
+								int32 sentCount = 0;
+								for( const CChatServerMain::SChatHistoryEntry& entry : history )
+								{
+									// [추가] 내가 차단한 사용자의 과거 메시지는 보내지 않는다.
+									if( session->IsBlockingHex(entry.senderPublicId) )
+										continue;
 
-							const size_t messageCopyLen = (std::min)(entry.message.size(), sizeof(itemRes.message) - 1);
-							::memcpy(itemRes.message, entry.message.data(), messageCopyLen);
+									ChatHistoryItemResPacket itemRes{};
+									InitPacket(itemRes, EChatPacketType::ChatHistoryItemRes);
+									itemRes.roomId = roomId;
+									itemRes.messageId = entry.messageId;
+									itemRes.timestampMs = entry.timestampMs;
 
-							session->Send(&itemRes, sizeof(itemRes));
-							++sentCount;
-						}
+									const size_t nicknameCopyLen = (std::min)(entry.nickname.size(), sizeof(itemRes.nickname) - 1);
+									::memcpy(itemRes.nickname, entry.nickname.data(), nicknameCopyLen);
 
-						ChatHistoryEndResPacket endRes{};
-						endRes.size = sizeof(endRes);
-						endRes.type = static_cast<uint16>(EChatPacketType::ChatHistoryEndRes);
-						endRes.roomId = roomId;
-						endRes.totalCount = sentCount;	// 차단으로 건너뛴 항목을 뺀, 실제로 보낸 개수
-						session->Send(&endRes, sizeof(endRes));
-					});
-			});
+									const size_t urlCopyLen = (std::min)(entry.profileImageUrl.size(), sizeof(itemRes.profileImageUrl) - 1);
+									::memcpy(itemRes.profileImageUrl, entry.profileImageUrl.data(), urlCopyLen);
+
+									const size_t messageCopyLen = (std::min)(entry.message.size(), sizeof(itemRes.message) - 1);
+									::memcpy(itemRes.message, entry.message.data(), messageCopyLen);
+
+									SendPacket(session, itemRes);
+									++sentCount;
+								}
+
+								ChatHistoryEndResPacket endRes{};
+								InitPacket(endRes, EChatPacketType::ChatHistoryEndRes);
+								endRes.roomId = roomId;
+								endRes.totalCount = sentCount;	// 차단으로 건너뛴 항목을 뺀, 실제로 보낸 개수
+								SendPacket(session, endRes);
+							}));
+				}));
 	}
 }
 

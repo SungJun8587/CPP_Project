@@ -63,66 +63,62 @@ namespace
 		else
 		{
 			// ── 재접속 — publicId+token만 의미 있음 ────────────────────
-			::memcpy(publicId.data(), packet->publicId, publicId.size());
-			::memcpy(token.data(), packet->token, token.size());
+			publicId = ToPublicId(packet->publicId);
+			token = FixedBuf::ToArray<kTokenBytes>(packet->token);
 		}
 
 		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSignup(sessionRef, nickname, hasToken, publicId, token,
-			[sessionWeak](ELoginResult result, const std::string& completedNickname,
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ELoginResult result, const std::string& completedNickname,
 				const std::array<BYTE, kPublicIdBytes>& completedPublicId,
 				const std::array<BYTE, kTokenBytes>& newToken,
 				const std::string& profileImageUrl)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return; // 응답이 오기 전에 연결이 끊김 — 더 이상 할 일 없음
-
-				LoginResPacket res{};
-				InitPacket(res, EChatPacketType::LoginRes);
-				res.success = (result == ELoginResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-
-				// [수정] 성공/실패 상관없이 completedNickname을 그대로 실어 보낸다.
-				// AccountDBHandler.cpp가 이미 상황에 맞게 채워서(성공/신규가입
-				// 실패면 해당 닉네임, AccountNotFound처럼 애초에 못 찾은 경우면
-				// 빈 문자열) 넘겨주므로 여기서 추가로 분기할 필요가 없다.
-				FixedBuf::CopyStr(res.nickname, completedNickname);
-
-				if( result == ELoginResult::Ok )
 				{
-					session->MarkLoggedIn(completedPublicId, completedNickname, profileImageUrl);
-					::memcpy(res.publicId, completedPublicId.data(), completedPublicId.size());
-					::memcpy(res.token, newToken.data(), newToken.size());
+					LoginResPacket res{};
+					InitPacket(res, EChatPacketType::LoginRes);
+					res.success = (result == ELoginResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
 
-					FixedBuf::CopyStr(res.profileImageUrl, profileImageUrl);
-				}
+					// [수정] 성공/실패 상관없이 completedNickname을 그대로 실어 보낸다.
+					// AccountDBHandler.cpp가 이미 상황에 맞게 채워서(성공/신규가입
+					// 실패면 해당 닉네임, AccountNotFound처럼 애초에 못 찾은 경우면
+					// 빈 문자열) 넘겨주므로 여기서 추가로 분기할 필요가 없다.
+					FixedBuf::CopyStr(res.nickname, completedNickname);
 
-				session->Send(&res, sizeof(res));
-
-				if( result == ELoginResult::Ok )
-				{
-					if( CChatServerMain* srv = session->GetServer() )
+					if( result == ELoginResult::Ok )
 					{
-						srv->OnUserLogin(completedPublicId);
+						session->MarkLoggedIn(completedPublicId, completedNickname, profileImageUrl);
+						CopyPublicId(res.publicId, completedPublicId);
+						CopyBytes(res.token, newToken);
 
-						// [추가] 친구 기능 — 친구 알림용 세션 레지스트리에 등록하고 접속 중인 친구들에게
-						// 접속을 알리며, 이 계정이 차단한 사용자 목록을 세션에 올린다(채팅 수신 필터용).
-						// 차단 목록 로드를 최대한 일찍 시작하도록 로비 배정보다 먼저 호출한다.
-						srv->OnFriendLogin(session);
-
-						// [추가] 로그인에 성공하면 곧바로 로비에 배정한다 —
-						// "로그인은 됐는데 아직 어디에도 속하지 않은" 어중간한
-						// 상태를 만들지 않기 위함. 로비도 CChatServerMain
-						// 관점에서는 그냥 하나의 방(roomId=kLobbyRoomId)이라
-						// MoveToRoom()을 그대로 재사용한다.
-						int32 lobbyUserCount = 0;
-						srv->MoveToRoom(session, kLobbyRoomId, lobbyUserCount);
+						FixedBuf::CopyStr(res.profileImageUrl, profileImageUrl);
 					}
-				}
-			});
+
+					SendPacket(session, res);
+
+					if( result == ELoginResult::Ok )
+					{
+						if( CChatServerMain* srv = session->GetServer() )
+						{
+							srv->OnUserLogin(completedPublicId);
+
+							// [추가] 친구 기능 — 친구 알림용 세션 레지스트리에 등록하고 접속 중인 친구들에게
+							// 접속을 알리며, 이 계정이 차단한 사용자 목록을 세션에 올린다(채팅 수신 필터용).
+							// 차단 목록 로드를 최대한 일찍 시작하도록 로비 배정보다 먼저 호출한다.
+							srv->OnFriendLogin(session);
+
+							// [추가] 로그인에 성공하면 곧바로 로비에 배정한다 —
+							// "로그인은 됐는데 아직 어디에도 속하지 않은" 어중간한
+							// 상태를 만들지 않기 위함. 로비도 CChatServerMain
+							// 관점에서는 그냥 하나의 방(roomId=kLobbyRoomId)이라
+							// MoveToRoom()을 그대로 재사용한다.
+							int32 lobbyUserCount = 0;
+							srv->MoveToRoom(session, kLobbyRoomId, lobbyUserCount);
+						}
+					}
+				}));
 	}
 }
 

@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -36,9 +37,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_RenameRoom)
 	}
 
 	// 1. 존재 여부 + 소유권 확인.
-	if( !guard->PrepareQuery(_T("SELECT owner_public_id FROM rooms WHERE room_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT owner_public_id FROM rooms WHERE room_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;
@@ -46,9 +46,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_RenameRoom)
 
 	guard->BindParamInput(1, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;
@@ -83,21 +82,18 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_RenameRoom)
 	// 2. 소유권 확인 통과 — 실제 이름 변경.
 	_tstring newNameT = Utf8ToTString(req->newName);
 
-	if( !guard->PrepareQuery(_T("UPDATE rooms SET name = ? WHERE room_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("UPDATE rooms SET name = ? WHERE room_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN nameLenInd = SQL_NTS;
-	guard->BindParamInput(1, newNameT.c_str(), nameLenInd);
+	DbUtil::BindString(guard, 1, newNameT);
 	guard->BindParamInput(2, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;

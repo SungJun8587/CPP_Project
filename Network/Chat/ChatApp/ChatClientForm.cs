@@ -365,6 +365,10 @@ namespace ChatApp
         // 대화 탭에서만 폼 폭을 ChatTabClientWidth로 넓히고, 다른 탭에서는 BaseClientWidth로
         // 되돌린다(SelectedIndexChanged 참고).
         private FriendPanel _friendPanel;
+        private ConversationPanel _convPanel;     // "메신저" 탭 — 1:1/그룹 대화
+        private CustomTabButton _messengerTabButton;
+        private const int MessengerTabIndex = 3;  // 0=대화, 1=채팅방, 2=갤러리, 3=메신저, 4=시스템 로그
+        private const int MessengerTabClientWidth = 880;
         private const int BaseClientWidth = 577;
         private const int FriendPanelLeft = 571;    // 채팅 카드(Left=3, Width=562) 오른쪽 + 6px 간격
         private const int FriendPanelWidth = 262;
@@ -721,6 +725,7 @@ namespace ChatApp
             _galleryPanel?.RefreshTheme();
             _roomListPanel?.RefreshTheme();
             _friendPanel?.RefreshTheme();
+            _convPanel?.RefreshTheme();
 
             Invalidate(true);
         }
@@ -1131,6 +1136,7 @@ namespace ChatApp
                 Height = 604,
             };
             _friendPanel.Notice += OnFriendNotice;
+            _friendPanel.ChatRequested += OnFriendChatRequested;
 
             chatPagePanel.Controls.AddRange(new Control[] { groupBox1, groupBox2, _friendPanel });
             tabPageChat.Controls.Add(chatPagePanel);
@@ -1172,6 +1178,15 @@ namespace ChatApp
             // 뺐다. 독립된 탭 페이지 전체를 쓸 수 있어서 카드를 훨씬 크게
             // (Height=600) 잡고, 리스트박스도 그만큼 키웠다(116 → 566).
             // 내용/그리기 방식(ColoredListBox_DrawItem, 범례)은 그대로다.
+            // ── "메신저" 탭 — 카카오톡식 대화방 목록 + 대화창. 패널이 탭 전체를 쓴다.
+            var tabPageMessenger = new TabPage("메신저");
+            _convPanel = new ConversationPanel { Dock = DockStyle.Fill };
+            _convPanel.Notice += OnConvNotice;
+            _convPanel.ImageUploader = UploadMessengerImageAsync;
+            _convPanel.TotalUnreadChanged += OnConvUnreadChanged;
+            _convPanel.ActivationRequested += () => _tabControl.SelectedIndex = MessengerTabIndex;
+            tabPageMessenger.Controls.Add(_convPanel);
+
             var tabPageSystemLog = new TabPage("시스템 로그");
             var systemLogPagePanel = new Panel { Dock = DockStyle.Fill, BackColor = PageBackColor };
 
@@ -1248,6 +1263,7 @@ namespace ChatApp
             tabControl.TabPages.Add(tabPageChat);
             tabControl.TabPages.Add(tabPageRoomList);
             tabControl.TabPages.Add(tabPageGallery);
+            tabControl.TabPages.Add(tabPageMessenger);
             tabControl.TabPages.Add(tabPageSystemLog);
 
             // ── 커스텀 탭 헤더 — 네이티브 탭 헤더를 대체하는 버튼 4개
@@ -1255,7 +1271,7 @@ namespace ChatApp
             // 순서와 정확히 같아야 한다.
             var customTabHeader = new Panel { Height = kCustomTabHeaderHeight, BackColor = Color.White };
             var tabButtons = new List<CustomTabButton>();
-            string[] tabNames = { "대화", "채팅방", "갤러리", "시스템 로그" };
+            string[] tabNames = { "대화", "채팅방", "갤러리", "메신저", "시스템 로그" };
             for (int i = 0; i < tabNames.Length; i++)
             {
                 int tabIndex = i; // 클로저 캡처용 지역 복사
@@ -1290,7 +1306,9 @@ namespace ChatApp
                 }
 
                 // 친구 패널은 대화 탭에만 있으므로, 폼 폭도 그 탭에서만 넓힌다.
-                int wantedWidth = tabControl.SelectedTab == tabPageChat ? ChatTabClientWidth : BaseClientWidth;
+                int wantedWidth = tabControl.SelectedTab == tabPageChat ? ChatTabClientWidth
+                    : tabControl.SelectedTab == tabPageMessenger ? MessengerTabClientWidth
+                    : BaseClientWidth;
                 if (ClientSize.Width != wantedWidth)
                     ClientSize = new Size(wantedWidth, ClientSize.Height);
 
@@ -1301,6 +1319,7 @@ namespace ChatApp
             };
 
             _tabControl = tabControl;
+            _messengerTabButton = tabButtons[MessengerTabIndex];
 
             Controls.Add(_tabControl);
             // customTabHeader는 tabControl(Dock=Fill)의 네이티브 헤더 영역
@@ -1394,8 +1413,11 @@ namespace ChatApp
             _serverUserCountPollTimer = new System.Windows.Forms.Timer { Interval = 39000 };
             _serverUserCountPollTimer.Tick += (s, e) => _client?.RequestServerUserCount();
 
+            InitMessengerNotifications();
+
             FormClosing += (s, e) =>
             {
+                DisposeMessengerNotifications();
                 _serverUserCountPollTimer.Stop();
                 _client?.Close();
                 _nameFont?.Dispose();

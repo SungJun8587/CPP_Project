@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -23,9 +24,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_TransferRoomOwner)
 {
 	ST_TRANSFER_ROOM_OWNER_REQ* req = static_cast<ST_TRANSFER_ROOM_OWNER_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> newOwnerPublicId{};
-	::memcpy(newOwnerPublicId.data(), req->newOwnerPublicId, newOwnerPublicId.size());
-	const std::string newOwnerPublicIdHex = Crypto::CCryptoUtil::ToHex(newOwnerPublicId.data(), newOwnerPublicId.size());
+	PublicId newOwnerPublicId = ToPublicId(req->newOwnerPublicId);
+	const std::string newOwnerPublicIdHex = PublicIdToHex(newOwnerPublicId);
 	_tstring newOwnerPublicIdHexT = Utf8ToTString(newOwnerPublicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());
@@ -37,21 +37,18 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_TransferRoomOwner)
 		return EDBReturnType::INVALID;
 	}
 
-	if( !guard->PrepareQuery(_T("UPDATE rooms SET owner_public_id = ? WHERE room_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("UPDATE rooms SET owner_public_id = ? WHERE room_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(false);
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN ownerLenInd = SQL_NTS;
-	guard->BindParamInput(1, newOwnerPublicIdHexT.c_str(), ownerLenInd);
+	DbUtil::BindString(guard, 1, newOwnerPublicIdHexT);
 	guard->BindParamInput(2, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(false);
 		return EDBReturnType::INVALID;

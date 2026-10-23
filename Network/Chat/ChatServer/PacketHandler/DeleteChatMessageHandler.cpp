@@ -35,7 +35,7 @@ namespace
 		InitPacket(res, EChatPacketType::DeleteChatMessageRes);
 		res.success = (result == EDeleteMessageResult::Ok) ? 1 : 0;
 		res.reason = static_cast<uint8>(result);
-		session.Send(&res, sizeof(res));
+		SendPacket(session, res);
 
 		if( result != EDeleteMessageResult::Ok )
 			return;

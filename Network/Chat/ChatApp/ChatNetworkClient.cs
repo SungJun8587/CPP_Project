@@ -81,6 +81,25 @@ namespace ChatApp
         public event Action<FriendProfileChangedNotifyData> FriendProfileChangedNotified;
         public event Action<FriendStatusNotifyData> FriendStatusNotified;
 
+        // [추가] 대화방(1:1/그룹) — 열기/생성/초대/나가기/목록/메시지/기록/읽음/멤버.
+        public event Action<ConvOpenResData> ConvOpenResultReceived;
+        public event Action<ConvResultData> ConvInviteResultReceived;
+        public event Action<ConvResultData> ConvLeaveResultReceived;
+        public event Action<ConvSummaryData> ConvListItemReceived;
+        public event Action<ConvListEndData> ConvListEndReceived;
+        public event Action<ConvResultData> ConvSendResultReceived;
+        public event Action<ConvMessageData> ConvMessageReceived;
+        public event Action<ConvMessageData> ConvHistoryItemReceived;
+        public event Action<ConvHistoryEndData> ConvHistoryEndReceived;
+        public event Action<ConvReadNotifyData> ConvReadNotified;
+        public event Action<ConvMemberData> ConvMemberItemReceived;
+        public event Action<ConvMembersEndData> ConvMembersEndReceived;
+        public event Action<ConvSummaryData> ConvUpdatedNotified;
+        public event Action<ConvResultData> ConvDeleteResultReceived;
+        public event Action<ConvDeletedData> ConvDeletedNotified;
+        public event Action<ConvResultData> ConvRenameResultReceived;
+        public event Action<ConvRenamedData> ConvRenamedNotified;
+
         public event Action Disconnected;
         public event Action<Exception> ErrorOccurred;
 
@@ -188,6 +207,32 @@ namespace ChatApp
         public void RequestBlock(string nickname) => SendRaw(PacketBuilder.BuildBlockReq(nickname));
         public void RequestUnblock(byte[] publicId) => SendRaw(PacketBuilder.BuildUnblockReq(publicId));
         public void RequestBlockList() => SendRaw(PacketBuilder.BuildBlockListReq());
+
+        // [추가] 대화방 요청.
+        public void RequestConvOpenDirect(byte[] publicId) => SendRaw(PacketBuilder.BuildConvOpenDirectReq(publicId));
+        public void RequestConvCreateGroup(string name, System.Collections.Generic.IList<byte[]> members) => SendRaw(PacketBuilder.BuildConvCreateGroupReq(name, members));
+        public void RequestConvInvite(long convId, System.Collections.Generic.IList<byte[]> members) => SendRaw(PacketBuilder.BuildConvInviteReq(convId, members));
+        public void RequestConvLeave(long convId) => SendRaw(PacketBuilder.BuildConvLeaveReq(convId));
+        public void RequestConvList() => SendRaw(PacketBuilder.BuildConvListReq());
+        public void RequestConvSend(long convId, string message, ConvMessageKind kind = ConvMessageKind.Text, long replyToMsgId = 0)
+            => SendRaw(PacketBuilder.BuildConvSendReq(convId, message, kind, replyToMsgId));
+        public void RequestConvRename(long convId, string name) => SendRaw(PacketBuilder.BuildConvRenameReq(convId, name));
+        public void RequestConvDelete(long convId, long msgId) => SendRaw(PacketBuilder.BuildConvDeleteReq(convId, msgId));
+        public void RequestConvRead(long convId, long upToMsgId) => SendRaw(PacketBuilder.BuildConvReadReq(convId, upToMsgId));
+        public void RequestConvMembers(long convId) => SendRaw(PacketBuilder.BuildConvMembersReq(convId));
+
+        private int _convHistoryRequestSeq;
+
+        //***************************************************************************
+        // @brief 대화방의 지난 메시지를 요청하고, 이 요청의 식별자를 돌려준다.
+        //        응답(End)이 식별자를 그대로 되돌려주므로, 호출부가 오래된 요청의 늦은 응답을 버릴 수 있다.
+        //***************************************************************************
+        public int RequestConvHistory(long convId, long beforeMsgId, int count)
+        {
+            int requestId = System.Threading.Interlocked.Increment(ref _convHistoryRequestSeq);
+            SendRaw(PacketBuilder.BuildConvHistoryReq(convId, beforeMsgId, count, requestId));
+            return requestId;
+        }
 
         private int _friendPendingRequestSeq;
 
@@ -464,6 +509,74 @@ namespace ChatApp
 
                 case PacketType.FriendStatusNotify:
                     FriendStatusNotified?.Invoke(PacketParser.ParseFriendStatusNotify(full));
+                    break;
+
+                case PacketType.ConvOpenRes:
+                    ConvOpenResultReceived?.Invoke(PacketParser.ParseConvOpenRes(full));
+                    break;
+
+                case PacketType.ConvInviteRes:
+                    ConvInviteResultReceived?.Invoke(PacketParser.ParseConvResult(full));
+                    break;
+
+                case PacketType.ConvLeaveRes:
+                    ConvLeaveResultReceived?.Invoke(PacketParser.ParseConvResult(full));
+                    break;
+
+                case PacketType.ConvListItemRes:
+                    ConvListItemReceived?.Invoke(PacketParser.ParseConvSummaryPacket(full));
+                    break;
+
+                case PacketType.ConvListEndRes:
+                    ConvListEndReceived?.Invoke(PacketParser.ParseConvListEndRes(full));
+                    break;
+
+                case PacketType.ConvSendRes:
+                    ConvSendResultReceived?.Invoke(PacketParser.ParseConvSendRes(full));
+                    break;
+
+                case PacketType.ConvDeleteRes:
+                    ConvDeleteResultReceived?.Invoke(PacketParser.ParseConvDeleteRes(full));
+                    break;
+
+                case PacketType.ConvRenameRes:
+                    ConvRenameResultReceived?.Invoke(PacketParser.ParseConvResult(full));
+                    break;
+
+                case PacketType.ConvRenamedNotify:
+                    ConvRenamedNotified?.Invoke(PacketParser.ParseConvRenamedNotify(full));
+                    break;
+
+                case PacketType.ConvDeletedNotify:
+                    ConvDeletedNotified?.Invoke(PacketParser.ParseConvDeletedNotify(full));
+                    break;
+
+                case PacketType.ConvMessageNotify:
+                    ConvMessageReceived?.Invoke(PacketParser.ParseConvMessage(full));
+                    break;
+
+                case PacketType.ConvHistoryItemRes:
+                    ConvHistoryItemReceived?.Invoke(PacketParser.ParseConvMessage(full));
+                    break;
+
+                case PacketType.ConvHistoryEndRes:
+                    ConvHistoryEndReceived?.Invoke(PacketParser.ParseConvHistoryEndRes(full));
+                    break;
+
+                case PacketType.ConvReadNotify:
+                    ConvReadNotified?.Invoke(PacketParser.ParseConvReadNotify(full));
+                    break;
+
+                case PacketType.ConvMemberItemRes:
+                    ConvMemberItemReceived?.Invoke(PacketParser.ParseConvMemberItemRes(full));
+                    break;
+
+                case PacketType.ConvMembersEndRes:
+                    ConvMembersEndReceived?.Invoke(PacketParser.ParseConvMembersEndRes(full));
+                    break;
+
+                case PacketType.ConvUpdatedNotify:
+                    ConvUpdatedNotified?.Invoke(PacketParser.ParseConvSummaryPacket(full));
                     break;
 
                 default:

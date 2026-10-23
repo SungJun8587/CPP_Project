@@ -22,6 +22,8 @@
 #define UC_CHATHANDLERUTIL_H
 
 #include <memory>
+#include <tuple>
+#include <utility>
 
 //***************************************************************************
 // @brief 로그인된 세션이면 그 세션이 속한 서버를 돌려준다.
@@ -47,6 +49,100 @@ inline CChatServerMain* GetLoggedInServer(CChatSession& session)
 inline std::shared_ptr<CChatSession> GetSessionRef(CChatSession& session)
 {
 	return std::static_pointer_cast<CChatSession>(session.shared_from_this());
+}
+
+//***************************************************************************
+// @brief 패킷 구조체 하나를 세션에 전송한다. Send(&packet, sizeof(packet))의 축약형.
+// @param session 받는 세션
+// @param packet 전송할 패킷(size/type이 채워져 있어야 한다)
+// @return Send()의 결과
+//***************************************************************************
+template<typename TPacket>
+bool SendPacket(CChatSession& session, const TPacket& packet)
+{
+	static_assert(sizeof(TPacket) <= 0xFFFF, "SendPacket: packet size exceeds uint16 range");
+	return session.Send(&packet, static_cast<uint16>(sizeof(TPacket)));
+}
+
+template<typename TPacket>
+bool SendPacket(const std::shared_ptr<CChatSession>& session, const TPacket& packet)
+{
+	return SendPacket(*session, packet);
+}
+
+template<typename TPacket>
+bool SendPacket(CChatSession* session, const TPacket& packet)
+{
+	return SendPacket(*session, packet);
+}
+
+//***************************************************************************
+// @brief 비동기 콜백을 "세션이 아직 살아 있을 때만" 실행되는 콜백으로 감싼다.
+// @details DB/잡 큐 응답이 돌아오기 전에 연결이 끊길 수 있어서, 콜백마다
+//          weak_ptr::lock() -> null 검사를 하던 것을 한 곳으로 모은 것이다.
+//          세션이 이미 사라졌으면 handler는 호출되지 않는다(조용히 무시).
+//          handler의 첫 인자로 잠근 세션(shared_ptr)이 전달되고, 나머지 인자는
+//          원래 콜백의 인자가 그대로 이어진다.
+//
+//   server->RequestX(sessionRef, ...,
+//       BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ERoomResult result)
+//       {
+//           ...
+//       }));
+// @param weak 대상 세션의 weak_ptr
+// @param handler (const std::shared_ptr<CChatSession>&, 콜백 인자...)를 받는 함수 객체
+// @return 원래 콜백 시그니처로 호출할 수 있는 함수 객체
+//***************************************************************************
+template<typename THandler>
+auto BindSession(std::weak_ptr<CChatSession> weak, THandler handler)
+{
+	return [weak = std::move(weak), handler = std::move(handler)](auto&&... args)
+		{
+			std::shared_ptr<CChatSession> session = weak.lock();
+			if( session == nullptr )
+				return;
+
+			handler(session, std::forward<decltype(args)>(args)...);
+		};
+}
+
+//***************************************************************************
+// @brief DB/Redis 워커 스레드의 결과를 JobQueue 스레드에서 onComplete로 전달한다.
+// @details 인자는 값으로 복사해 잡에 실어 보내므로, 호출한 스코프의 지역 변수를
+//          참조하지 않는다. jobQueue가 null이거나 onComplete가 비어 있으면
+//          아무것도 하지 않는다.
+// @param jobQueue 결과를 넘겨받아 실행할 JobQueue
+// @param onComplete JobQueue 스레드에서 호출할 완료 콜백
+// @param args onComplete에 그대로 전달할 인자
+//***************************************************************************
+template<typename TCallback, typename... TArgs>
+void PostToJobQueue(const CJobQueueRef& jobQueue, const TCallback& onComplete, TArgs&&... args)
+{
+	if( jobQueue == nullptr || !onComplete )
+		return;
+
+	jobQueue->DoAsync([onComplete, packed = std::make_tuple(std::forward<TArgs>(args)...)]()
+		{
+			std::apply(onComplete, packed);
+		});
+}
+
+//***************************************************************************
+// @brief 받은 인자를 가공 없이 JobQueue로 넘기는 DB 완료 콜백을 만든다.
+// @details req->onComplete = MakeJobQueueDispatcher(jobQueue, onComplete); 처럼
+//          쓴다. 인자를 가공해야 하면(표시용 URL 복원 등) 람다 안에서 가공한 뒤
+//          PostToJobQueue()를 직접 호출한다.
+// @param jobQueue 결과를 넘겨받아 실행할 JobQueue
+// @param onComplete JobQueue 스레드에서 호출할 완료 콜백
+// @return DB 워커 스레드에서 호출할 함수 객체
+//***************************************************************************
+template<typename TCallback>
+auto MakeJobQueueDispatcher(CJobQueueRef jobQueue, TCallback onComplete)
+{
+	return [jobQueue = std::move(jobQueue), onComplete = std::move(onComplete)](auto&&... args)
+		{
+			PostToJobQueue(jobQueue, onComplete, std::forward<decltype(args)>(args)...);
+		};
 }
 
 #endif // ndef UC_CHATHANDLERUTIL_H

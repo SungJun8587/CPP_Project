@@ -39,8 +39,8 @@ bool CChatStressAccounts::Load(const _tstring& path)
 			continue;
 
 		ChatStressAccount acc;
-		if( Crypto::CCryptoUtil::FromHex(idHex, acc.publicId.data(), acc.publicId.size())
-			&& Crypto::CCryptoUtil::FromHex(tokHex, acc.token.data(), acc.token.size()) )
+		if( FixedBuf::FromHex(idHex, acc.publicId)
+			&& FixedBuf::FromHex(tokHex, acc.token) )
 			_accounts[idx] = acc;
 	}
 	_dirty = false;	// 방금 파일에서 읽은 상태이므로 저장할 변경이 없다
@@ -69,8 +69,8 @@ bool CChatStressAccounts::Save(const _tstring& path)
 		for( const auto& kv : _accounts )
 		{
 			out << kv.first << ' '
-				<< Crypto::CCryptoUtil::ToHex(kv.second.publicId.data(), kv.second.publicId.size()) << ' '
-				<< Crypto::CCryptoUtil::ToHex(kv.second.token.data(), kv.second.token.size()) << '\n';
+				<< FixedBuf::ToHex(kv.second.publicId) << ' '
+				<< FixedBuf::ToHex(kv.second.token) << '\n';
 		}
 		if( !out.good() )
 			return false;

@@ -850,6 +850,302 @@ struct FriendStatusNotifyPacket : PacketHeader
 	uint8	online;									// 1: 접속, 0: 접속 종료
 };
 
+//***************************************************************************
+// 대화방(Conversation) 패킷 — 친구 기반 1:1/그룹 대화.
+//
+// 공개 방(rooms)과 별개로, 한 사용자가 여러 대화방에 동시에 속하며 서버는 접속 중인
+// 모든 멤버에게 새 메시지를 푸시한다. 모든 메시지는 DB에 저장되고(msgId는 전역 단조 증가),
+// 멤버마다 "어디까지 읽었는지"(lastReadMsgId)를 기록해 안 읽은 수를 계산한다.
+// 대화방 id(convId)와 메시지 id(msgId)는 int64다.
+//***************************************************************************
+
+//***************************************************************************
+// @brief 대화방 요약. 목록 항목/열기 결과/갱신 알림이 공통으로 싣는다.
+// @details Direct면 name은 비어 있고 peer* 가 상대 정보다(상대가 나간 뒤에도 유지).
+//          Group이면 name이 비어 있을 수 있다(클라이언트가 멤버 이름으로 표시).
+//          lastMsgId==0이면 보여줄 메시지가 없다(lastMessage는 비어 있음).
+//          lastMessage는 미리보기용으로 잘려 있다. myLastReadMsgId는 내가 읽은 마지막 msgId다.
+//***************************************************************************
+struct ConvSummaryFields
+{
+	int64	convId;
+	uint8	type;								// EConvType
+	char	name[kConvNameBytes];
+	int32	memberCount;
+	int32	unreadCount;
+	int64	lastMsgId;
+	int64	lastMsgTime;						// 마지막 메시지 시각(Unix 초)
+	uint8	lastKind;							// EConvMessageKind
+	char	lastMessage[100];
+	int64	myLastReadMsgId;
+	BYTE	peerPublicId[kPublicIdBytes];
+	char	peerNickname[kNicknameBytes];
+	char	peerImageUrl[kProfileImageUrlBytes];
+};
+
+//***************************************************************************
+// @brief 1:1 대화방 열기 요청 (Client -> Server). 친구만 가능하며, 이미 있으면 같은 방을 돌려준다.
+//***************************************************************************
+struct ConvOpenDirectReqPacket : PacketHeader
+{
+	BYTE	publicId[kPublicIdBytes];			// 상대(친구)
+};
+
+//***************************************************************************
+// @brief 그룹 대화방 생성 요청 (Client -> Server).
+// @details 생성자 본인을 제외한 친구 1~kMaxConvInvite명을 members[0..count-1]에 담는다.
+//***************************************************************************
+struct ConvCreateGroupReqPacket : PacketHeader
+{
+	char	name[kConvNameBytes];				// 비어 있어도 된다
+	uint8	count;
+	BYTE	members[kMaxConvInvite][kPublicIdBytes];
+};
+
+//***************************************************************************
+// @brief 1:1 열기/그룹 생성 결과 (Server -> Client).
+// @details success==1이면 summary가 유효하다. isNew==1이면 방금 새로 만들어졌다.
+//***************************************************************************
+struct ConvOpenResPacket : PacketHeader
+{
+	uint8				success;
+	uint8				reason;					// EConvResult
+	uint8				isNew;
+	ConvSummaryFields	summary;
+};
+
+//***************************************************************************
+// @brief 그룹 초대 요청 (Client -> Server). 친구만 초대할 수 있고, 이미 멤버인 대상은 무시된다.
+//***************************************************************************
+struct ConvInviteReqPacket : PacketHeader
+{
+	int64	convId;
+	uint8	count;
+	BYTE	members[kMaxConvInvite][kPublicIdBytes];
+};
+
+//***************************************************************************
+// @brief 그룹 초대 결과 (Server -> Client, 요청자에게만).
+//***************************************************************************
+struct ConvInviteResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	int64	convId;
+};
+
+//***************************************************************************
+// @brief 대화방 나가기 요청 (Client -> Server).
+// @details 그룹은 멤버에서 빠지고 남은 멤버에게 안내 메시지가 간다(마지막 멤버면 방이 사라진다).
+//          1:1은 내 목록에서만 사라지고, 상대가 메시지를 보내거나 다시 열면 돌아온다.
+//***************************************************************************
+struct ConvLeaveReqPacket : PacketHeader
+{
+	int64	convId;
+};
+
+struct ConvLeaveResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	int64	convId;
+};
+
+//***************************************************************************
+// @brief 내 대화방 목록 조회 요청 (Client -> Server). 바디 없음. 최근 메시지 순으로 스트리밍한다.
+//***************************************************************************
+struct ConvListReqPacket : PacketHeader
+{
+};
+
+struct ConvListItemResPacket : PacketHeader
+{
+	ConvSummaryFields	summary;
+};
+
+struct ConvListEndResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	int32	totalCount;
+};
+
+//***************************************************************************
+// @brief 메시지 전송 요청 (Client -> Server). message는 NUL 종료 UTF-8, 비어 있으면 거부된다.
+//***************************************************************************
+struct ConvSendReqPacket : PacketHeader
+{
+	int64	convId;
+	int64	replyToMsgId;						// 0이면 일반 메시지, 아니면 이 메시지에 대한 답장
+	uint8	kind;								// EConvMessageKind::Text 또는 Image
+	char	message[kConvMessageBytes];			// Text: 본문 / Image: 파일 서버에 올린 이미지 URL
+};
+
+//***************************************************************************
+// @brief 메시지 전송 결과 (Server -> Client, 발신자에게만).
+// @details 성공 시 메시지는 ConvMessageNotify로도 발신자에게 되돌아온다(msgId로 중복 제거).
+//***************************************************************************
+struct ConvSendResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	int64	convId;
+	int64	msgId;
+};
+
+//***************************************************************************
+// @brief 메시지 한 건. 새 메시지 푸시(ConvMessageNotify)와 기록 항목(ConvHistoryItemRes)이 같은 모양이다.
+// @details kind==System이면 sender* 는 비어 있다. 닉네임/이미지는 전송 시점이 아니라
+//          조회 시점의 값이다.
+//***************************************************************************
+struct ConvMessageNotifyPacket : PacketHeader
+{
+	int64	convId;
+	int64	msgId;
+	uint8	kind;								// EConvMessageKind
+	BYTE	senderPublicId[kPublicIdBytes];
+	char	senderNickname[kNicknameBytes];
+	char	senderImageUrl[kProfileImageUrlBytes];
+	int64	timestamp;							// Unix 초
+	char	message[kConvMessageBytes];			// Image: 표시용 이미지 URL / Deleted: 빈 문자열
+	int64	replyToMsgId;						// 0이면 답장 아님
+	uint8	replyKind;							// 답장 대상의 EConvMessageKind (보이지 않거나 삭제됐으면 Deleted)
+	char	replySenderNickname[kNicknameBytes];
+	char	replyPreview[kConvReplyPreviewBytes];	// 답장 대상이 Text일 때 첫 줄(잘림)
+};
+
+struct ConvHistoryItemResPacket : ConvMessageNotifyPacket
+{
+};
+
+//***************************************************************************
+// @brief 기록 조회 요청 (Client -> Server).
+// @details beforeMsgId보다 작은 msgId 중 최신 count개를 오래된 순으로 돌려준다
+//          (beforeMsgId==0이면 가장 최근부터). 내가 들어오기 전 메시지와 내가 차단한
+//          사람의 메시지는 나오지 않는다. requestId는 응답이 그대로 되돌려준다.
+//***************************************************************************
+struct ConvHistoryReqPacket : PacketHeader
+{
+	int64	convId;
+	int64	beforeMsgId;
+	int32	count;								// 1~kMaxConvHistoryPage (서버가 보정)
+	int32	requestId;
+};
+
+struct ConvHistoryEndResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	uint8	hasMore;							// 1이면 더 오래된 메시지가 있다
+	int64	convId;
+	int32	count;								// 전송된 항목 수
+	int32	requestId;
+};
+
+//***************************************************************************
+// @brief 읽음 표시 요청 (Client -> Server). upToMsgId까지 읽었음을 기록하고 다른 멤버에게 알린다.
+//***************************************************************************
+struct ConvReadReqPacket : PacketHeader
+{
+	int64	convId;
+	int64	upToMsgId;
+};
+
+struct ConvReadNotifyPacket : PacketHeader
+{
+	int64	convId;
+	BYTE	readerPublicId[kPublicIdBytes];
+	int64	upToMsgId;
+};
+
+//***************************************************************************
+// @brief 대화방 멤버 목록 조회 (Client -> Server) 및 응답.
+// @details lastReadMsgId는 그 멤버가 읽은 마지막 msgId다. "msgId보다 작은 lastReadMsgId를 가진
+//          멤버 수"가 그 메시지의 안 읽은 사람 수다.
+//***************************************************************************
+struct ConvMembersReqPacket : PacketHeader
+{
+	int64	convId;
+};
+
+struct ConvMemberItemResPacket : PacketHeader
+{
+	int64	convId;
+	BYTE	publicId[kPublicIdBytes];
+	char	nickname[kNicknameBytes];
+	char	profileImageUrl[kProfileImageUrlBytes];
+	int64	lastReadMsgId;
+	uint8	online;
+};
+
+struct ConvMembersEndResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	int64	convId;
+	int32	totalCount;
+};
+
+//***************************************************************************
+// @brief 대화방 요약 갱신/신규 알림 (Server -> Client, 서버가 자발적으로 전송).
+// @details 초대받았거나 인원이 바뀐 대화방. 클라이언트는 convId로 목록을 갱신(없으면 추가)한다.
+//***************************************************************************
+struct ConvUpdatedNotifyPacket : PacketHeader
+{
+	ConvSummaryFields	summary;
+};
+
+//***************************************************************************
+// @brief 메시지 삭제 요청 (Client -> Server). 내가 보낸 일반/사진 메시지만 삭제할 수 있다.
+//***************************************************************************
+struct ConvDeleteReqPacket : PacketHeader
+{
+	int64	convId;
+	int64	msgId;
+};
+
+struct ConvDeleteResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	int64	convId;
+	int64	msgId;
+};
+
+//***************************************************************************
+// @brief 메시지 삭제 알림 (Server -> Client). 받은 쪽은 해당 메시지를 "삭제된 메시지"로 바꾼다.
+//***************************************************************************
+struct ConvDeletedNotifyPacket : PacketHeader
+{
+	int64	convId;
+	int64	msgId;
+};
+
+//***************************************************************************
+// @brief 그룹 대화방 이름 변경 요청 (Client -> Server). 1:1에는 쓸 수 없고(NotGroup), 빈 이름은 이름 해제다.
+//***************************************************************************
+struct ConvRenameReqPacket : PacketHeader
+{
+	int64	convId;
+	char	name[kConvNameBytes];
+};
+
+struct ConvRenameResPacket : PacketHeader
+{
+	uint8	success;
+	uint8	reason;								// EConvResult
+	int64	convId;
+};
+
+//***************************************************************************
+// @brief 대화방 이름 변경 알림 (Server -> Client). name이 비어 있으면 이름 해제(멤버 이름으로 표시).
+//***************************************************************************
+struct ConvRenamedNotifyPacket : PacketHeader
+{
+	int64	convId;
+	char	name[kConvNameBytes];
+};
+
 #pragma pack(pop)
 
 #endif // ndef UC_CHATPACKET_H

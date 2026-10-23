@@ -76,6 +76,8 @@ namespace ChatApp
                     _roomListPanel.MyPublicId = _myPublicId; // 멤버보기 패널에서 "나" 강조 표시용
                     _roomMemberListPanel.AttachClient(_client);
                     _friendPanel.AttachClient(_client); // 친구/받은 요청/차단 목록을 불러오고 알림 구독 시작
+                    _convPanel.MyPublicId = _myPublicId;
+                    _convPanel.AttachClient(_client);   // 대화방 목록을 불러오고 메시지 푸시 구독 시작
 
                     // 서버가 로그인 직후 자동으로 로비에 배정한다 — 클라이언트도
                     // 그 전제로 현재 위치를 로비로 잡아둔다(서버의 RoomUserCountNotify가
@@ -378,6 +380,7 @@ namespace ChatApp
                 _roomListPanel.DetachClient();
                 _roomMemberListPanel.DetachClient();
                 _friendPanel.DetachClient();
+                _convPanel.DetachClient();
             });
         }
 
@@ -390,6 +393,70 @@ namespace ChatApp
                 : level == FriendNoticeLevel.Warning ? ColorSystemWarning
                 : ColorSystemInfo;
             AppendSystemLog("[친구] " + text, color);
+        }
+
+        //***************************************************************************
+        // @brief 메신저 사진 전송용 업로드 — 업로드 토큰을 받아 파일 서버에 올리고 URL을 돌려준다.
+        // @details 토큰 대기용 _uploadTokenTcs를 프로필/파일 전송과 같이 쓰므로 동시에 하나만 진행한다.
+        //          실패하면 사유를 시스템 로그에 남기고 null을 돌려준다.
+        //***************************************************************************
+        private async Task<string> UploadMessengerImageAsync(string filePath)
+        {
+            if (_client == null)
+                return null;
+
+            if (_uploadTokenTcs != null)
+            {
+                AppendSystemLog("[메신저] 다른 업로드가 진행 중입니다. 잠시 후 다시 시도하세요.", ColorSystemWarning);
+                return null;
+            }
+
+            _uploadTokenTcs = new TaskCompletionSource<RequestUploadTokenResData>();
+            try
+            {
+                _client.RequestUploadToken();
+                var tokenResult = await WaitWithTimeout(_uploadTokenTcs.Task, TimeSpan.FromSeconds(10));
+                if (tokenResult == null || !tokenResult.Success || string.IsNullOrEmpty(tokenResult.FileServerUrl))
+                {
+                    AppendSystemLog("[메신저] 업로드 토큰 발급 실패 — 파일 서버가 설정돼 있지 않을 수 있습니다.", ColorSystemError);
+                    return null;
+                }
+
+                return await UploadToFileServerAsync(tokenResult.FileServerUrl, tokenResult.UploadToken, filePath, onProgress: null);
+            }
+            catch (Exception ex)
+            {
+                AppendSystemLog("[메신저] 사진 업로드 실패: " + ex.Message, ColorSystemError);
+                return null;
+            }
+            finally
+            {
+                _uploadTokenTcs = null;
+            }
+        }
+
+        private void OnConvNotice(string text, FriendNoticeLevel level)
+        {
+            Color color = level == FriendNoticeLevel.Error ? ColorSystemError
+                : level == FriendNoticeLevel.Warning ? ColorSystemWarning
+                : ColorSystemInfo;
+            AppendSystemLog("[메신저] " + text, color);
+        }
+
+        // 안 읽은 메시지 합계를 메신저 탭 제목에 배지로 보여 준다.
+        private void OnConvUnreadChanged(int total)
+        {
+            if (_messengerTabButton == null)
+                return;
+            _messengerTabButton.TabText = total > 0 ? "메신저 (" + (total > 99 ? "99+" : total.ToString()) + ")" : "메신저";
+            _messengerTabButton.Invalidate();
+        }
+
+        // 친구 목록의 "대화하기" — 메신저 탭으로 전환하고 1:1 대화방을 연다.
+        private void OnFriendChatRequested(byte[] publicId, string nickname)
+        {
+            _tabControl.SelectedIndex = MessengerTabIndex;
+            _convPanel.OpenDirect(publicId);
         }
 
         private void OnErrorOccurred(Exception ex)

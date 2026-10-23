@@ -56,48 +56,44 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestListRooms(sessionRef, scope, session.GetPublicId(), keyword, page, pageSize,
-			[server, sessionWeak, requestId, scope, pageSize](ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomListEntry>& rooms)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				// [설계] 조회 자체가 실패해도(DB 오류 등) 별도 실패 응답 패킷을
-				// 두지 않았다 — 이 경우 그냥 빈 목록(totalCount=0)으로
-				// 마무리한다. 클라이언트 입장에서 "방이 하나도 없다"와 "조회
-				// 자체가 실패했다"를 굳이 구분하지 않아도 되는 목록형 요청의
-				// 관례를 따랐다.
-				if( result == ELoginResult::Ok )
+			BindSession(sessionWeak, [server, requestId, scope, pageSize](const std::shared_ptr<CChatSession>& session, ELoginResult result, int32 totalCount, int32 resultPage, const std::vector<SRoomListEntry>& rooms)
 				{
-					for( const SRoomListEntry& entry : rooms )
+					// [설계] 조회 자체가 실패해도(DB 오류 등) 별도 실패 응답 패킷을
+					// 두지 않았다 — 이 경우 그냥 빈 목록(totalCount=0)으로
+					// 마무리한다. 클라이언트 입장에서 "방이 하나도 없다"와 "조회
+					// 자체가 실패했다"를 굳이 구분하지 않아도 되는 목록형 요청의
+					// 관례를 따랐다.
+					if( result == ELoginResult::Ok )
 					{
-						ListRoomsItemResPacket itemRes{};
-						InitPacket(itemRes, EChatPacketType::ListRoomsItemRes);
-						itemRes.requestId = requestId;
-						itemRes.roomId = entry.roomId;
+						for( const SRoomListEntry& entry : rooms )
+						{
+							ListRoomsItemResPacket itemRes{};
+							InitPacket(itemRes, EChatPacketType::ListRoomsItemRes);
+							itemRes.requestId = requestId;
+							itemRes.roomId = entry.roomId;
 
-						FixedBuf::CopyStr(itemRes.name, entry.name);
+							FixedBuf::CopyStr(itemRes.name, entry.name);
 
-						FixedBuf::CopyStr(itemRes.ownerNickname, entry.ownerNickname);
+							FixedBuf::CopyStr(itemRes.ownerNickname, entry.ownerNickname);
 
-						itemRes.userCount = server->GetRoomUserCount(entry.roomId);
-						itemRes.totalMemberCount = entry.totalMemberCount;
+							itemRes.userCount = server->GetRoomUserCount(entry.roomId);
+							itemRes.totalMemberCount = entry.totalMemberCount;
 
-						FixedBuf::CopyStr(itemRes.imageUrl, entry.imageRef);
+							FixedBuf::CopyStr(itemRes.imageUrl, entry.imageRef);
 
-						session->Send(&itemRes, sizeof(itemRes));
+							SendPacket(session, itemRes);
+						}
 					}
-				}
 
-				ListRoomsEndResPacket endRes{};
-				InitPacket(endRes, EChatPacketType::ListRoomsEndRes);
-				endRes.requestId = requestId;
-				endRes.scope = static_cast<uint8_t>(scope);
-				endRes.totalCount = (result == ELoginResult::Ok) ? totalCount : 0;
-				endRes.page = (result == ELoginResult::Ok) ? resultPage : 0;
-				endRes.pageSize = pageSize;
-				session->Send(&endRes, sizeof(endRes));
-			});
+					ListRoomsEndResPacket endRes{};
+					InitPacket(endRes, EChatPacketType::ListRoomsEndRes);
+					endRes.requestId = requestId;
+					endRes.scope = static_cast<uint8_t>(scope);
+					endRes.totalCount = (result == ELoginResult::Ok) ? totalCount : 0;
+					endRes.page = (result == ELoginResult::Ok) ? resultPage : 0;
+					endRes.pageSize = pageSize;
+					SendPacket(session, endRes);
+				}));
 	}
 }
 

@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -113,32 +114,28 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomsPage)
 	if( hasKeyword )
 		likePatternT = Utf8ToTString(BuildLikePattern(req->keyword));
 
-	SQLLEN ownerLenInd = SQL_NTS;
-	SQLLEN keywordLenInd = SQL_NTS;
 
 	auto bindConditions = [&]()
 		{
 			int32 index = 1;
 			if( joined )
-				guard->BindParamInput(index++, ownerHexT.c_str(), ownerLenInd);
+				DbUtil::BindString(guard, index++, ownerHexT);
 			if( hasKeyword )
-				guard->BindParamInput(index++, likePatternT.c_str(), keywordLenInd);
+				DbUtil::BindString(guard, index++, likePatternT);
 		};
 
 	// 1. 조건에 맞는 전체 개수.
 	const _tstring countQuery = _tstring(_T("SELECT COUNT(*) ")) + fromWhere;
-	if( !guard->PrepareQuery(countQuery.c_str()) )
+	if( !DbUtil::PrepareOrClear(guard, countQuery.c_str()) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}
 
 	bindConditions();
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}
@@ -189,18 +186,16 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomsPage)
 		+ _T("LIMIT ") + Utf8ToTString(std::to_string(pageSize))
 		+ _T(" OFFSET ") + Utf8ToTString(std::to_string(offset));
 
-	if( !guard->PrepareQuery(pageQuery.c_str()) )
+	if( !DbUtil::PrepareOrClear(guard, pageQuery.c_str()) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}
 
 	bindConditions();
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}

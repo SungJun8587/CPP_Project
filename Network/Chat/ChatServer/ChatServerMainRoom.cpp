@@ -232,11 +232,7 @@ void CChatServerMain::RequestRoomMemberHistoryPage(
 				members.push_back(std::move(info));
 			}
 
-			jobQueue->DoAsync([onComplete, result, totalCount, resultPage, members]()
-				{
-					if( onComplete )
-						onComplete(result, totalCount, resultPage, members);
-				});
+			PostToJobQueue(jobQueue, onComplete, result, totalCount, resultPage, members);
 		};
 
 	const bool pushed = PushDb<ST_LIST_ROOM_MEMBERS_PAGE_REQ>(kDbCallIdent_ListRoomMembersPage,
@@ -350,7 +346,7 @@ void CChatServerMain::RequestCreateRoom(
 	const bool pushed = PushDb<ST_CREATE_ROOM_REQ>(kDbCallIdent_CreateRoom,
 		[this, ownerPublicId, roomName, jobQueue, onComplete](ST_CREATE_ROOM_REQ* req)
 		{
-			::memcpy(req->ownerPublicId, ownerPublicId.data(), ownerPublicId.size());
+			CopyPublicId(req->ownerPublicId, ownerPublicId);
 			req->roomName = roomName;
 			req->maxRoomsPerOwner = _maxRoomsPerOwner;
 
@@ -362,14 +358,7 @@ void CChatServerMain::RequestCreateRoom(
 						_roomRegistry[newRoomId] = SRoomInfo{ roomName, ownerPublicId };
 					}
 
-					if( jobQueue == nullptr )
-						return;
-
-					jobQueue->DoAsync([onComplete, result, newRoomId]()
-						{
-							if( onComplete )
-								onComplete(result, newRoomId);
-						});
+					PostToJobQueue(jobQueue, onComplete, result, newRoomId);
 				};
 		});
 
@@ -405,7 +394,7 @@ void CChatServerMain::RequestDeleteRoom(
 		[this, roomId, requesterPublicId, jobQueue, onComplete](ST_DELETE_ROOM_REQ* req)
 		{
 			req->roomId = roomId;
-			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			CopyPublicId(req->requesterPublicId, requesterPublicId);
 
 			req->onComplete = [this, roomId, jobQueue, onComplete](ERoomResult result)
 				{
@@ -453,14 +442,7 @@ void CChatServerMain::RequestDeleteRoom(
 						ClearRoomRedisData(roomId);
 					}
 
-					if( jobQueue == nullptr )
-						return;
-
-					jobQueue->DoAsync([onComplete, result]()
-						{
-							if( onComplete )
-								onComplete(result);
-						});
+					PostToJobQueue(jobQueue, onComplete, result);
 				};
 		});
 
@@ -491,7 +473,7 @@ void CChatServerMain::RequestRenameRoom(
 		[this, roomId, requesterPublicId, newName, jobQueue, onComplete](ST_RENAME_ROOM_REQ* req)
 		{
 			req->roomId = roomId;
-			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			CopyPublicId(req->requesterPublicId, requesterPublicId);
 			req->newName = newName;
 
 			req->onComplete = [this, roomId, newName, jobQueue, onComplete](ERoomResult result)
@@ -512,14 +494,7 @@ void CChatServerMain::RequestRenameRoom(
 						BroadcastToRoom(roomId, &notify, notify.size);
 					}
 
-					if( jobQueue == nullptr )
-						return;
-
-					jobQueue->DoAsync([onComplete, result]()
-						{
-							if( onComplete )
-								onComplete(result);
-						});
+					PostToJobQueue(jobQueue, onComplete, result);
 				};
 		});
 
@@ -629,7 +604,7 @@ void CChatServerMain::RequestListRooms(
 		[scope, requesterPublicId, keyword, page, pageSize, dispatchToJobQueue](ST_LIST_ROOMS_PAGE_REQ* req)
 		{
 			req->scope = scope;
-			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			CopyPublicId(req->requesterPublicId, requesterPublicId);
 			req->keyword = keyword;
 			req->page = page;
 			req->pageSize = pageSize;
@@ -657,7 +632,7 @@ void CChatServerMain::RequestRecordRoomJoin(
 		[roomId, requesterPublicId](ST_RECORD_ROOM_JOIN_REQ* req)
 		{
 			req->roomId = roomId;
-			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			CopyPublicId(req->requesterPublicId, requesterPublicId);
 		});
 
 	if( !pushed )
@@ -706,7 +681,7 @@ void CChatServerMain::RequestSetRoomImage(
 		[this, roomId, requesterPublicId, storableUrl, jobQueue, onComplete](ST_SET_ROOM_IMAGE_REQ* req)
 		{
 			req->roomId = roomId;
-			::memcpy(req->requesterPublicId, requesterPublicId.data(), requesterPublicId.size());
+			CopyPublicId(req->requesterPublicId, requesterPublicId);
 			req->imageRef = storableUrl;
 
 			req->onComplete = [this, roomId, storableUrl, jobQueue, onComplete](ERoomResult result, const std::string& oldImageRef)
@@ -732,14 +707,7 @@ void CChatServerMain::RequestSetRoomImage(
 						BroadcastToRoom(roomId, &notify, notify.size);
 					}
 
-					if( jobQueue == nullptr )
-						return;
-
-					jobQueue->DoAsync([onComplete, result]()
-						{
-							if( onComplete )
-								onComplete(result);
-						});
+					PostToJobQueue(jobQueue, onComplete, result);
 				};
 		});
 
@@ -780,14 +748,7 @@ void CChatServerMain::RequestGetRoomInfo(
 
 					const bool actuallyFound = (result == ELoginResult::Ok) && found;
 
-					if( jobQueue == nullptr )
-						return;
-
-					jobQueue->DoAsync([onComplete, actuallyFound, displayInfo]()
-						{
-							if( onComplete )
-								onComplete(actuallyFound, displayInfo);
-						});
+					PostToJobQueue(jobQueue, onComplete, actuallyFound, displayInfo);
 				};
 		});
 
@@ -857,7 +818,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 			[roomId, leavingPublicId](ST_DELETE_ROOM_REQ* req)
 			{
 				req->roomId = roomId;
-				::memcpy(req->requesterPublicId, leavingPublicId.data(), leavingPublicId.size());
+				CopyPublicId(req->requesterPublicId, leavingPublicId);
 				req->onComplete = [roomId](ERoomResult result)
 					{
 						if( result != ERoomResult::Ok )
@@ -886,7 +847,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 		[roomId, newOwnerPublicId](ST_TRANSFER_ROOM_OWNER_REQ* req)
 		{
 			req->roomId = roomId;
-			::memcpy(req->newOwnerPublicId, newOwnerPublicId.data(), newOwnerPublicId.size());
+			CopyPublicId(req->newOwnerPublicId, newOwnerPublicId);
 			req->onComplete = [roomId](bool success)
 				{
 					if( !success )

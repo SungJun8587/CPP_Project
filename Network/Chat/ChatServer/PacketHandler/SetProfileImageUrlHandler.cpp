@@ -42,31 +42,26 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSetProfileImageUrl(sessionRef, publicId, newUrl,
-			[sessionWeak](ELoginResult result, const std::array<BYTE, kPublicIdBytes>& /*publicId*/,
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ELoginResult result, const std::array<BYTE, kPublicIdBytes>& /*publicId*/,
 				const std::string& newUrl, int64 newImageId)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return; // 응답이 오기 전에 연결이 끊김 — 더 이상 할 일 없음
-
-				SetProfileImageUrlResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::SetProfileImageUrlRes);
-				res.success = (result == ELoginResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-				res.imageId = newImageId;
-
-				if( result == ELoginResult::Ok )
 				{
-					session->UpdateProfileImageUrl(newUrl);
+					SetProfileImageUrlResPacket res{};
+					InitPacket(res, EChatPacketType::SetProfileImageUrlRes);
+					res.success = (result == ELoginResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
+					res.imageId = newImageId;
 
-					// 접속 중인 친구들에게 바뀐 프로필 이미지를 알린다(세션 값 갱신 직후).
-					if( CChatServerMain* srv = session->GetServer() )
-						srv->NotifyFriendProfileChanged(session);
-				}
+					if( result == ELoginResult::Ok )
+					{
+						session->UpdateProfileImageUrl(newUrl);
 
-				session->Send(&res, sizeof(res));
-			});
+						// 접속 중인 친구들에게 바뀐 프로필 이미지를 알린다(세션 값 갱신 직후).
+						if( CChatServerMain* srv = session->GetServer() )
+							srv->NotifyFriendProfileChanged(session);
+					}
+
+					SendPacket(session, res);
+				}));
 	}
 }
 

@@ -268,3 +268,11 @@ std::string CChatServerMain::ToDisplayImageUrl(const std::string& imageRef) cons
 {
 	return ImageRef::ToDisplay(_fileServerUrl, imageRef);
 }
+
+//***************************************************************************
+// @brief url이 우리 파일 서버 소유 이미지인지(ImageRef 규약) 판별한다.
+//***************************************************************************
+bool CChatServerMain::IsOwnedImageUrl(const std::string& url) const
+{
+	return !ImageRef::ExtractOwnedRelativePath(_fileServerUrl, url).empty();
+}

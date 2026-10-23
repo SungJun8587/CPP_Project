@@ -281,6 +281,9 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\Common\Protocol\ChatPacketUtil.h">
+      <Filter>Common\Protocol</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

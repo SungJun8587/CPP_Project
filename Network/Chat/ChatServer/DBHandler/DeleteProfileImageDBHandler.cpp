@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -42,18 +43,15 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteProfileImage)
 
 	// 1) 삭제 전에 image_ref/status를 먼저 조회 — 소유자 검증도 겸함(WHERE에
 	//    user_public_id 포함 — 남의 이미지 정보를 훔쳐볼 수 없음).
-	if( !guard->PrepareQuery(_T("SELECT image_ref, status FROM user_profile_images WHERE image_id = ? AND user_public_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT image_ref, status FROM user_profile_images WHERE image_id = ? AND user_public_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, false, std::string());
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN idLenInd = SQL_NTS;
-	SQLLEN ownerLenInd = SQL_NTS;
-	guard->BindParamInput(1, imageIdBuf, idLenInd);
-	guard->BindParamInput(2, publicIdHexT.c_str(), ownerLenInd);
+	DbUtil::BindString(guard, 1, imageIdBuf);
+	DbUtil::BindString(guard, 2, publicIdHexT);
 
 	if( !guard->Execute() || !guard->Fetch() )
 	{
@@ -78,22 +76,18 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteProfileImage)
 	guard->ClearStmt();
 
 	// 2) 실제 삭제
-	if( !guard->PrepareQuery(_T("DELETE FROM user_profile_images WHERE image_id = ? AND user_public_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("DELETE FROM user_profile_images WHERE image_id = ? AND user_public_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, false, std::string());
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN delIdLenInd = SQL_NTS;
-	SQLLEN delOwnerLenInd = SQL_NTS;
-	guard->BindParamInput(1, imageIdBuf, delIdLenInd);
-	guard->BindParamInput(2, publicIdHexT.c_str(), delOwnerLenInd);
+	DbUtil::BindString(guard, 1, imageIdBuf);
+	DbUtil::BindString(guard, 2, publicIdHexT);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, false, std::string());
 		return EDBReturnType::INVALID;

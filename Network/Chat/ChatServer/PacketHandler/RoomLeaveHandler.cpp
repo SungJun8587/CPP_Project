@@ -36,12 +36,11 @@ namespace
 		server->MoveToRoom(sessionRef, kLobbyRoomId, lobbyUserCount);
 
 		RoomLeaveResPacket res{};
-		res.size = sizeof(res);
-		res.type = static_cast<uint16>(EChatPacketType::RoomLeaveRes);
+		InitPacket(res, EChatPacketType::RoomLeaveRes);
 		res.success = 1;
 		res.roomId = oldRoomId; // 방금까지 있었던 곳(로비였으면 kLobbyRoomId 그대로)
 		res.roomUserCount = (oldRoomId == kLobbyRoomId) ? lobbyUserCount : server->GetRoomUserCount(oldRoomId);
-		session.Send(&res, sizeof(res));
+		SendPacket(session, res);
 	}
 }
 

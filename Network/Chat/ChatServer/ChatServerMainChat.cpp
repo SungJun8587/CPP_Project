@@ -297,13 +297,7 @@ void CChatServerMain::RequestRoomChatHistory(
 
 			if( orderSet.IsEmpty() )
 			{
-				if( jobQueue == nullptr )
-					return;
-				jobQueue->DoAsync([onComplete]()
-					{
-						if( onComplete )
-							onComplete(std::vector<SChatHistoryEntry>());
-					});
+				PostToJobQueue(jobQueue, onComplete, std::vector<SChatHistoryEntry>());
 				return;
 			}
 
@@ -372,14 +366,7 @@ void CChatServerMain::RequestRoomChatHistory(
 					// 것부터)로 뒤집는다.
 					std::vector<SChatHistoryEntry> historyOldestFirst(historyNewestFirst.rbegin(), historyNewestFirst.rend());
 
-					if( jobQueue == nullptr )
-						return;
-
-					jobQueue->DoAsync([onComplete, historyOldestFirst]()
-						{
-							if( onComplete )
-								onComplete(historyOldestFirst);
-						});
+					PostToJobQueue(jobQueue, onComplete, historyOldestFirst);
 				});
 		});
 }

@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -48,18 +49,16 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomMembersPage)
 		pageSize = kMaxRoomPageSize;
 
 	// 1. 이 방에 입장 이력이 있는 전체 유저 수.
-	if( !guard->PrepareQuery(_T("SELECT COUNT(*) FROM room_members WHERE room_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT COUNT(*) FROM room_members WHERE room_id = ?")) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}
 
 	guard->BindParamInput(1, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}
@@ -108,18 +107,16 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRoomMembersPage)
 		"LIMIT ")) + Utf8ToTString(std::to_string(pageSize))
 		+ _T(" OFFSET ") + Utf8ToTString(std::to_string(offset));
 
-	if( !guard->PrepareQuery(pageQuery.c_str()) )
+	if( !DbUtil::PrepareOrClear(guard, pageQuery.c_str()) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}
 
 	guard->BindParamInput(1, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		fail();
 		return EDBReturnType::INVALID;
 	}

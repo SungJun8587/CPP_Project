@@ -41,19 +41,14 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSetRoomImage(sessionRef, roomId, session.GetPublicId(), imageUrl,
-			[sessionWeak](ERoomResult result)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				SetRoomImageResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::SetRoomImageRes);
-				res.success = (result == ERoomResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-				session->Send(&res, sizeof(res));
-			});
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ERoomResult result)
+				{
+					SetRoomImageResPacket res{};
+					InitPacket(res, EChatPacketType::SetRoomImageRes);
+					res.success = (result == ERoomResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
+					SendPacket(session, res);
+				}));
 	}
 }
 

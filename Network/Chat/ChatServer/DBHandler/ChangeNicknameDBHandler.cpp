@@ -10,6 +10,7 @@
 #include <Util/EncodingConvert.h>
 
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include "DBChangeNicknameRequest.h"
 #include "NicknameValidation.h"
 
@@ -69,9 +70,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ChangeNickname)
 		return EDBReturnType::INVALID;
 	}
 
-	if( !guard->PrepareQuery(_T("UPDATE users SET nickname = ?, updated_at = NOW() WHERE public_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("UPDATE users SET nickname = ?, updated_at = NOW() WHERE public_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, publicId, newNickname);
 		return EDBReturnType::INVALID;
@@ -79,11 +79,9 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ChangeNickname)
 
 	_tstring newNicknameT = Utf8ToTString(newNickname);
 	_tstring publicIdHexT = Utf8ToTString(publicIdHex);
-	SQLLEN newLenInd = SQL_NTS;
-	SQLLEN publicIdLenInd = SQL_NTS;
 
-	guard->BindParamInput(1, newNicknameT.c_str(), newLenInd);
-	guard->BindParamInput(2, publicIdHexT.c_str(), publicIdLenInd);
+	DbUtil::BindString(guard, 1, newNicknameT);
+	DbUtil::BindString(guard, 2, publicIdHexT);
 
 	if( !guard->Execute() )
 	{
@@ -94,8 +92,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ChangeNickname)
 		guard->ClearStmt();
 		if( guard->PrepareQuery(_T("SELECT 1 FROM users WHERE nickname = ?")) )
 		{
-			SQLLEN checkLenInd = SQL_NTS;
-			guard->BindParamInput(1, newNicknameT.c_str(), checkLenInd);
+			DbUtil::BindString(guard, 1, newNicknameT);
 
 			if( guard->Execute() && guard->Fetch() )
 			{
@@ -121,8 +118,7 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ChangeNickname)
 		bool accountExists = false;
 		if( guard->PrepareQuery(_T("SELECT 1 FROM users WHERE public_id = ?")) )
 		{
-			SQLLEN existLenInd = SQL_NTS;
-			guard->BindParamInput(1, publicIdHexT.c_str(), existLenInd);
+			DbUtil::BindString(guard, 1, publicIdHexT);
 
 			if( guard->Execute() && guard->Fetch() )
 				accountExists = true;

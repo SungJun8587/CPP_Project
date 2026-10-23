@@ -3,7 +3,7 @@
 // ChatPacketUtil.h : 채팅 패킷 조립/해석 보조 함수 (header-only)
 //
 // @details
-// 핸들러와 DB 핸들러에서 반복되던 패킷 헤더 채움, public_id 변환 등을 모은 것입니다.
+// 서버/클라이언트가 함께 쓰는 패킷 헤더 채움, public_id 변환·복사 등을 모은 것입니다.
 // 고정폭 문자열 복사/읽기와 16진 변환 같은 프로토콜 비의존 기능은 UtilCore의
 // Util/FixedBufUtil.h(FixedBuf::CopyStr / ReadStr / ToHex / FromHex)를 사용합니다.
 //  - public_id는 와이어/세션에서는 raw 16바이트, DB 바인딩 시점에는 소문자 16진
@@ -13,16 +13,39 @@
 #ifndef UC_CHATPACKETUTIL_H
 #define UC_CHATPACKETUTIL_H
 
-#include "../Common/Protocol/ChatPacketTypes.h"
-
 #include <Util/FixedBufUtil.h>
+#include "ChatPacketTypes.h"
 
 #include <array>
+#include <cstring>
 #include <string>
 #include <string_view>
 
 // 계정 식별자(public_id) 원문 16바이트
 using PublicId = std::array<BYTE, kPublicIdBytes>;
+
+//***************************************************************************
+// @brief std::array의 바이트를 같은 크기의 C 배열(패킷/요청 구조체 필드)로 복사합니다.
+// @details memcpy(dst, src.data(), src.size())와 달리 두 크기가 컴파일 타임에 같아야
+//          하므로, 필드 크기가 바뀌었는데 복사 길이가 어긋나는 실수를 막아 준다.
+// @param dst 복사 대상 필드
+// @param src 복사할 원본
+//***************************************************************************
+template<size_t N>
+void CopyBytes(BYTE(&dst)[N], const std::array<BYTE, N>& src)
+{
+	::memcpy(dst, src.data(), N);
+}
+
+//***************************************************************************
+// @brief public_id를 패킷/요청 구조체의 public_id 필드로 복사합니다.
+// @param dst 복사 대상 필드(BYTE[kPublicIdBytes])
+// @param src 복사할 계정 식별자
+//***************************************************************************
+inline void CopyPublicId(BYTE(&dst)[kPublicIdBytes], const PublicId& src)
+{
+	CopyBytes(dst, src);
+}
 
 //***************************************************************************
 // @brief 패킷 헤더(size, type)를 채웁니다.

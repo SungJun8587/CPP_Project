@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Util/EncodingConvert.h>
 
 #include "DBListRoomsRequest.h"
@@ -39,9 +40,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListRooms)
 		return EDBReturnType::INVALID;
 	}
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, std::vector<SRoomListEntry>());
 		return EDBReturnType::INVALID;

@@ -106,13 +106,13 @@ void CChatServerMain::NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes
 
 			FriendStatusNotifyPacket notify{};
 			InitPacket(notify, EChatPacketType::FriendStatusNotify);
-			::memcpy(notify.publicId, publicId.data(), publicId.size());
+			CopyPublicId(notify.publicId, publicId);
 			notify.online = online ? 1 : 0;
 
 			for( const SFriendEntry& friendEntry : res.entries )
 			{
 				if( auto friendSession = FindOnlineSession(friendEntry.publicId) )
-					friendSession->Send(&notify, sizeof(notify));
+					SendPacket(friendSession, notify);
 			}
 		});
 }
@@ -150,11 +150,7 @@ void CChatServerMain::RequestFriendOp(
 			for( SFriendEntry& entry : display.entries )
 				entry.profileImageRef = ToDisplayImageUrl(entry.profileImageRef);
 
-			jobQueue->DoAsync([onComplete, display]()
-				{
-					if( onComplete )
-						onComplete(display);
-				});
+			PostToJobQueue(jobQueue, onComplete, display);
 		};
 
 	const bool pushed = PushDb<ST_FRIEND_REQ>(kDbCallIdent_Friend,
@@ -163,11 +159,11 @@ void CChatServerMain::RequestFriendOp(
 			req->op = op;
 			req->page = page;
 			req->pageSize = pageSize;
-			::memcpy(req->publicId, actor.data(), actor.size());
+			CopyPublicId(req->publicId, actor);
 			if( targetId != nullptr )
 			{
 				req->hasTargetId = true;
-				::memcpy(req->targetPublicId, targetId->data(), targetId->size());
+				CopyPublicId(req->targetPublicId, *targetId);
 			}
 			else
 			{
@@ -198,7 +194,7 @@ void CChatServerMain::NotifyFriendProfileChanged(const std::shared_ptr<CChatSess
 
 	FriendProfileChangedNotifyPacket notify{};
 	InitPacket(notify, EChatPacketType::FriendProfileChangedNotify);
-	::memcpy(notify.publicId, publicId.data(), publicId.size());
+	CopyPublicId(notify.publicId, publicId);
 	FixedBuf::CopyStr(notify.nickname, session->GetNickname());
 	FixedBuf::CopyStr(notify.profileImageUrl, session->GetProfileImageUrl());
 
@@ -211,7 +207,7 @@ void CChatServerMain::NotifyFriendProfileChanged(const std::shared_ptr<CChatSess
 			for( const SFriendEntry& friendEntry : res.entries )
 			{
 				if( auto friendSession = FindOnlineSession(friendEntry.publicId) )
-					friendSession->Send(&notify, sizeof(notify));
+					SendPacket(friendSession, notify);
 			}
 		});
 }

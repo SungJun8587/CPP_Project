@@ -50,7 +50,7 @@ namespace
 	{
 		FriendRemovedNotifyPacket notify{};
 		InitPacket(notify, EChatPacketType::FriendRemovedNotify);
-		::memcpy(notify.publicId, removedFriend.data(), removedFriend.size());
+		CopyPublicId(notify.publicId, removedFriend);
 		SendToOnline(server, to, &notify, sizeof(notify));
 	}
 
@@ -59,7 +59,7 @@ namespace
 	{
 		FriendAcceptedNotifyPacket notify{};
 		InitPacket(notify, EChatPacketType::FriendAcceptedNotify);
-		::memcpy(notify.publicId, newFriend.data(), newFriend.size());
+		CopyPublicId(notify.publicId, newFriend);
 		FixedBuf::CopyStr(notify.nickname, nickname);
 		FixedBuf::CopyStr(notify.profileImageUrl, profileImageUrl);
 		notify.online = online ? 1 : 0;
@@ -97,7 +97,7 @@ namespace
 					{
 						FriendRequestNotifyPacket notify{};
 						InitPacket(notify, EChatPacketType::FriendRequestNotify);
-						::memcpy(notify.publicId, actor.publicId.data(), actor.publicId.size());
+						CopyPublicId(notify.publicId, actor.publicId);
 						FixedBuf::CopyStr(notify.nickname, actor.nickname);
 						FixedBuf::CopyStr(notify.profileImageUrl, actor.profileImageUrl);
 						SendToOnline(server, res.target.publicId, &notify, sizeof(notify));
@@ -114,8 +114,8 @@ namespace
 				out.reason = static_cast<uint8>(res.result);
 				out.autoAccepted = res.autoAccepted ? 1 : 0;
 				if( ok )
-					::memcpy(out.publicId, res.target.publicId.data(), res.target.publicId.size());
-				me->Send(&out, sizeof(out));
+					CopyPublicId(out.publicId, res.target.publicId);
+				SendPacket(me, out);
 
 				if( ok && res.autoAccepted )
 				{
@@ -161,9 +161,9 @@ namespace
 				out.success = ok ? 1 : 0;
 				out.reason = static_cast<uint8>(res.result);
 				out.accepted = accept ? 1 : 0;
-				::memcpy(out.publicId, target.data(), target.size());	// 요청에 실려온 대상을 그대로 되돌려준다(실패 시에도 클라이언트가 짝지을 수 있도록)
+				CopyPublicId(out.publicId, target);	// 요청에 실려온 대상을 그대로 되돌려준다(실패 시에도 클라이언트가 짝지을 수 있도록)
 				out.online = targetOnline ? 1 : 0;
-				me->Send(&out, sizeof(out));
+				SendPacket(me, out);
 			});
 	}
 
@@ -194,8 +194,8 @@ namespace
 				InitPacket(out, EChatPacketType::FriendRemoveRes);
 				out.success = ok ? 1 : 0;
 				out.reason = static_cast<uint8>(res.result);
-				::memcpy(out.publicId, target.data(), target.size());
-				me->Send(&out, sizeof(out));
+				CopyPublicId(out.publicId, target);
+				SendPacket(me, out);
 			});
 	}
 
@@ -222,11 +222,11 @@ namespace
 					{
 						FriendListItemResPacket item{};
 						InitPacket(item, EChatPacketType::FriendListItemRes);
-						::memcpy(item.publicId, e.publicId.data(), e.publicId.size());
+						CopyPublicId(item.publicId, e.publicId);
 						FixedBuf::CopyStr(item.nickname, e.nickname);
 						FixedBuf::CopyStr(item.profileImageUrl, e.profileImageRef);
 						item.online = (server->FindOnlineSession(e.publicId) != nullptr) ? 1 : 0;
-						me->Send(&item, sizeof(item));
+						SendPacket(me, item);
 						++sent;
 					}
 				}
@@ -236,7 +236,7 @@ namespace
 				end.success = ok ? 1 : 0;
 				end.reason = static_cast<uint8>(res.result);
 				end.totalCount = sent;
-				me->Send(&end, sizeof(end));
+				SendPacket(me, end);
 			});
 	}
 
@@ -266,10 +266,10 @@ namespace
 						FriendPendingItemResPacket item{};
 						InitPacket(item, EChatPacketType::FriendPendingItemRes);
 						item.requestId = requestId;
-						::memcpy(item.publicId, e.publicId.data(), e.publicId.size());
+						CopyPublicId(item.publicId, e.publicId);
 						FixedBuf::CopyStr(item.nickname, e.nickname);
 						FixedBuf::CopyStr(item.profileImageUrl, e.profileImageRef);
-						me->Send(&item, sizeof(item));
+						SendPacket(me, item);
 					}
 				}
 
@@ -281,7 +281,7 @@ namespace
 				end.totalCount = res.totalCount;
 				end.page = res.page;
 				end.pageSize = res.pageSize;
-				me->Send(&end, sizeof(end));
+				SendPacket(me, end);
 			},
 			packet->page, packet->pageSize);
 	}
@@ -308,9 +308,9 @@ namespace
 					{
 						BlockListItemResPacket item{};
 						InitPacket(item, EChatPacketType::BlockListItemRes);
-						::memcpy(item.publicId, e.publicId.data(), e.publicId.size());
+						CopyPublicId(item.publicId, e.publicId);
 						FixedBuf::CopyStr(item.nickname, e.nickname);
-						me->Send(&item, sizeof(item));
+						SendPacket(me, item);
 						++sent;
 					}
 				}
@@ -320,7 +320,7 @@ namespace
 				end.success = ok ? 1 : 0;
 				end.reason = static_cast<uint8>(res.result);
 				end.totalCount = sent;
-				me->Send(&end, sizeof(end));
+				SendPacket(me, end);
 			});
 	}
 
@@ -360,8 +360,8 @@ namespace
 				out.success = ok ? 1 : 0;
 				out.reason = static_cast<uint8>(res.result);
 				if( ok )
-					::memcpy(out.publicId, res.target.publicId.data(), res.target.publicId.size());
-				me->Send(&out, sizeof(out));
+					CopyPublicId(out.publicId, res.target.publicId);
+				SendPacket(me, out);
 			});
 	}
 
@@ -390,8 +390,8 @@ namespace
 				InitPacket(out, EChatPacketType::UnblockRes);
 				out.success = (res.result == EFriendResult::Ok) ? 1 : 0;
 				out.reason = static_cast<uint8>(res.result);
-				::memcpy(out.publicId, target.data(), target.size());
-				me->Send(&out, sizeof(out));
+				CopyPublicId(out.publicId, target);
+				SendPacket(me, out);
 			});
 	}
 }

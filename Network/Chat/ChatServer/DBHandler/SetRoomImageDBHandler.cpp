@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -25,9 +26,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetRoomImage)
 {
 	ST_SET_ROOM_IMAGE_REQ* req = static_cast<ST_SET_ROOM_IMAGE_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> requesterPublicId{};
-	::memcpy(requesterPublicId.data(), req->requesterPublicId, requesterPublicId.size());
-	const std::string requesterPublicIdHex = Crypto::CCryptoUtil::ToHex(requesterPublicId.data(), requesterPublicId.size());
+	PublicId requesterPublicId = ToPublicId(req->requesterPublicId);
+	const std::string requesterPublicIdHex = PublicIdToHex(requesterPublicId);
 	_tstring requesterPublicIdHexT = Utf8ToTString(requesterPublicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());
@@ -40,9 +40,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetRoomImage)
 	}
 
 	// 1. 존재 여부 + 소유권 확인 + 교체되기 전 이미지 값 조회.
-	if( !guard->PrepareQuery(_T("SELECT owner_public_id, image_ref FROM rooms WHERE room_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT owner_public_id, image_ref FROM rooms WHERE room_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError, std::string());
 		return EDBReturnType::INVALID;
@@ -50,9 +49,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetRoomImage)
 
 	guard->BindParamInput(1, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError, std::string());
 		return EDBReturnType::INVALID;
@@ -97,9 +95,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetRoomImage)
 
 	if( clearing )
 	{
-		if( !guard->PrepareQuery(_T("UPDATE rooms SET image_ref = NULL WHERE room_id = ?")) )
+		if( !DbUtil::PrepareOrClear(guard, _T("UPDATE rooms SET image_ref = NULL WHERE room_id = ?")) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ERoomResult::DbError, std::string());
 			return EDBReturnType::INVALID;
@@ -107,9 +104,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetRoomImage)
 
 		guard->BindParamInput(1, req->roomId);
 
-		if( !guard->Execute() )
+		if( !DbUtil::ExecuteOrClear(guard) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ERoomResult::DbError, std::string());
 			return EDBReturnType::INVALID;
@@ -118,9 +114,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetRoomImage)
 	}
 	else
 	{
-		if( !guard->PrepareQuery(_T("UPDATE rooms SET image_ref = ? WHERE room_id = ?")) )
+		if( !DbUtil::PrepareOrClear(guard, _T("UPDATE rooms SET image_ref = ? WHERE room_id = ?")) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ERoomResult::DbError, std::string());
 			return EDBReturnType::INVALID;
@@ -128,13 +123,11 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SetRoomImage)
 
 		_tstring newImageRefT = Utf8ToTString(req->imageRef);
 
-		SQLLEN imageRefLenInd = SQL_NTS;
-		guard->BindParamInput(1, newImageRefT.c_str(), imageRefLenInd);
+		DbUtil::BindString(guard, 1, newImageRefT);
 		guard->BindParamInput(2, req->roomId);
 
-		if( !guard->Execute() )
+		if( !DbUtil::ExecuteOrClear(guard) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ERoomResult::DbError, std::string());
 			return EDBReturnType::INVALID;

@@ -80,6 +80,7 @@ constexpr BYTE kDbCallIdent_ListRoomsPage = 213;		// DBListRoomsPageRequest.h �
 constexpr BYTE kDbCallIdent_RecordRoomJoin = 214;		// DBRecordRoomJoinRequest.h — 방 입장 기록(내가 참여한 방 목록의 근거)
 constexpr BYTE kDbCallIdent_ListRoomMembersPage = 215;	// DBListRoomMembersPageRequest.h — 방의 입장 이력이 있는 유저 목록 페이지 조회(접속 상태는 DB가 아니라 서버 메모리에서 붙임)
 constexpr BYTE kDbCallIdent_Friend = 216;				// DBFriendRequest.h — 친구 요청/수락/거절/삭제/목록/차단(연산은 EFriendOp로 구분)
+constexpr BYTE kDbCallIdent_Conv = 217;				// DBConvRequest.h — 대화방(1:1/그룹) 생성/초대/나가기/목록/메시지 저장·조회/읽음(연산은 EConvOp로 구분)
 // 다음 새 값은 217부터 시작할 것.
 
 //***************************************************************************
@@ -199,6 +200,49 @@ enum class EFriendResult : uint8_t
 	NotBlocked = 11,		// 차단 목록에 없음
 };
 
+// ---------------------------------------------------------------------------
+// 대화방(Conversation) — 친구 기반 1:1/그룹 대화. 공개 방(rooms, 오픈채팅 성격)과는 별개이며
+// 한 사용자가 여러 대화방에 동시에 속한다(서버는 접속 중인 모든 멤버에게 메시지를 푸시한다).
+// ---------------------------------------------------------------------------
+constexpr size_t  kConvNameBytes = 50;				// 그룹 대화방 이름 버퍼(NUL 포함). 비어 있으면 클라이언트가 멤버 이름으로 표시
+constexpr size_t  kConvMessageBytes = 512;			// 대화 메시지 본문 버퍼(UTF-8, NUL 포함)
+constexpr int32_t kMaxConvInvite = 20;				// 대화방 생성/초대 한 번에 지정할 수 있는 최대 인원
+constexpr int32_t kMaxConvMembers = 100;			// 그룹 대화방 최대 인원
+constexpr int32_t kMaxConvHistoryPage = 50;			// 대화 기록 한 번에 가져올 수 있는 최대 메시지 수
+constexpr int32_t kMaxConvList = 300;				// 내 대화방 목록 최대 개수(초과분은 오래된 순으로 잘림)
+constexpr size_t  kConvReplyPreviewBytes = 100;		// 답장 대상 원문 미리보기 버퍼(NUL 포함, 첫 줄만)
+
+enum class EConvType : uint8_t
+{
+	Direct = 1,		// 1:1 (두 친구당 하나, 다시 열면 같은 방)
+	Group = 2,		// 그룹 (이름 선택, 초대로 확장)
+};
+
+enum class EConvMessageKind : uint8_t
+{
+	Text = 0,		// 사용자가 보낸 메시지
+	System = 1,		// 시스템 안내(초대/나가기). 발신자 없음
+	Image = 2,		// 사진. 본문(message)은 우리 파일 서버의 이미지 URL
+	Deleted = 3,	// 발신자가 삭제한 메시지(본문 비움). 마지막 메시지/답장 대상 표시에도 같은 값을 쓴다
+};
+
+enum class EConvResult : uint8_t
+{
+	Ok = 0,
+	DbError = 1,			// DB 처리 오류 (재시도 가능)
+	NotFriends = 2,			// 대상이 친구가 아님
+	Blocked = 3,			// 차단 관계(내가 차단한 상대 포함)
+	NotMember = 4,			// 이 대화방의 멤버가 아님(또는 존재하지 않음)
+	NotGroup = 5,			// 그룹 전용 연산을 1:1에 시도
+	InvalidTarget = 6,		// 대상 없음/자기 자신/중복/인원 수 위반
+	MemberLimit = 7,		// 그룹 최대 인원 초과
+	InvalidName = 8,		// 이름 길이 위반
+	InvalidMessage = 9,		// 빈 메시지, 또는 우리 파일 서버 이미지가 아닌 사진 URL
+	InvalidReply = 10,		// 답장 대상이 이 대화방의 보이는 일반 메시지가 아님(시스템/삭제됨/다른 방)
+	NotFound = 11,			// 삭제할 메시지가 없음(이미 삭제됐거나 다른 방)
+	NotSender = 12,			// 내가 보낸 메시지가 아니라 삭제할 수 없음
+};
+
 //***************************************************************************
 // @brief 채팅 서버 패킷 타입 식별자 열거형.
 // @details 각 패킷 헤더(PacketHeader::type)에 매핑되는 식별자 목록입니다.
@@ -287,6 +331,36 @@ enum class EChatPacketType : uint16_t
 	BlockListItemRes = 71,					// Server -> Client, 차단 목록 항목 단건 응답(가변 개수 스트리밍)
 	BlockListEndRes = 72,					// Server -> Client, 차단 목록 전송 완료
 	FriendProfileChangedNotify = 73,		// Server -> Client, 접속 중인 친구의 닉네임/프로필 이미지 변경 알림
+
+	// [추가] 대화방(1:1/그룹) — 서버는 접속 중인 모든 멤버에게 푸시하고, 모든 메시지는 DB에 저장된다.
+	ConvOpenDirectReq = 74,					// Client -> Server, 친구와의 1:1 대화방 열기(없으면 생성)
+	ConvCreateGroupReq = 75,				// Client -> Server, 친구들로 그룹 대화방 만들기
+	ConvOpenRes = 76,						// Server -> Client, 1:1 열기/그룹 생성 결과(대화방 요약 포함)
+	ConvInviteReq = 77,						// Client -> Server, 그룹에 친구 초대
+	ConvInviteRes = 78,						// Server -> Client, 초대 결과
+	ConvLeaveReq = 79,						// Client -> Server, 대화방 나가기
+	ConvLeaveRes = 80,						// Server -> Client, 나가기 결과
+	ConvListReq = 81,						// Client -> Server, 내 대화방 목록 조회
+	ConvListItemRes = 82,					// Server -> Client, 대화방 요약 단건(가변 개수 스트리밍)
+	ConvListEndRes = 83,					// Server -> Client, 목록 전송 완료
+	ConvSendReq = 84,						// Client -> Server, 대화방에 메시지 전송
+	ConvSendRes = 85,						// Server -> Client, 전송 결과(발신자에게만)
+	ConvMessageNotify = 86,					// Server -> Client, 새 메시지 푸시(발신자 본인 포함)
+	ConvHistoryReq = 87,					// Client -> Server, 지난 메시지 조회(beforeMsgId 이전, 최신순 페이지)
+	ConvHistoryItemRes = 88,				// Server -> Client, 기록 항목 단건(오래된 것부터)
+	ConvHistoryEndRes = 89,					// Server -> Client, 기록 전송 완료(더 있는지 통지)
+	ConvReadReq = 90,						// Client -> Server, 여기까지 읽음 표시
+	ConvReadNotify = 91,					// Server -> Client, 다른 멤버가 읽음(안 읽은 사람 수 계산용)
+	ConvMembersReq = 92,					// Client -> Server, 대화방 멤버 목록 조회
+	ConvMemberItemRes = 93,					// Server -> Client, 멤버 단건
+	ConvMembersEndRes = 94,					// Server -> Client, 멤버 목록 전송 완료
+	ConvUpdatedNotify = 95,					// Server -> Client, 대화방 요약 갱신/신규 알림(초대됨, 인원 변경 등)
+	ConvDeleteReq = 96,						// Client -> Server, 내가 보낸 메시지 삭제(모두에게서 삭제)
+	ConvDeleteRes = 97,						// Server -> Client, 삭제 결과(요청자에게만)
+	ConvDeletedNotify = 98,					// Server -> Client, 메시지가 삭제됨(요청자 포함 접속 중인 멤버 전원)
+	ConvRenameReq = 99,						// Client -> Server, 그룹 대화방 이름 변경(멤버 누구나, 빈 이름이면 이름 해제)
+	ConvRenameRes = 100,					// Server -> Client, 이름 변경 결과(요청자에게만)
+	ConvRenamedNotify = 101,				// Server -> Client, 이름이 바뀜(요청자 포함 접속 중인 멤버 전원)
 };
 
 //***************************************************************************

@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -54,20 +55,17 @@ namespace
 		{
 			_tstring t1 = Utf8ToTString(p1);
 			_tstring t2 = p2 ? Utf8ToTString(*p2) : _tstring();
-			if( !_guard->PrepareQuery(sql) )
+			if( !DbUtil::PrepareOrClear(_guard, sql) )
 			{
-				_guard->ClearStmt();
 				return false;
 			}
 
-			SQLLEN ind1 = SQL_NTS, ind2 = SQL_NTS;
-			_guard->BindParamInput(1, t1.c_str(), ind1);
+			DbUtil::BindString(_guard, 1, t1);
 			if( p2 )
-				_guard->BindParamInput(2, t2.c_str(), ind2);
+				DbUtil::BindString(_guard, 2, t2);
 
-			if( !_guard->Execute() )
+			if( !DbUtil::ExecuteOrClear(_guard) )
 			{
-				_guard->ClearStmt();
 				return false;
 			}
 
@@ -99,20 +97,17 @@ namespace
 		{
 			_tstring t1 = Utf8ToTString(p1);
 			_tstring t2 = p2 ? Utf8ToTString(*p2) : _tstring();
-			if( !_guard->PrepareQuery(sql) )
+			if( !DbUtil::PrepareOrClear(_guard, sql) )
 			{
-				_guard->ClearStmt();
 				return false;
 			}
 
-			SQLLEN ind1 = SQL_NTS, ind2 = SQL_NTS;
-			_guard->BindParamInput(1, t1.c_str(), ind1);
+			DbUtil::BindString(_guard, 1, t1);
 			if( p2 )
-				_guard->BindParamInput(2, t2.c_str(), ind2);
+				DbUtil::BindString(_guard, 2, t2);
 
-			if( !_guard->Execute() )
+			if( !DbUtil::ExecuteOrClear(_guard) )
 			{
-				_guard->ClearStmt();
 				return false;
 			}
 

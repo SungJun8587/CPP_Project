@@ -29,36 +29,32 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestListProfileImages(sessionRef, publicId,
-			[sessionWeak](ELoginResult result, const std::vector<SProfileImageEntry>& images)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return; // 응답이 오기 전에 연결이 끊김
-
-				// [참고] result가 DbError여도 그냥 "항목 0개"로 응답한다 —
-				// 별도 실패 응답 타입을 안 만든 단순화. 클라이언트 입장에서
-				// "갤러리가 비어 있다"와 "조회에 실패했다"를 구분 못 하는 게
-				// 이상적이진 않지만, 데모 범위에서 감수했다.
-				if( result == ELoginResult::Ok )
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ELoginResult result, const std::vector<SProfileImageEntry>& images)
 				{
-					for( const auto& entry : images )
+					// [참고] result가 DbError여도 그냥 "항목 0개"로 응답한다 —
+					// 별도 실패 응답 타입을 안 만든 단순화. 클라이언트 입장에서
+					// "갤러리가 비어 있다"와 "조회에 실패했다"를 구분 못 하는 게
+					// 이상적이진 않지만, 데모 범위에서 감수했다.
+					if( result == ELoginResult::Ok )
 					{
-						ListProfileImagesItemResPacket itemRes{};
-						InitPacket(itemRes, EChatPacketType::ListProfileImagesItemRes);
-						itemRes.imageId = entry.imageId;
-						itemRes.isActive = entry.isActive ? 1 : 0;
+						for( const auto& entry : images )
+						{
+							ListProfileImagesItemResPacket itemRes{};
+							InitPacket(itemRes, EChatPacketType::ListProfileImagesItemRes);
+							itemRes.imageId = entry.imageId;
+							itemRes.isActive = entry.isActive ? 1 : 0;
 
-						FixedBuf::CopyStr(itemRes.imageRef, entry.imageRef);
+							FixedBuf::CopyStr(itemRes.imageRef, entry.imageRef);
 
-						session->Send(&itemRes, sizeof(itemRes));
+							SendPacket(session, itemRes);
+						}
 					}
-				}
 
-				ListProfileImagesEndResPacket endRes{};
-				InitPacket(endRes, EChatPacketType::ListProfileImagesEndRes);
-				endRes.totalCount = (result == ELoginResult::Ok) ? static_cast<int32>(images.size()) : 0;
-				session->Send(&endRes, sizeof(endRes));
-			});
+					ListProfileImagesEndResPacket endRes{};
+					InitPacket(endRes, EChatPacketType::ListProfileImagesEndRes);
+					endRes.totalCount = (result == ELoginResult::Ok) ? static_cast<int32>(images.size()) : 0;
+					SendPacket(session, endRes);
+				}));
 	}
 }
 

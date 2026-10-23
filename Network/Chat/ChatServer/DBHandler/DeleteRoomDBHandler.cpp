@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -43,9 +44,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteRoom)
 	}
 
 	// 1. 존재 여부 + 소유권 확인.
-	if( !guard->PrepareQuery(_T("SELECT owner_public_id FROM rooms WHERE room_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT owner_public_id FROM rooms WHERE room_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;
@@ -53,9 +53,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteRoom)
 
 	guard->BindParamInput(1, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;
@@ -88,9 +87,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteRoom)
 	}
 
 	// 2. 소유권 확인 통과 — 실제 삭제.
-	if( !guard->PrepareQuery(_T("DELETE FROM rooms WHERE room_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("DELETE FROM rooms WHERE room_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;
@@ -98,9 +96,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_DeleteRoom)
 
 	guard->BindParamInput(1, req->roomId);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError);
 		return EDBReturnType::INVALID;

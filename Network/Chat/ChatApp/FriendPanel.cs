@@ -140,6 +140,8 @@ namespace ChatApp
         //        로그에 기록한다. UI 스레드에서 호출된다.
         //***************************************************************************
         public event Action<string, FriendNoticeLevel> Notice;
+        // 친구 우클릭 메뉴의 "대화하기" — 호스트가 메신저 탭으로 전환해 1:1 대화방을 연다.
+        public event Action<byte[], string> ChatRequested;
 
         public FriendPanel()
         {
@@ -404,11 +406,17 @@ namespace ChatApp
             };
 
             _friendMenu = new ContextMenuStrip();
+            var miChat = new ToolStripMenuItem("대화하기");
             var miRemove = new ToolStripMenuItem("친구 삭제");
             var miBlock = new ToolStripMenuItem("차단");
+            miChat.Click += (s, e) =>
+            {
+                if (_menuEntry != null)
+                    ChatRequested?.Invoke(_menuEntry.PublicId, _menuEntry.Nickname);
+            };
             miRemove.Click += (s, e) => ConfirmRemoveFriend(_menuEntry);
             miBlock.Click += (s, e) => ConfirmBlock(_menuEntry);
-            _friendMenu.Items.AddRange(new ToolStripItem[] { miRemove, miBlock });
+            _friendMenu.Items.AddRange(new ToolStripItem[] { miChat, new ToolStripSeparator(), miRemove, miBlock });
 
             // Dock 순서: 나중에 추가한 것이 바깥(위)부터 자리를 차지한다.
             Controls.Add(_flow);

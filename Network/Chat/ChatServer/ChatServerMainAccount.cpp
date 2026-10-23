@@ -66,11 +66,7 @@ void CChatServerMain::RequestSignup(
 			// 전에 완전한 URL로 복원한다 — ToDisplayImageUrl() 참고.
 			const std::string displayProfileImageUrl = ToDisplayImageUrl(profileImageUrl);
 
-			jobQueue->DoAsync([onComplete, result, completedNickname, completedPublicId, newToken, displayProfileImageUrl]()
-				{
-					if( onComplete )
-						onComplete(result, completedNickname, completedPublicId, newToken, displayProfileImageUrl);
-				});
+			PostToJobQueue(jobQueue, onComplete, result, completedNickname, completedPublicId, newToken, displayProfileImageUrl);
 		};
 
 	const bool pushed = PushDb<ST_SIGNUP_REQ>(kDbCallIdent_Signup,
@@ -82,8 +78,8 @@ void CChatServerMain::RequestSignup(
 			req->hasToken = hasToken;
 			if( hasToken )
 			{
-				::memcpy(req->publicId, publicId.data(), publicId.size());
-				::memcpy(req->token, token.data(), token.size());
+				CopyPublicId(req->publicId, publicId);
+				CopyBytes(req->token, token);
 			}
 
 			req->onComplete = dispatchToJobQueue;
@@ -118,24 +114,12 @@ void CChatServerMain::RequestChangeNickname(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result,
-		const std::array<BYTE, kPublicIdBytes>& completedPublicId,
-		const std::string& completedNewNickname)
-		{
-			if( jobQueue == nullptr )
-				return;
-
-			jobQueue->DoAsync([onComplete, result, completedPublicId, completedNewNickname]()
-				{
-					if( onComplete )
-						onComplete(result, completedPublicId, completedNewNickname);
-				});
-		};
+	auto dispatchToJobQueue = MakeJobQueueDispatcher(jobQueue, onComplete);
 
 	const bool pushed = PushDb<ST_CHANGE_NICKNAME_REQ>(kDbCallIdent_ChangeNickname,
 		[&publicId, &newNickname, dispatchToJobQueue](ST_CHANGE_NICKNAME_REQ* req)
 		{
-			::memcpy(req->publicId, publicId.data(), publicId.size());
+			CopyPublicId(req->publicId, publicId);
 
 			FixedBuf::CopyStr(req->newNickname, newNickname);
 
@@ -185,17 +169,13 @@ void CChatServerMain::RequestSetProfileImageUrl(
 			// URL을 줘야 하므로 여기서 다시 복원한다.
 			const std::string displayUrl = ToDisplayImageUrl(completedNewUrl);
 
-			jobQueue->DoAsync([onComplete, result, completedPublicId, displayUrl, newImageId]()
-				{
-					if( onComplete )
-						onComplete(result, completedPublicId, displayUrl, newImageId);
-				});
+			PostToJobQueue(jobQueue, onComplete, result, completedPublicId, displayUrl, newImageId);
 		};
 
 	const bool pushed = PushDb<ST_SET_PROFILE_IMAGE_URL_REQ>(kDbCallIdent_SetProfileImageUrl,
 		[&publicId, &storableUrl, dispatchToJobQueue](ST_SET_PROFILE_IMAGE_URL_REQ* req)
 		{
-			::memcpy(req->publicId, publicId.data(), publicId.size());
+			CopyPublicId(req->publicId, publicId);
 
 			FixedBuf::CopyStr(req->url, storableUrl);
 
@@ -298,17 +278,13 @@ void CChatServerMain::RequestListProfileImages(
 			for( SProfileImageEntry& entry : displayImages )
 				entry.imageRef = ToDisplayImageUrl(entry.imageRef);
 
-			jobQueue->DoAsync([onComplete, result, displayImages]()
-				{
-					if( onComplete )
-						onComplete(result, displayImages);
-				});
+			PostToJobQueue(jobQueue, onComplete, result, displayImages);
 		};
 
 	const bool pushed = PushDb<ST_LIST_PROFILE_IMAGES_REQ>(kDbCallIdent_ListProfileImages,
 		[&publicId, dispatchToJobQueue](ST_LIST_PROFILE_IMAGES_REQ* req)
 		{
-			::memcpy(req->publicId, publicId.data(), publicId.size());
+			CopyPublicId(req->publicId, publicId);
 			req->onComplete = dispatchToJobQueue;
 		});
 
@@ -333,22 +309,12 @@ void CChatServerMain::RequestSelectProfileImage(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [jobQueue, onComplete](ELoginResult result, int64 completedImageId, const std::string& selectedImageRef)
-		{
-			if( jobQueue == nullptr )
-				return;
-
-			jobQueue->DoAsync([onComplete, result, completedImageId, selectedImageRef]()
-				{
-					if( onComplete )
-						onComplete(result, completedImageId, selectedImageRef);
-				});
-		};
+	auto dispatchToJobQueue = MakeJobQueueDispatcher(jobQueue, onComplete);
 
 	const bool pushed = PushDb<ST_SELECT_PROFILE_IMAGE_REQ>(kDbCallIdent_SelectProfileImage,
 		[&publicId, imageId, dispatchToJobQueue](ST_SELECT_PROFILE_IMAGE_REQ* req)
 		{
-			::memcpy(req->publicId, publicId.data(), publicId.size());
+			CopyPublicId(req->publicId, publicId);
 			req->imageId = imageId;
 			req->onComplete = dispatchToJobQueue;
 		});
@@ -387,20 +353,13 @@ void CChatServerMain::RequestDeleteProfileImage(
 			if( result == ELoginResult::Ok )
 				ScheduleFileDeletionIfOwned(deletedImageRef);
 
-			if( jobQueue == nullptr )
-				return;
-
-			jobQueue->DoAsync([onComplete, result, completedImageId, wasActive, deletedImageRef]()
-				{
-					if( onComplete )
-						onComplete(result, completedImageId, wasActive, deletedImageRef);
-				});
+			PostToJobQueue(jobQueue, onComplete, result, completedImageId, wasActive, deletedImageRef);
 		};
 
 	const bool pushed = PushDb<ST_DELETE_PROFILE_IMAGE_REQ>(kDbCallIdent_DeleteProfileImage,
 		[&publicId, imageId, dispatchToJobQueue](ST_DELETE_PROFILE_IMAGE_REQ* req)
 		{
-			::memcpy(req->publicId, publicId.data(), publicId.size());
+			CopyPublicId(req->publicId, publicId);
 			req->imageId = imageId;
 			req->onComplete = dispatchToJobQueue;
 		});

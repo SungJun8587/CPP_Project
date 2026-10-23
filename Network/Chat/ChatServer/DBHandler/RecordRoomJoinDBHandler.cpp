@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -48,9 +49,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_RecordRoomJoin)
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN ownerLenInd = SQL_NTS;
 	guard->BindParamInput(1, req->roomId);
-	guard->BindParamInput(2, requesterPublicIdHexT.c_str(), ownerLenInd);
+	DbUtil::BindString(guard, 2, requesterPublicIdHexT);
 
 	if( !guard->Execute() )
 	{

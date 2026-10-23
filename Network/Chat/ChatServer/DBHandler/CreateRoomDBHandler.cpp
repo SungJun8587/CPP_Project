@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -48,20 +49,17 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_CreateRoom)
 	// 1. 개수 제한 확인(설정에서 제한을 뒀을 때만 — 0 이하면 건너뜀).
 	if( req->maxRoomsPerOwner > 0 )
 	{
-		if( !guard->PrepareQuery(_T("SELECT COUNT(*) FROM rooms WHERE owner_public_id = ?")) )
+		if( !DbUtil::PrepareOrClear(guard, _T("SELECT COUNT(*) FROM rooms WHERE owner_public_id = ?")) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ERoomResult::DbError, 0);
 			return EDBReturnType::INVALID;
 		}
 
-		SQLLEN ownerLenInd = SQL_NTS;
-		guard->BindParamInput(1, ownerPublicIdHexT.c_str(), ownerLenInd);
+		DbUtil::BindString(guard, 1, ownerPublicIdHexT);
 
-		if( !guard->Execute() )
+		if( !DbUtil::ExecuteOrClear(guard) )
 		{
-			guard->ClearStmt();
 			if( req->onComplete )
 				req->onComplete(ERoomResult::DbError, 0);
 			return EDBReturnType::INVALID;
@@ -88,22 +86,18 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_CreateRoom)
 	// 2. 실제 생성.
 	_tstring roomNameT = Utf8ToTString(req->roomName);
 
-	if( !guard->PrepareQuery(_T("INSERT INTO rooms (name, owner_public_id) VALUES (?, ?)")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("INSERT INTO rooms (name, owner_public_id) VALUES (?, ?)")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError, 0);
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN nameLenInd = SQL_NTS;
-	guard->BindParamInput(1, roomNameT.c_str(), nameLenInd);
-	SQLLEN ownerLenInd2 = SQL_NTS;
-	guard->BindParamInput(2, ownerPublicIdHexT.c_str(), ownerLenInd2);
+	DbUtil::BindString(guard, 1, roomNameT);
+	DbUtil::BindString(guard, 2, ownerPublicIdHexT);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError, 0);
 		return EDBReturnType::INVALID;
@@ -111,17 +105,15 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_CreateRoom)
 	guard->ClearStmt();
 
 	// 3. 방금 생성된 room_id 조회.
-	if( !guard->PrepareQuery(_T("SELECT LAST_INSERT_ID()")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT LAST_INSERT_ID()")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError, 0);
 		return EDBReturnType::INVALID;
 	}
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ERoomResult::DbError, 0);
 		return EDBReturnType::INVALID;

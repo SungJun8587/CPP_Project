@@ -16,6 +16,7 @@
 #include "DBListProfileImagesRequest.h"
 #include "DBListRoomsRequest.h"
 #include "DBFriendRequest.h"		// EFriendOp, SFriendOpResult
+#include "DBConvRequest.h"		// EConvOp, SConvOpResult
 
 //***************************************************************************
 // @brief 방 멤버 목록 조회(GetRoomMembers()) 결과 항목.
@@ -380,6 +381,12 @@ public:
 	//***************************************************************************
 	std::string ToDisplayImageUrl(const std::string& imageRef) const;
 
+	//***************************************************************************
+	// @brief url이 이 서버의 파일 서버 소유 이미지("{fileServerUrl}/images/{경로}")인지 판별한다.
+	//        대화방 사진 메시지가 임의의 외부 URL을 싣지 못하게 막는 데 쓴다.
+	//***************************************************************************
+	bool IsOwnedImageUrl(const std::string& url) const;
+
 	// [수정 — 이동] EDeleteMessageResult는 이제 ChatPacketTypes.h에 있다
 	// (ChatPacket.h가 그 헤더를 include하므로 이 파일에서 그대로 쓸 수 있다) —
 	// 와이어 프로토콜 값이라 ERoomResult/ELoginResult와 같은 자리로 옮겼다.
@@ -661,6 +668,20 @@ public:
 		const std::array<BYTE, kPublicIdBytes>* targetId, const std::string& targetNickname,
 		std::function<void(const SFriendOpResult& result)> onComplete,
 		int32 page = 0, int32 pageSize = 0);
+
+	//***************************************************************************
+	// [추가 — 대화방(1:1/그룹)] 구현은 ChatServerMainConv.cpp
+	//***************************************************************************
+
+	// @brief 대화방 DB 연산을 비동기로 요청합니다.
+	// @param actor 요청자 publicId
+	// @param fill 요청 구조체에 연산 종류와 인자를 채우는 함수(요청자 publicId는 이 함수가 대신 채움)
+	// @param onComplete 결과를 JobQueue 스레드에서 받는 콜백. 이미지 참조는 표시용 URL로 복원돼 있다.
+	// @details 친구 기능과 같은 이유로 세션 포인터를 받지 않는다 — 요청자가 응답 전에 끊겨도
+	//          다른 멤버에게 가는 푸시는 전달돼야 한다. onComplete 안에서 요청자 세션이 필요하면 호출부가 weak_ptr로 재확인한다.
+	void RequestConvOp(const std::array<BYTE, kPublicIdBytes>& actor,
+		std::function<void(ST_CONV_REQ* req)> fill,
+		std::function<void(const SConvOpResult& result)> onComplete);
 
 private:
 	void NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online);

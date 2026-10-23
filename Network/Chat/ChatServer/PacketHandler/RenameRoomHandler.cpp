@@ -35,7 +35,7 @@ namespace
 			InitPacket(res, EChatPacketType::RenameRoomRes);
 			res.success = 0;
 			res.reason = static_cast<uint8>(ERoomResult::InvalidName);
-			session.Send(&res, sizeof(res));
+			SendPacket(session, res);
 			return;
 		}
 
@@ -43,18 +43,14 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestRenameRoom(sessionRef, roomId, session.GetPublicId(), newName,
-			[sessionWeak](ERoomResult result)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				RenameRoomResPacket res{};
-				InitPacket(res, EChatPacketType::RenameRoomRes);
-				res.success = (result == ERoomResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-				session->Send(&res, sizeof(res));
-			});
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ERoomResult result)
+				{
+					RenameRoomResPacket res{};
+					InitPacket(res, EChatPacketType::RenameRoomRes);
+					res.success = (result == ERoomResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
+					SendPacket(session, res);
+				}));
 	}
 }
 

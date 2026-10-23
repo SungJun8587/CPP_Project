@@ -33,31 +33,26 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSelectProfileImage(sessionRef, publicId, imageId,
-			[sessionWeak](ELoginResult result, int64 /*imageId*/, const std::string& selectedImageRef)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				if( result == ELoginResult::Ok )
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ELoginResult result, int64 /*imageId*/, const std::string& selectedImageRef)
 				{
-					// DB의 image_ref는 상대 경로로 저장돼 있을 수 있으므로, 세션에는 로그인/URL 설정
-					// 경로와 같은 "표시용 URL"을 넣는다(이미 완전한 URL이면 그대로 반환됨).
-					CChatServerMain* srv = session->GetServer();
-					session->UpdateProfileImageUrl(srv != nullptr ? srv->ToDisplayImageUrl(selectedImageRef) : selectedImageRef);
+					if( result == ELoginResult::Ok )
+					{
+						// DB의 image_ref는 상대 경로로 저장돼 있을 수 있으므로, 세션에는 로그인/URL 설정
+						// 경로와 같은 "표시용 URL"을 넣는다(이미 완전한 URL이면 그대로 반환됨).
+						CChatServerMain* srv = session->GetServer();
+						session->UpdateProfileImageUrl(srv != nullptr ? srv->ToDisplayImageUrl(selectedImageRef) : selectedImageRef);
 
-					// 접속 중인 친구들에게 바뀐 대표 이미지를 알린다(세션 값 갱신 직후).
-					if( srv != nullptr )
-						srv->NotifyFriendProfileChanged(session);
-				}
+						// 접속 중인 친구들에게 바뀐 대표 이미지를 알린다(세션 값 갱신 직후).
+						if( srv != nullptr )
+							srv->NotifyFriendProfileChanged(session);
+					}
 
-				SelectProfileImageResPacket res{};
-				res.size = sizeof(res);
-				res.type = static_cast<uint16>(EChatPacketType::SelectProfileImageRes);
-				res.success = (result == ELoginResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-				session->Send(&res, sizeof(res));
-			});
+					SelectProfileImageResPacket res{};
+					InitPacket(res, EChatPacketType::SelectProfileImageRes);
+					res.success = (result == ELoginResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
+					SendPacket(session, res);
+				}));
 	}
 }
 

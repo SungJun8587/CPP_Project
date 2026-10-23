@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -34,20 +35,17 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_ListProfileImages)
 		return EDBReturnType::INVALID;
 	}
 
-	if( !guard->PrepareQuery(_T("SELECT image_id, image_ref, status FROM user_profile_images WHERE user_public_id = ? ORDER BY created_at DESC")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT image_id, image_ref, status FROM user_profile_images WHERE user_public_id = ? ORDER BY created_at DESC")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, std::vector<SProfileImageEntry>());
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN publicIdLenInd = SQL_NTS;
-	guard->BindParamInput(1, publicIdHexT.c_str(), publicIdLenInd);
+	DbUtil::BindString(guard, 1, publicIdHexT);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, std::vector<SProfileImageEntry>());
 		return EDBReturnType::INVALID;

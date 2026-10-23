@@ -49,28 +49,24 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestChangeNickname(sessionRef, publicId, newNickname,
-			[sessionWeak](ELoginResult result, const std::array<BYTE, kPublicIdBytes>& /*publicId*/, const std::string& newNick)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return; // 응답이 오기 전에 연결이 끊김 — 더 이상 할 일 없음
-
-				ChangeNicknameResPacket res{};
-				InitPacket(res, EChatPacketType::ChangeNicknameRes);
-				res.success = (result == ELoginResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-
-				if( result == ELoginResult::Ok )
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ELoginResult result, const std::array<BYTE, kPublicIdBytes>& /*publicId*/, const std::string& newNick)
 				{
-					session->UpdateNickname(newNick);
+					ChangeNicknameResPacket res{};
+					InitPacket(res, EChatPacketType::ChangeNicknameRes);
+					res.success = (result == ELoginResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
 
-					// 접속 중인 친구들에게 바뀐 닉네임을 알린다(세션 값 갱신 직후).
-					if( CChatServerMain* srv = session->GetServer() )
-						srv->NotifyFriendProfileChanged(session);
-				}
+					if( result == ELoginResult::Ok )
+					{
+						session->UpdateNickname(newNick);
 
-				session->Send(&res, sizeof(res));
-			});
+						// 접속 중인 친구들에게 바뀐 닉네임을 알린다(세션 값 갱신 직후).
+						if( CChatServerMain* srv = session->GetServer() )
+							srv->NotifyFriendProfileChanged(session);
+					}
+
+					SendPacket(session, res);
+				}));
 	}
 }
 

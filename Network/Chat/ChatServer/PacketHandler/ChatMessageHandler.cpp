@@ -34,8 +34,7 @@ namespace
 			return; // 로그인 전 채팅 무시
 
 		ChatPacket outPacket{};
-		outPacket.size = sizeof(outPacket);
-		outPacket.type = static_cast<uint16>(EChatPacketType::Chat);
+		InitPacket(outPacket, EChatPacketType::Chat);
 
 		const std::string& nickname = session.GetNickname();
 		const size_t nicknameCopyLen = (std::min)(nickname.size(), sizeof(outPacket.nickname) - 1);

@@ -7,6 +7,7 @@
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
 #include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
@@ -27,9 +28,8 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SelectProfileImage)
 {
 	ST_SELECT_PROFILE_IMAGE_REQ* req = static_cast<ST_SELECT_PROFILE_IMAGE_REQ*>(pStAsync);
 
-	std::array<BYTE, kPublicIdBytes> publicId{};
-	::memcpy(publicId.data(), req->publicId, publicId.size());
-	const std::string publicIdHex = Crypto::CCryptoUtil::ToHex(publicId.data(), publicId.size());
+	PublicId publicId = ToPublicId(req->publicId);
+	const std::string publicIdHex = PublicIdToHex(publicId);
 	_tstring publicIdHexT = Utf8ToTString(publicIdHex);
 
 	OdbcConnGuard guard(MEMBER_DB_ASYNC.GetOdbcConnPool());
@@ -46,18 +46,15 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SelectProfileImage)
 
 	// 0) 지정한 imageId가 실제로 이 계정 소유인지 + image_ref를 먼저 조회.
 	//    존재하지 않거나 남의 것이면 여기서 걸러진다.
-	if( !guard->PrepareQuery(_T("SELECT image_ref FROM user_profile_images WHERE image_id = ? AND user_public_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("SELECT image_ref FROM user_profile_images WHERE image_id = ? AND user_public_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, std::string());
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN checkIdLenInd = SQL_NTS;
-	SQLLEN checkOwnerLenInd = SQL_NTS;
-	guard->BindParamInput(1, imageIdBuf, checkIdLenInd);
-	guard->BindParamInput(2, publicIdHexT.c_str(), checkOwnerLenInd);
+	DbUtil::BindString(guard, 1, imageIdBuf);
+	DbUtil::BindString(guard, 2, publicIdHexT);
 
 	if( !guard->Execute() || !guard->Fetch() )
 	{
@@ -74,18 +71,15 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SelectProfileImage)
 	guard->ClearStmt();
 
 	// 1) 기존 대표 해제
-	if( !guard->PrepareQuery(_T("UPDATE user_profile_images SET status = 0 WHERE user_public_id = ? AND status = 1")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("UPDATE user_profile_images SET status = 0 WHERE user_public_id = ? AND status = 1")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, std::string());
 		return EDBReturnType::INVALID;
 	}
-	SQLLEN unsetLenInd = SQL_NTS;
-	guard->BindParamInput(1, publicIdHexT.c_str(), unsetLenInd);
-	if( !guard->Execute() )
+	DbUtil::BindString(guard, 1, publicIdHexT);
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, std::string());
 		return EDBReturnType::INVALID;
@@ -93,22 +87,18 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_SelectProfileImage)
 	guard->ClearStmt();
 
 	// 2) 지정한 imageId를 대표로 지정
-	if( !guard->PrepareQuery(_T("UPDATE user_profile_images SET status = 1 WHERE image_id = ? AND user_public_id = ?")) )
+	if( !DbUtil::PrepareOrClear(guard, _T("UPDATE user_profile_images SET status = 1 WHERE image_id = ? AND user_public_id = ?")) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, std::string());
 		return EDBReturnType::INVALID;
 	}
 
-	SQLLEN setIdLenInd = SQL_NTS;
-	SQLLEN setOwnerLenInd = SQL_NTS;
-	guard->BindParamInput(1, imageIdBuf, setIdLenInd);
-	guard->BindParamInput(2, publicIdHexT.c_str(), setOwnerLenInd);
+	DbUtil::BindString(guard, 1, imageIdBuf);
+	DbUtil::BindString(guard, 2, publicIdHexT);
 
-	if( !guard->Execute() )
+	if( !DbUtil::ExecuteOrClear(guard) )
 	{
-		guard->ClearStmt();
 		if( req->onComplete )
 			req->onComplete(ELoginResult::DbError, req->imageId, std::string());
 		return EDBReturnType::INVALID;

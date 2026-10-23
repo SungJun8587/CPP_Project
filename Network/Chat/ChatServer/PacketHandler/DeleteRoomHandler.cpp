@@ -30,18 +30,14 @@ namespace
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestDeleteRoom(sessionRef, roomId, session.GetPublicId(),
-			[sessionWeak](ERoomResult result)
-			{
-				auto session = sessionWeak.lock();
-				if( session == nullptr )
-					return;
-
-				DeleteRoomResPacket res{};
-				InitPacket(res, EChatPacketType::DeleteRoomRes);
-				res.success = (result == ERoomResult::Ok) ? 1 : 0;
-				res.reason = static_cast<uint8>(result);
-				session->Send(&res, sizeof(res));
-			});
+			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, ERoomResult result)
+				{
+					DeleteRoomResPacket res{};
+					InitPacket(res, EChatPacketType::DeleteRoomRes);
+					res.success = (result == ERoomResult::Ok) ? 1 : 0;
+					res.reason = static_cast<uint8>(result);
+					SendPacket(session, res);
+				}));
 	}
 }
 

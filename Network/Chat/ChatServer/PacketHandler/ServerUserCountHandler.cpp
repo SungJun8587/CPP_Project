@@ -23,12 +23,11 @@ namespace
 			return;
 
 		ServerUserCountResPacket res{};
-		res.size = sizeof(res);
-		res.type = static_cast<uint16>(EChatPacketType::ServerUserCountRes);
+		InitPacket(res, EChatPacketType::ServerUserCountRes);
 		res.userCount = server->GetServerUserCount();
 		res.lobbyUserCount = server->GetRoomUserCount(kLobbyRoomId);
 
-		session.Send(&res, sizeof(res));
+		SendPacket(session, res);
 	}
 }
 

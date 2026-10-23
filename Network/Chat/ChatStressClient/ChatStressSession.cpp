@@ -58,8 +58,7 @@ void CChatStressSession::OnConnected()
 	S.connectLat.Add(ptime::MonotonicNowMicros() - _tCreatedUs);
 
 	LoginReqPacket req{};
-	req.type = static_cast<uint16>(EChatPacketType::LoginReq);
-	req.size = sizeof(req);
+	InitPacket(req, EChatPacketType::LoginReq);
 	req.hasToken = _hasToken ? 1 : 0;
 
 	if( !_hasToken )
@@ -69,8 +68,8 @@ void CChatStressSession::OnConnected()
 	}
 	else
 	{
-		::memcpy(req.publicId, _publicId.data(), _publicId.size());
-		::memcpy(req.token, _token.data(), _token.size());
+		CopyPublicId(req.publicId, _publicId);
+		CopyBytes(req.token, _token);
 	}
 
 	_tLoginSentUs = ptime::MonotonicNowMicros();
@@ -259,8 +258,8 @@ void CChatStressSession::OnLoginRes(const LoginResPacket* packet)
 
 	// 서버가 회전 발급한 새 토큰을 저장해 둔다(--accounts 사용 시 다음 실행에서 재접속)
 	ChatStressAccount acc;
-	::memcpy(acc.publicId.data(), packet->publicId, acc.publicId.size());
-	::memcpy(acc.token.data(), packet->token, acc.token.size());
+	acc.publicId = ToPublicId(packet->publicId);
+	acc.token = FixedBuf::ToArray<kTokenBytes>(packet->token);
 	CChatStressAccounts::Instance().Update(_index, acc);
 
 	OnLoggedIn();
@@ -291,8 +290,7 @@ void CChatStressSession::OnLoggedIn()
 	if( _myRoom > 0 )
 	{
 		RoomEnterReqPacket req{};
-		req.type = static_cast<uint16>(EChatPacketType::RoomEnterReq);
-		req.size = sizeof(req);
+		InitPacket(req, EChatPacketType::RoomEnterReq);
 		req.roomId = _myRoom;
 		Send(&req, sizeof(req));
 	}
@@ -312,8 +310,7 @@ void CChatStressSession::Tick(int64_t now)
 	if( now >= _nextChat.load() )
 	{
 		ChatPacket packet{};
-		packet.type = static_cast<uint16>(EChatPacketType::Chat);
-		packet.size = sizeof(packet);
+		InitPacket(packet, EChatPacketType::Chat);
 		std::snprintf(packet.message, sizeof(packet.message), "ST|%s|%d|%lld|%u|",
 			g_runTag.c_str(), _index, static_cast<long long>(now), ++_chatSeq);
 		const size_t len = std::strlen(packet.message);
@@ -338,8 +335,7 @@ void CChatStressSession::Tick(int64_t now)
 		if( _pendingListId.load() < 0 )
 		{
 			ListRoomsReqPacket req{};
-			req.type = static_cast<uint16>(EChatPacketType::ListRoomsReq);
-			req.size = sizeof(req);
+			InitPacket(req, EChatPacketType::ListRoomsReq);
 			req.requestId = ++_reqId;
 			req.scope = static_cast<uint8_t>(std::rand() & 1);
 			req.page = std::rand() % 5;
@@ -360,8 +356,7 @@ void CChatStressSession::Tick(int64_t now)
 		if( _pendingMemberId.load() < 0 )
 		{
 			RoomMemberListReqPacket req{};
-			req.type = static_cast<uint16>(EChatPacketType::RoomMemberListReq);
-			req.size = sizeof(req);
+			InitPacket(req, EChatPacketType::RoomMemberListReq);
 			req.requestId = ++_reqId;
 			req.roomId = _myRoom;
 			req.scope = static_cast<uint8_t>(std::rand() & 1);
@@ -378,8 +373,7 @@ void CChatStressSession::Tick(int64_t now)
 	if( now >= _nextCount.load() )
 	{
 		ServerUserCountReqPacket req{};
-		req.type = static_cast<uint16>(EChatPacketType::ServerUserCountReq);
-		req.size = sizeof(req);
+		InitPacket(req, EChatPacketType::ServerUserCountReq);
 		if( Send(&req, sizeof(req)) ) { S.txPkts++; S.txBytes += sizeof(req); }
 		_nextCount = now + static_cast<int64_t>(g_cfg.countIntervalMs) * 1000;
 	}
