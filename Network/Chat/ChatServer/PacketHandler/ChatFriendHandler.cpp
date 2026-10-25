@@ -17,33 +17,22 @@
 
 namespace
 {
-	// 요청자 정보 스냅샷 — 요청자가 응답 전에 끊겨도 상대 알림에 쓸 수 있도록 값으로 보관한다.
-	struct SActor
+	// 친구 기능은 상대에게 보내는 알림에 요청자의 닉네임/프로필 이미지가 필요하다.
+	struct SFriendActor : public SActor
 	{
-		std::weak_ptr<CChatSession>	session;
-		PublicId					publicId{};
 		std::string					nickname;
 		std::string					profileImageUrl;
 	};
 
 	// 공통 사전 처리: 로그인된 세션만 허용하고 서버/요청자 스냅샷을 만든다.
-	bool BeginOp(CChatSession& session, CChatServerMain*& server, SActor& actor)
+	bool BeginOp(CChatSession& session, CChatServerMain*& server, SFriendActor& actor)
 	{
-		server = GetLoggedInServer(session);
-		if( server == nullptr )
+		if( !BeginActorOp(session, server, actor) )
 			return false;
 
-		actor.session = GetSessionRef(session);
-		actor.publicId = session.GetPublicId();
 		actor.nickname = session.GetNickname();
 		actor.profileImageUrl = session.GetProfileImageUrl();
 		return true;
-	}
-
-	void SendToOnline(CChatServerMain* server, const PublicId& target, const void* data, uint16 size)
-	{
-		if( auto s = server->FindOnlineSession(target) )
-			s->Send(data, size);
 	}
 
 	void NotifyRemoved(CChatServerMain* server, const PublicId& to, const PublicId& removedFriend)
@@ -60,8 +49,8 @@ namespace
 		FriendAcceptedNotifyPacket notify{};
 		InitPacket(notify, EChatPacketType::FriendAcceptedNotify);
 		CopyPublicId(notify.publicId, newFriend);
-		FixedBuf::CopyStr(notify.nickname, nickname);
-		FixedBuf::CopyStr(notify.profileImageUrl, profileImageUrl);
+		CopyStrUtf8(notify.nickname, nickname);
+		CopyStrUtf8(notify.profileImageUrl, profileImageUrl);
 		notify.online = online ? 1 : 0;
 		SendToOnline(server, to, &notify, sizeof(notify));
 	}
@@ -72,7 +61,7 @@ namespace
 		const auto* packet = reinterpret_cast<const FriendRequestReqPacket*>(header);
 
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 
@@ -98,8 +87,8 @@ namespace
 						FriendRequestNotifyPacket notify{};
 						InitPacket(notify, EChatPacketType::FriendRequestNotify);
 						CopyPublicId(notify.publicId, actor.publicId);
-						FixedBuf::CopyStr(notify.nickname, actor.nickname);
-						FixedBuf::CopyStr(notify.profileImageUrl, actor.profileImageUrl);
+						CopyStrUtf8(notify.nickname, actor.nickname);
+						CopyStrUtf8(notify.profileImageUrl, actor.profileImageUrl);
 						SendToOnline(server, res.target.publicId, &notify, sizeof(notify));
 					}
 				}
@@ -132,7 +121,7 @@ namespace
 		const auto* packet = reinterpret_cast<const FriendRespondReqPacket*>(header);
 
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 
@@ -173,7 +162,7 @@ namespace
 		const auto* packet = reinterpret_cast<const FriendRemoveReqPacket*>(header);
 
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 
@@ -203,7 +192,7 @@ namespace
 	void HandleFriendListReq(CChatSession& session, const PacketHeader*)
 	{
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 
@@ -218,16 +207,34 @@ namespace
 				int32 sent = 0;
 				if( ok )
 				{
+					// 접속 여부는 친구 수만큼 락을 잡지 않도록 한 번에 조회한다.
+					std::vector<PublicId> ids;
+					ids.reserve(res.entries.size());
 					for( const SFriendEntry& e : res.entries )
+						ids.push_back(e.publicId);
+					const auto onlineSessions = server->FindOnlineSessions(ids);
+
+					// 항목을 kMaxFriendsPerBatch개씩 묶어 보낸다. 마지막 묶음은 쓴 만큼만 전송한다.
+					for( size_t begin = 0; begin < res.entries.size(); begin += kMaxFriendsPerBatch )
 					{
-						FriendListItemResPacket item{};
-						InitPacket(item, EChatPacketType::FriendListItemRes);
-						CopyPublicId(item.publicId, e.publicId);
-						FixedBuf::CopyStr(item.nickname, e.nickname);
-						FixedBuf::CopyStr(item.profileImageUrl, e.profileImageRef);
-						item.online = (server->FindOnlineSession(e.publicId) != nullptr) ? 1 : 0;
-						SendPacket(me, item);
-						++sent;
+						const size_t count = (std::min)(res.entries.size() - begin, static_cast<size_t>(kMaxFriendsPerBatch));
+
+						FriendListBatchResPacket batch{};
+						InitPacket(batch, EChatPacketType::FriendListBatchRes);
+						batch.count = static_cast<uint8>(count);
+						for( size_t k = 0; k < count; ++k )
+						{
+							const SFriendEntry& e = res.entries[begin + k];
+							FriendListEntryWire& wire = batch.entries[k];
+							CopyPublicId(wire.publicId, e.publicId);
+							CopyStrUtf8(wire.nickname, e.nickname);
+							CopyStrUtf8(wire.profileImageUrl, e.profileImageRef);
+							wire.online = (onlineSessions[begin + k] != nullptr) ? 1 : 0;
+						}
+
+						batch.size = static_cast<uint16>(sizeof(PacketHeader) + sizeof(batch.count) + count * sizeof(FriendListEntryWire));
+						me->Send(&batch, batch.size);
+						sent += static_cast<int32>(count);
 					}
 				}
 
@@ -245,7 +252,7 @@ namespace
 		const auto* packet = reinterpret_cast<const FriendPendingListReqPacket*>(header);
 
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 
@@ -267,8 +274,8 @@ namespace
 						InitPacket(item, EChatPacketType::FriendPendingItemRes);
 						item.requestId = requestId;
 						CopyPublicId(item.publicId, e.publicId);
-						FixedBuf::CopyStr(item.nickname, e.nickname);
-						FixedBuf::CopyStr(item.profileImageUrl, e.profileImageRef);
+						CopyStrUtf8(item.nickname, e.nickname);
+						CopyStrUtf8(item.profileImageUrl, e.profileImageRef);
 						SendPacket(me, item);
 					}
 				}
@@ -289,7 +296,7 @@ namespace
 	void HandleBlockListReq(CChatSession& session, const PacketHeader*)
 	{
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 
@@ -309,7 +316,7 @@ namespace
 						BlockListItemResPacket item{};
 						InitPacket(item, EChatPacketType::BlockListItemRes);
 						CopyPublicId(item.publicId, e.publicId);
-						FixedBuf::CopyStr(item.nickname, e.nickname);
+						CopyStrUtf8(item.nickname, e.nickname);
 						SendPacket(me, item);
 						++sent;
 					}
@@ -330,7 +337,7 @@ namespace
 		const auto* packet = reinterpret_cast<const BlockReqPacket*>(header);
 
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 
@@ -370,7 +377,7 @@ namespace
 		const auto* packet = reinterpret_cast<const UnblockReqPacket*>(header);
 
 		CChatServerMain* server = nullptr;
-		SActor actor;
+		SFriendActor actor;
 		if( !BeginOp(session, server, actor) )
 			return;
 

@@ -9,11 +9,8 @@
 #include "ChatServerMain.h"
 #include "ChatSession.h"
 #include "DbServiceManager.h"
-#include "DBSignupRequest.h"
-#include "DBChangeNicknameRequest.h"
-#include "DBSetProfileImageUrlRequest.h"
-#include "DBSelectProfileImageRequest.h"
-#include "DBDeleteProfileImageRequest.h"
+#include "DBAccountRequest.h"
+#include "DBProfileImageRequest.h"
 
 #include <cstring>
 
@@ -31,7 +28,7 @@
 // 소유) 인스턴스를 직접 넘기는 오버로드를 쓴다. 이 헬퍼의 백프레셔는
 // COdbcAsyncSrv::WaitPushCapacity()(블로킹) 대신 큐 크기를 논블로킹으로
 // 확인만 하고 초과 시 즉시 실패시키는 방식이다 — 이 함수가 IOCP 워커
-// 스레드(ChatLoginHandler.cpp::HandleLoginReq())에서 호출되므로, 여기서
+// 스레드(ChatAccountHandler.cpp::HandleLoginReq())에서 호출되므로, 여기서
 // 블로킹 대기를 걸면 그 워커가 담당하는 다른 세션들의 I/O 처리까지 함께
 // 지연되기 때문이다.
 //***************************************************************************
@@ -69,10 +66,11 @@ void CChatServerMain::RequestSignup(
 			PostToJobQueue(jobQueue, onComplete, result, completedNickname, completedPublicId, newToken, displayProfileImageUrl);
 		};
 
-	const bool pushed = PushDb<ST_SIGNUP_REQ>(kDbCallIdent_Signup,
+	// 게시에 실패하면(큐 포화/서비스 종료) PushDbOrFail()이 DbError로 직접 콜백을 호출해 세션이 응답을 기다리지 않게 한다.
+	PushDbOrFail<ST_SIGNUP_REQ>(kDbCallIdent_Account,
 		[&nickname, hasToken, &publicId, &token, dispatchToJobQueue](ST_SIGNUP_REQ* req)
 		{
-			FixedBuf::CopyStr(req->nickname, nickname);
+			CopyStrUtf8(req->nickname, nickname);
 			// 나머지는 {} 초기화로 이미 0-채움 → NUL 종단 보장
 
 			req->hasToken = hasToken;
@@ -83,17 +81,8 @@ void CChatServerMain::RequestSignup(
 			}
 
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		// 게시 실패 — 백프레셔로 거부됐거나(큐 포화) Push() 자체가
-		// 실패(서비스 종료 시점 등)한 경우. 어느 쪽이든 요청이 큐에
-		// 들어가지 않았으므로 콜백을 직접(이 스레드에서) 호출해 세션이
-		// 응답을 무한정 기다리지 않게 한다.
-		if( onComplete )
-			onComplete(ELoginResult::DbError, nickname, std::array<BYTE, kPublicIdBytes>{}, std::array<BYTE, kTokenBytes>{}, std::string());
-	}
+		},
+		onComplete, ELoginResult::DbError, nickname, std::array<BYTE, kPublicIdBytes>{}, std::array<BYTE, kTokenBytes>{}, std::string());
 }
 
 //***************************************************************************
@@ -116,21 +105,16 @@ void CChatServerMain::RequestChangeNickname(
 
 	auto dispatchToJobQueue = MakeJobQueueDispatcher(jobQueue, onComplete);
 
-	const bool pushed = PushDb<ST_CHANGE_NICKNAME_REQ>(kDbCallIdent_ChangeNickname,
+	PushDbOrFail<ST_CHANGE_NICKNAME_REQ>(kDbCallIdent_Account,
 		[&publicId, &newNickname, dispatchToJobQueue](ST_CHANGE_NICKNAME_REQ* req)
 		{
 			CopyPublicId(req->publicId, publicId);
 
-			FixedBuf::CopyStr(req->newNickname, newNickname);
+			CopyStrUtf8(req->newNickname, newNickname);
 
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ELoginResult::DbError, publicId, newNickname);
-	}
+		},
+		onComplete, ELoginResult::DbError, publicId, newNickname);
 }
 
 //***************************************************************************
@@ -163,7 +147,7 @@ void CChatServerMain::RequestSetProfileImageUrl(
 			if( jobQueue == nullptr )
 				return;
 
-			// [추가] DB(SetProfileImageUrlDBHandler.cpp)는 방금 저장한 값을
+			// [추가] DB(ProfileImageDBHandler.cpp)는 방금 저장한 값을
 			// 그대로 에코해주므로, 상대 경로로 저장했다면 이 시점의
 			// completedNewUrl도 상대 경로다 — 클라이언트에겐 항상 완전한
 			// URL을 줘야 하므로 여기서 다시 복원한다.
@@ -172,21 +156,16 @@ void CChatServerMain::RequestSetProfileImageUrl(
 			PostToJobQueue(jobQueue, onComplete, result, completedPublicId, displayUrl, newImageId);
 		};
 
-	const bool pushed = PushDb<ST_SET_PROFILE_IMAGE_URL_REQ>(kDbCallIdent_SetProfileImageUrl,
+	PushDbOrFail<ST_SET_PROFILE_IMAGE_URL_REQ>(kDbCallIdent_ProfileImage,
 		[&publicId, &storableUrl, dispatchToJobQueue](ST_SET_PROFILE_IMAGE_URL_REQ* req)
 		{
 			CopyPublicId(req->publicId, publicId);
 
-			FixedBuf::CopyStr(req->url, storableUrl);
+			CopyStrUtf8(req->url, storableUrl);
 
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ELoginResult::DbError, publicId, newUrl, 0);
-	}
+		},
+		onComplete, ELoginResult::DbError, publicId, newUrl, 0);
 }
 
 //***************************************************************************
@@ -237,18 +216,23 @@ void CChatServerMain::RequestUploadToken(
 	args.push_back("EX");
 	args.push_back("60");
 
-	_redisService->SendCommand(args, [onComplete, tokenHex, fileServerUrl](const RedisValue& /*res*/)
+	// SendCommand()는 풀이 없거나 대기 큐가 가득 차면 false를 반환하며 이때는 콜백이
+	// 호출되지 않는다 — 호출부가 응답을 영원히 기다리지 않도록 여기서 실패를 알린다.
+	const bool queued = _redisService->SendCommand(args, [onComplete, tokenHex, fileServerUrl](const RedisValue& res)
 		{
-			// [참고] RedisValue의 성공/에러 판별 API를 이 헤더만으론 확인 못해,
-			// OnUserLogin()과 마찬가지로 콜백이 왔다는 것 자체를 "등록 완료"로
-			// 본다(TODO: 에러 체크 메서드가 있다면 감싸는 것을 권장).
-			// [수정] CRedisService::SendCommand()의 콜백은 이미 생성자에
-			// 넘긴 CJobQueue 스레드에서 안전하게 실행된다(RedisService.cpp
-			// 내부에서 DoAsync로 이관해줌) — 여기서 또 감싸는 건 불필요한
-			// 이중 디스패치였다.
+			// 콜백은 CRedisService가 생성자에 넘긴 CJobQueue 스레드에서 실행된다.
+			// Redis 에러 응답이면 토큰이 등록되지 않은 것이므로 실패로 알린다.
 			if( onComplete )
-				onComplete(true, tokenHex, fileServerUrl);
+			{
+				if( res.eType == ERedisType::Error )
+					onComplete(false, std::string(), std::string());
+				else
+					onComplete(true, tokenHex, fileServerUrl);
+			}
 		});
+
+	if( !queued && onComplete )
+		onComplete(false, std::string(), std::string());
 }
 
 //***************************************************************************
@@ -281,18 +265,13 @@ void CChatServerMain::RequestListProfileImages(
 			PostToJobQueue(jobQueue, onComplete, result, displayImages);
 		};
 
-	const bool pushed = PushDb<ST_LIST_PROFILE_IMAGES_REQ>(kDbCallIdent_ListProfileImages,
+	PushDbOrFail<ST_LIST_PROFILE_IMAGES_REQ>(kDbCallIdent_ProfileImage,
 		[&publicId, dispatchToJobQueue](ST_LIST_PROFILE_IMAGES_REQ* req)
 		{
 			CopyPublicId(req->publicId, publicId);
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ELoginResult::DbError, std::vector<SProfileImageEntry>());
-	}
+		},
+		onComplete, ELoginResult::DbError, std::vector<SProfileImageEntry>());
 }
 
 //***************************************************************************
@@ -311,19 +290,14 @@ void CChatServerMain::RequestSelectProfileImage(
 
 	auto dispatchToJobQueue = MakeJobQueueDispatcher(jobQueue, onComplete);
 
-	const bool pushed = PushDb<ST_SELECT_PROFILE_IMAGE_REQ>(kDbCallIdent_SelectProfileImage,
+	PushDbOrFail<ST_SELECT_PROFILE_IMAGE_REQ>(kDbCallIdent_ProfileImage,
 		[&publicId, imageId, dispatchToJobQueue](ST_SELECT_PROFILE_IMAGE_REQ* req)
 		{
 			CopyPublicId(req->publicId, publicId);
 			req->imageId = imageId;
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ELoginResult::DbError, imageId, std::string());
-	}
+		},
+		onComplete, ELoginResult::DbError, imageId, std::string());
 }
 
 //***************************************************************************
@@ -356,17 +330,12 @@ void CChatServerMain::RequestDeleteProfileImage(
 			PostToJobQueue(jobQueue, onComplete, result, completedImageId, wasActive, deletedImageRef);
 		};
 
-	const bool pushed = PushDb<ST_DELETE_PROFILE_IMAGE_REQ>(kDbCallIdent_DeleteProfileImage,
+	PushDbOrFail<ST_DELETE_PROFILE_IMAGE_REQ>(kDbCallIdent_ProfileImage,
 		[&publicId, imageId, dispatchToJobQueue](ST_DELETE_PROFILE_IMAGE_REQ* req)
 		{
 			CopyPublicId(req->publicId, publicId);
 			req->imageId = imageId;
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ELoginResult::DbError, imageId, false, std::string());
-	}
+		},
+		onComplete, ELoginResult::DbError, imageId, false, std::string());
 }

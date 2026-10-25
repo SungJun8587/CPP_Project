@@ -6,11 +6,12 @@
 
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
-#include "DbServiceManager.h"
-#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
+#include "../ChatCommon/Protocol/ChatPacketUtil.h"
+#include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include "DBConvRequest.h"
 
 #include <algorithm>
@@ -22,14 +23,9 @@
 namespace
 {
 	using PublicIdArr = std::array<BYTE, kPublicIdBytes>;
-	using Row = std::vector<std::string>;
-
-	constexpr size_t kColumnChars = 1100;	// 한 컬럼을 읽는 버퍼(문자 수). 메시지 본문(최대 kConvMessageBytes 바이트)보다 넉넉하게
-
-	int64 ToI64(const std::string& s)
-	{
-		return s.empty() ? 0 : static_cast<int64>(std::strtoll(s.c_str(), nullptr, 10));
-	}
+	using Row = DbUtil::Row;
+	using DbUtil::ToI64;
+	using CConvSql = DbUtil::CSql;	// 공용 문자열 파라미터 구문 도우미(DbHandlerUtil.h)
 
 	// 정규화된 쌍 (작은 쪽, 큰 쪽) — friendships/direct_key의 저장 규칙. 소문자 16진 32자라 문자열 비교로 충분.
 	void MakePair(const std::string& x, const std::string& y, std::string& lo, std::string& hi)
@@ -43,8 +39,6 @@ namespace
 		_T("SELECT u.public_id, u.nickname, COALESCE(p.image_ref, ''), 0 FROM users u ")
 		_T("LEFT JOIN user_profile_images p ON p.user_public_id = u.public_id AND p.status = 1 ")
 		_T("WHERE u.public_id = ?");
-	const TCHAR* const kSqlIsFriend = _T("SELECT 1 FROM friendships WHERE user_a = ? AND user_b = ?");
-	const TCHAR* const kSqlBlockExists = _T("SELECT 1 FROM user_blocks WHERE blocker_id = ? AND blocked_id = ?");
 
 	const TCHAR* const kSqlMembership =
 		_T("SELECT m.is_active, m.visible_from_msg_id, m.last_read_msg_id, c.conv_type, c.last_msg_id ")
@@ -80,8 +74,28 @@ namespace
 		_T("WHERE m.conv_id = ? ORDER BY m.joined_at, m.user_public_id");
 	const TCHAR* const kSqlActiveMembers =
 		_T("SELECT user_public_id FROM conversation_members WHERE conv_id = ? AND is_active = 1");
-	const TCHAR* const kSqlOtherMember =
-		_T("SELECT user_public_id FROM conversation_members WHERE conv_id = ? AND user_public_id <> ?");
+	// 1:1 상대와 양방향 차단 여부를 한 번에 조회한다. 파라미터: me, me, convId, me.
+	// 컬럼: 상대 publicId, 내가 상대를 차단했는가(0/1), 상대가 나를 차단했는가(0/1).
+	const TCHAR* const kSqlOtherMemberBlocks =
+		_T("SELECT m.user_public_id, ")
+		_T("EXISTS(SELECT 1 FROM user_blocks b WHERE b.blocker_id = ? AND b.blocked_id = m.user_public_id), ")
+		_T("EXISTS(SELECT 1 FROM user_blocks b WHERE b.blocker_id = m.user_public_id AND b.blocked_id = ?) ")
+		_T("FROM conversation_members m WHERE m.conv_id = ? AND m.user_public_id <> ?");
+
+	// 초대 대상 검증을 한 번에 조회한다. 뒤에 "?, ?, ...)"(대상 publicId들)를 이어 붙인다.
+	// 파라미터: me, me, me, me, 대상들. 컬럼: publicId, 닉네임, 프로필 이미지, 친구(0/1), 내가 차단(0/1), 상대가 차단(0/1).
+	// 친구 쌍은 (작은 ID, 큰 ID)로 저장되므로 LEAST/GREATEST로 맞춘다(소문자 16진 문자열이라 C++ 비교와 순서가 같다).
+	const TCHAR* const kSqlValidateTargets =
+		_T("SELECT u.public_id, u.nickname, COALESCE(p.image_ref, ''), ")
+		_T("EXISTS(SELECT 1 FROM friendships f WHERE f.user_a = LEAST(?, u.public_id) AND f.user_b = GREATEST(?, u.public_id)), ")
+		_T("EXISTS(SELECT 1 FROM user_blocks b WHERE b.blocker_id = ? AND b.blocked_id = u.public_id), ")
+		_T("EXISTS(SELECT 1 FROM user_blocks b WHERE b.blocker_id = u.public_id AND b.blocked_id = ?) ")
+		_T("FROM users u LEFT JOIN user_profile_images p ON p.user_public_id = u.public_id AND p.status = 1 ")
+		_T("WHERE u.public_id IN (");
+
+	// 방금 INSERT한 메시지의 id와 시각을 한 번에 읽는다(같은 연결의 LAST_INSERT_ID()).
+	const TCHAR* const kSqlLastInsertedMessage =
+		_T("SELECT msg_id, UNIX_TIMESTAMP(created_at) FROM conversation_messages WHERE msg_id = LAST_INSERT_ID()");
 
 	// 컬럼 7~10은 답장 정보. 답장 대상이 내가 들어오기 전 메시지(보이지 않음)이거나 삭제됐으면 Deleted(3)로 내린다.
 	// 첫 파라미터는 visible_from_msg_id (답장 대상 가시성 판단).
@@ -140,95 +154,6 @@ namespace
 	const TCHAR* const kSqlSetLastMsg = _T("UPDATE conversations SET last_msg_id = GREATEST(last_msg_id, ?) WHERE conv_id = ?");
 	const TCHAR* const kSqlSetRead =
 		_T("UPDATE conversation_members SET last_read_msg_id = GREATEST(last_read_msg_id, ?) WHERE conv_id = ? AND user_public_id = ?");
-	const TCHAR* const kSqlMessageTime = _T("SELECT UNIX_TIMESTAMP(created_at) FROM conversation_messages WHERE msg_id = ?");
-
-	//***************************************************************************
-	// @brief 한 연결 위에서 문자열 파라미터 구문을 실행하는 도우미.
-	// @details 모든 파라미터는 문자열이다(정수도 십진 문자열로 바인딩 — MySQL이 비교/삽입 시
-	//          변환한다). SELECT는 모든 컬럼을 문자열로 읽는다. 어떤 경로에서도 구문을
-	//          정리(ClearStmt)한다.
-	//***************************************************************************
-	class CConvSql
-	{
-	public:
-		explicit CConvSql(OdbcConnGuard& guard) : _guard(guard) {}
-
-		bool Query(const TCHAR* sql, const std::vector<std::string>& params, int columns, std::vector<Row>& rows)
-		{
-			rows.clear();
-			std::vector<_tstring> bound;
-			if( !Prepare(sql, params, bound) )
-				return false;
-
-			std::vector<TCHAR> buffer(kColumnChars);
-			while( _guard->Fetch() )
-			{
-				Row row;
-				row.reserve(columns);
-				for( int column = 1; column <= columns; ++column )
-				{
-					std::fill(buffer.begin(), buffer.end(), TCHAR());
-					int32 bufferBytes = static_cast<int32>(buffer.size() * sizeof(TCHAR));
-					if( _guard->GetData(column, buffer.data(), bufferBytes) )
-						row.push_back(TStringToUtf8(_tstring(buffer.data())));
-					else
-						row.push_back(std::string());	// NULL/빈 값
-				}
-				rows.push_back(std::move(row));
-			}
-
-			_guard->ClearStmt();
-			return true;
-		}
-
-		bool Exec(const TCHAR* sql, const std::vector<std::string>& params, int64* affected = nullptr)
-		{
-			std::vector<_tstring> bound;
-			if( !Prepare(sql, params, bound) )
-				return false;
-
-			if( affected != nullptr )
-				*affected = _guard->RowCount();
-			_guard->ClearStmt();
-			return true;
-		}
-
-		bool LastInsertId(int64& id)
-		{
-			std::vector<Row> rows;
-			if( !Query(_T("SELECT LAST_INSERT_ID()"), {}, 1, rows) || rows.empty() )
-				return false;
-			id = ToI64(rows.front()[0]);
-			return true;
-		}
-
-		bool Exists(const TCHAR* sql, const std::vector<std::string>& params, bool& exists)
-		{
-			std::vector<Row> rows;
-			if( !Query(sql, params, 1, rows) )
-				return false;
-			exists = !rows.empty();
-			return true;
-		}
-
-	private:
-		// 준비 + 바인딩 + 실행까지. 실패하면 구문을 정리하고 false.
-		bool Prepare(const TCHAR* sql, const std::vector<std::string>& params, std::vector<_tstring>& bound)
-		{
-			bound.reserve(params.size());	// 바인딩한 문자열의 주소가 Execute()까지 변하면 안 된다
-			for( const std::string& param : params )
-				bound.push_back(Utf8ToTString(param));
-
-			if( !DbUtil::PrepareOrClear(_guard, sql) )
-				return false;
-			for( size_t i = 0; i < bound.size(); ++i )
-				DbUtil::BindString(_guard, static_cast<int32>(i + 1), bound[i]);
-			return DbUtil::ExecuteOrClear(_guard);
-		}
-
-	private:
-		OdbcConnGuard& _guard;
-	};
 
 	//***************************************************************************
 	// @brief 대화방 연산 하나를 수행한다. 결과는 SConvOpResult로, 반환값은 최종 EConvResult다.
@@ -291,18 +216,6 @@ namespace
 				member.profileImageRef = rows.front()[2];
 			}
 			return true;
-		}
-
-		bool IsFriend(const std::string& a, const std::string& b, bool& result)
-		{
-			std::string lo, hi;
-			MakePair(a, b, lo, hi);
-			return _sql.Exists(kSqlIsFriend, { lo, hi }, result);
-		}
-
-		bool IsBlocking(const std::string& blocker, const std::string& blocked, bool& result)
-		{
-			return _sql.Exists(kSqlBlockExists, { blocker, blocked }, result);
 		}
 
 		bool LoadMembership(int64 convId, SMembership& membership)
@@ -384,16 +297,16 @@ namespace
 			if( !ok )
 				return false;
 
-			int64 msgId = 0;
-			if( !_sql.LastInsertId(msgId) || msgId <= 0 )
+			// LAST_INSERT_ID()는 연결 단위라 UPDATE보다 먼저 읽는다. id와 시각은 한 번에 조회한다.
+			std::vector<Row> rows;
+			if( !_sql.Query(kSqlLastInsertedMessage, {}, 2, rows) || rows.empty() )
+				return false;
+			const int64 msgId = ToI64(rows.front()[0]);
+			const int64 timestamp = ToI64(rows.front()[1]);
+			if( msgId <= 0 )
 				return false;
 			if( !_sql.Exec(kSqlSetLastMsg, { std::to_string(msgId), std::to_string(convId) }) )
 				return false;
-
-			std::vector<Row> rows;
-			int64 timestamp = 0;
-			if( _sql.Query(kSqlMessageTime, { std::to_string(msgId) }, 1, rows) && !rows.empty() )
-				timestamp = ToI64(rows.front()[0]);
 
 			msg = SConvMessage();
 			msg.convId = convId;
@@ -454,6 +367,8 @@ namespace
 			std::vector<std::string> seen = skipHex;
 			seen.push_back(_me);
 
+			// 건너뛸 대상(자기 자신/중복/제외 대상)을 거르고 검증할 대상 목록을 만든다.
+			std::vector<std::string> hexes;
 			const int32 count = (std::max)(0, (std::min)(_req->targetCount, kMaxConvInvite));
 			for( int32 i = 0; i < count; ++i )
 			{
@@ -461,27 +376,46 @@ namespace
 				if( std::find(seen.begin(), seen.end(), hex) != seen.end() )
 					continue;
 				seen.push_back(hex);
+				hexes.push_back(hex);
+			}
+			if( hexes.empty() )
+				return true;
 
+			// 대상 전체를 쿼리 한 번으로 조회한다(존재/닉네임/친구/양방향 차단).
+			_tstring query = kSqlValidateTargets;
+			std::vector<std::string> params = { _me, _me, _me, _me };
+			for( size_t i = 0; i < hexes.size(); ++i )
+			{
+				query += (i == 0) ? _T("?") : _T(", ?");
+				params.push_back(hexes[i]);
+			}
+			query += _T(")");
+
+			std::vector<Row> rows;
+			if( !_sql.Query(query.c_str(), params, 6, rows) )
+				return false;
+
+			// 이후 판정은 입력 순서대로 해서 "첫 실패 사유"가 이전과 같게 유지한다.
+			for( const std::string& hex : hexes )
+			{
 				auto fail = [&](EConvResult reason)
 					{
 						if( !failSet ) { firstFail = reason; failSet = true; }
 					};
 
+				const Row* found = nullptr;
+				for( const Row& row : rows )
+				{
+					if( row[0] == hex ) { found = &row; break; }
+				}
+
 				SConvMember member;
-				bool found = false;
-				if( !LoadUser(hex, member, found) )
-					return false;
-				if( !found ) { fail(EConvResult::InvalidTarget); continue; }
+				if( found == nullptr || !ParseMember(*found, member) ) { fail(EConvResult::InvalidTarget); continue; }
+				member.nickname = (*found)[1];
+				member.profileImageRef = (*found)[2];
 
-				bool friends = false;
-				if( !IsFriend(_me, hex, friends) )
-					return false;
-				if( !friends ) { fail(EConvResult::NotFriends); continue; }
-
-				bool iBlock = false, theyBlock = false;
-				if( !IsBlocking(_me, hex, iBlock) || !IsBlocking(hex, _me, theyBlock) )
-					return false;
-				if( iBlock || theyBlock ) { fail(EConvResult::Blocked); continue; }
+				if( (*found)[3] != "1" ) { fail(EConvResult::NotFriends); continue; }
+				if( (*found)[4] == "1" || (*found)[5] == "1" ) { fail(EConvResult::Blocked); continue; }
 
 				valid.push_back(std::move(member));
 			}
@@ -729,14 +663,12 @@ namespace
 			if( isDirect )
 			{
 				std::vector<Row> rows;
-				if( !_sql.Query(kSqlOtherMember, { std::to_string(_req->convId), _me }, 1, rows) )
+				if( !_sql.Query(kSqlOtherMemberBlocks, { _me, _me, std::to_string(_req->convId), _me }, 3, rows) )
 					return EConvResult::DbError;
 				if( !rows.empty() )
 				{
-					const std::string peerHex = rows.front()[0];
-					bool iBlock = false, theyBlock = false;
-					if( !IsBlocking(_me, peerHex, iBlock) || !IsBlocking(peerHex, _me, theyBlock) )
-						return EConvResult::DbError;
+					const bool iBlock = (rows.front()[1] == "1");
+					const bool theyBlock = (rows.front()[2] == "1");
 					if( iBlock )
 						return EConvResult::Blocked;	// 내가 차단한 상대에게는 보낼 수 없다
 					_out.silent = theyBlock;			// 상대가 나를 차단함 — 저장만 하고 푸시/되살리기는 하지 않는다

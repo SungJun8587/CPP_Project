@@ -1,25 +1,31 @@
-
+ï»¿
 //***************************************************************************
-// DbHandlerUtil.h : DBHandler/*.cpp¿¡¼­ ¹İº¹µÇ´Â ODBC È£Ãâ º¸ÀÏ·¯ÇÃ·¹ÀÌÆ® ÇïÆÛ
+// DbHandlerUtil.h : DBHandler/*.cppì—ì„œ ë°˜ë³µë˜ëŠ” ODBC í˜¸ì¶œ ë³´ì¼ëŸ¬í”Œë ˆì´íŠ¸ í—¬í¼
 //
-// DB ÇÚµé·¯´Â "Äõ¸® ÁØºñ -> ÆÄ¶ó¹ÌÅÍ ¹ÙÀÎµù -> ½ÇÇà" ´Ü°è¸¶´Ù ½ÇÆĞ ½Ã
-// ClearStmt()·Î ±¸¹®À» Á¤¸®ÇÑ µÚ ºüÁ®³ª¿À´Âµ¥, ±× µÎ ÁÙÀ» ÇÑ °÷À¸·Î ¸ğÀº´Ù.
-// DB ÇÚµé·¯ .cpp¿¡¼­ DbServiceManager.h µÚ¿¡ include ÇÑ´Ù.
+// DB í•¸ë“¤ëŸ¬ëŠ” "ì¿¼ë¦¬ ì¤€ë¹„ -> íŒŒë¼ë¯¸í„° ë°”ì¸ë”© -> ì‹¤í–‰" ë‹¨ê³„ë§ˆë‹¤ ì‹¤íŒ¨ ì‹œ
+// ClearStmt()ë¡œ êµ¬ë¬¸ì„ ì •ë¦¬í•œ ë’¤ ë¹ ì ¸ë‚˜ì˜¤ëŠ”ë°, ê·¸ ë‘ ì¤„ì„ í•œ ê³³ìœ¼ë¡œ ëª¨ì€ë‹¤.
+// DB í•¸ë“¤ëŸ¬ .cppì—ì„œ DbServiceManager.h ë’¤ì— include í•œë‹¤.
 //***************************************************************************
 
 #ifndef UC_DBHANDLERUTIL_H
 #define UC_DBHANDLERUTIL_H
 
 #include <DB/OdbcConnPool.h>
+#include <Util/EncodingConvert.h>
+
+#include <algorithm>
+#include <cstdlib>
+#include <string>
+#include <vector>
 
 namespace DbUtil
 {
 	//***************************************************************************
-	// @brief Äõ¸®¸¦ ÁØºñÇÏ°í, ½ÇÆĞÇÏ¸é ±¸¹®À» Á¤¸®ÇÑ´Ù.
-	// @details ½ÇÆĞ ½Ã È£ÃâÀÚ´Â ClearStmt()¸¦ ´Ù½Ã ºÎ¸¦ ÇÊ¿ä°¡ ¾ø´Ù.
-	// @param guard Ä¿³Ø¼Ç °¡µå
-	// @param ptszQuery ÁØºñÇÒ SQL ¹®
-	// @return ÁØºñ ¼º°ø ¿©ºÎ
+	// @brief ì¿¼ë¦¬ë¥¼ ì¤€ë¹„í•˜ê³ , ì‹¤íŒ¨í•˜ë©´ êµ¬ë¬¸ì„ ì •ë¦¬í•œë‹¤.
+	// @details ì‹¤íŒ¨ ì‹œ í˜¸ì¶œìëŠ” ClearStmt()ë¥¼ ë‹¤ì‹œ ë¶€ë¥¼ í•„ìš”ê°€ ì—†ë‹¤.
+	// @param guard ì»¤ë„¥ì…˜ ê°€ë“œ
+	// @param ptszQuery ì¤€ë¹„í•  SQL ë¬¸
+	// @return ì¤€ë¹„ ì„±ê³µ ì—¬ë¶€
 	//***************************************************************************
 	inline bool PrepareOrClear(OdbcConnGuard& guard, const TCHAR* ptszQuery)
 	{
@@ -31,10 +37,10 @@ namespace DbUtil
 	}
 
 	//***************************************************************************
-	// @brief ÁØºñµÈ Äõ¸®¸¦ ½ÇÇàÇÏ°í, ½ÇÆĞÇÏ¸é ±¸¹®À» Á¤¸®ÇÑ´Ù.
-	// @details ½ÇÆĞ ½Ã È£ÃâÀÚ´Â ClearStmt()¸¦ ´Ù½Ã ºÎ¸¦ ÇÊ¿ä°¡ ¾ø´Ù.
-	// @param guard Ä¿³Ø¼Ç °¡µå
-	// @return ½ÇÇà ¼º°ø ¿©ºÎ
+	// @brief ì¤€ë¹„ëœ ì¿¼ë¦¬ë¥¼ ì‹¤í–‰í•˜ê³ , ì‹¤íŒ¨í•˜ë©´ êµ¬ë¬¸ì„ ì •ë¦¬í•œë‹¤.
+	// @details ì‹¤íŒ¨ ì‹œ í˜¸ì¶œìëŠ” ClearStmt()ë¥¼ ë‹¤ì‹œ ë¶€ë¥¼ í•„ìš”ê°€ ì—†ë‹¤.
+	// @param guard ì»¤ë„¥ì…˜ ê°€ë“œ
+	// @return ì‹¤í–‰ ì„±ê³µ ì—¬ë¶€
 	//***************************************************************************
 	inline bool ExecuteOrClear(OdbcConnGuard& guard)
 	{
@@ -46,16 +52,16 @@ namespace DbUtil
 	}
 
 	//***************************************************************************
-	// @brief NUL Á¾·á ¹®ÀÚ¿­ ÀÔ·Â ÆÄ¶ó¹ÌÅÍ¸¦ ¹ÙÀÎµùÇÑ´Ù.
-	// @details CBaseODBC::BindParamInputÀº ±æÀÌ ÁöÇ¥(SQLLEN)¸¦ SQL_NTS·Î ¾²°í ±×
-	//          ÁÖ¼Ò¸¦ Execute() ¶§±îÁö µå¶óÀÌ¹ö¿¡ ¸Ã±â¹Ç·Î ÁöÇ¥°¡ Execute() ÀÌÈÄ±îÁö
-	//          »ì¾ÆÀÖ¾î¾ß ÇÑ´Ù. ÀÔ·Â ÆÄ¶ó¹ÌÅÍÀÇ ÁöÇ¥´Â Ç×»ó SQL_NTS ÇÏ³ªÀÌ°í
-	//          µå¶óÀÌ¹ö°¡ ¾²Áö ¾ÊÀ¸¹Ç·Î, DB ¿öÄ¿ ½º·¹µåº° °ø¿ë ÁöÇ¥ ÇÏ³ª¸¦ ¾´´Ù.
-	//          value ¹®ÀÚ¿­Àº Execute()°¡ ³¡³¯ ¶§±îÁö È£ÃâÀÚ°¡ À¯ÁöÇØ¾ß ÇÑ´Ù.
-	// @param guard Ä¿³Ø¼Ç °¡µå
-	// @param iParamIndex 1ºÎÅÍ ½ÃÀÛÇÏ´Â ÆÄ¶ó¹ÌÅÍ ¹øÈ£
-	// @param value ¹ÙÀÎµùÇÒ ¹®ÀÚ¿­(Execute() ¶§±îÁö »ì¾ÆÀÖ¾î¾ß ÇÔ)
-	// @return ¹ÙÀÎµù ¼º°ø ¿©ºÎ
+	// @brief NUL ì¢…ë£Œ ë¬¸ìì—´ ì…ë ¥ íŒŒë¼ë¯¸í„°ë¥¼ ë°”ì¸ë”©í•œë‹¤.
+	// @details CBaseODBC::BindParamInputì€ ê¸¸ì´ ì§€í‘œ(SQLLEN)ë¥¼ SQL_NTSë¡œ ì“°ê³  ê·¸
+	//          ì£¼ì†Œë¥¼ Execute() ë•Œê¹Œì§€ ë“œë¼ì´ë²„ì— ë§¡ê¸°ë¯€ë¡œ ì§€í‘œê°€ Execute() ì´í›„ê¹Œì§€
+	//          ì‚´ì•„ìˆì–´ì•¼ í•œë‹¤. ì…ë ¥ íŒŒë¼ë¯¸í„°ì˜ ì§€í‘œëŠ” í•­ìƒ SQL_NTS í•˜ë‚˜ì´ê³ 
+	//          ë“œë¼ì´ë²„ê°€ ì“°ì§€ ì•Šìœ¼ë¯€ë¡œ, DB ì›Œì»¤ ìŠ¤ë ˆë“œë³„ ê³µìš© ì§€í‘œ í•˜ë‚˜ë¥¼ ì“´ë‹¤.
+	//          value ë¬¸ìì—´ì€ Execute()ê°€ ëë‚  ë•Œê¹Œì§€ í˜¸ì¶œìê°€ ìœ ì§€í•´ì•¼ í•œë‹¤.
+	// @param guard ì»¤ë„¥ì…˜ ê°€ë“œ
+	// @param iParamIndex 1ë¶€í„° ì‹œì‘í•˜ëŠ” íŒŒë¼ë¯¸í„° ë²ˆí˜¸
+	// @param value ë°”ì¸ë”©í•  ë¬¸ìì—´(Execute() ë•Œê¹Œì§€ ì‚´ì•„ìˆì–´ì•¼ í•¨)
+	// @return ë°”ì¸ë”© ì„±ê³µ ì—¬ë¶€
 	//***************************************************************************
 	inline bool BindString(OdbcConnGuard& guard, int32 iParamIndex, const _tstring& value)
 	{
@@ -64,17 +70,116 @@ namespace DbUtil
 	}
 
 	//***************************************************************************
-	// @brief NUL Á¾·á ¹®ÀÚ¿­ ¹öÆÛ¸¦ ÀÔ·Â ÆÄ¶ó¹ÌÅÍ·Î ¹ÙÀÎµùÇÑ´Ù.
-	// @param guard Ä¿³Ø¼Ç °¡µå
-	// @param iParamIndex 1ºÎÅÍ ½ÃÀÛÇÏ´Â ÆÄ¶ó¹ÌÅÍ ¹øÈ£
-	// @param ptszValue ¹ÙÀÎµùÇÒ ¹öÆÛ(Execute() ¶§±îÁö »ì¾ÆÀÖ¾î¾ß ÇÔ)
-	// @return ¹ÙÀÎµù ¼º°ø ¿©ºÎ
+	// @brief NUL ì¢…ë£Œ ë¬¸ìì—´ ë²„í¼ë¥¼ ì…ë ¥ íŒŒë¼ë¯¸í„°ë¡œ ë°”ì¸ë”©í•œë‹¤.
+	// @param guard ì»¤ë„¥ì…˜ ê°€ë“œ
+	// @param iParamIndex 1ë¶€í„° ì‹œì‘í•˜ëŠ” íŒŒë¼ë¯¸í„° ë²ˆí˜¸
+	// @param ptszValue ë°”ì¸ë”©í•  ë²„í¼(Execute() ë•Œê¹Œì§€ ì‚´ì•„ìˆì–´ì•¼ í•¨)
+	// @return ë°”ì¸ë”© ì„±ê³µ ì—¬ë¶€
 	//***************************************************************************
 	inline bool BindString(OdbcConnGuard& guard, int32 iParamIndex, const TCHAR* ptszValue)
 	{
 		thread_local SQLLEN ntsIndicator = SQL_NTS;
 		return guard->BindParamInput(iParamIndex, ptszValue, ntsIndicator);
 	}
+
+	using Row = std::vector<std::string>;
+
+	// í•œ ì»¬ëŸ¼ì„ ì½ëŠ” ë²„í¼(ë¬¸ì ìˆ˜). ë©”ì‹œì§€ ë³¸ë¬¸(ìµœëŒ€ kConvMessageBytes ë°”ì´íŠ¸)ë³´ë‹¤ ë„‰ë„‰í•˜ê²Œ
+	constexpr size_t kColumnChars = 1100;
+
+	// ì‹­ì§„ ë¬¸ìì—´ì„ ì •ìˆ˜ë¡œ(ë¹ˆ ë¬¸ìì—´ì€ 0).
+	inline int64 ToI64(const std::string& s)
+	{
+		return s.empty() ? 0 : static_cast<int64>(std::strtoll(s.c_str(), nullptr, 10));
+	}
+
+	//***************************************************************************
+	// @brief í•œ ì—°ê²° ìœ„ì—ì„œ ë¬¸ìì—´ íŒŒë¼ë¯¸í„° êµ¬ë¬¸ì„ ì‹¤í–‰í•˜ëŠ” ë„ìš°ë¯¸.
+	// @details ëª¨ë“  íŒŒë¼ë¯¸í„°ëŠ” ë¬¸ìì—´ì´ë‹¤(ì •ìˆ˜ë„ ì‹­ì§„ ë¬¸ìì—´ë¡œ ë°”ì¸ë”© â€” MySQLì´ ë¹„êµ/ì‚½ì… ì‹œ
+	//          ë³€í™˜í•œë‹¤). SELECTëŠ” ëª¨ë“  ì»¬ëŸ¼ì„ ë¬¸ìì—´ë¡œ ì½ëŠ”ë‹¤. ì–´ë–¤ ê²½ë¡œì—ì„œë„ êµ¬ë¬¸ì„
+	//          ì •ë¦¬(ClearStmt)í•œë‹¤.
+	//***************************************************************************
+	class CSql
+	{
+	public:
+		explicit CSql(OdbcConnGuard& guard) : _guard(guard) {}
+
+		bool Query(const TCHAR* sql, const std::vector<std::string>& params, int columns, std::vector<Row>& rows)
+		{
+			rows.clear();
+			std::vector<_tstring> bound;
+			if( !Prepare(sql, params, bound) )
+				return false;
+
+			std::vector<TCHAR> buffer(kColumnChars);
+			while( _guard->Fetch() )
+			{
+				Row row;
+				row.reserve(columns);
+				for( int column = 1; column <= columns; ++column )
+				{
+					std::fill(buffer.begin(), buffer.end(), TCHAR());
+					int32 bufferBytes = static_cast<int32>(buffer.size() * sizeof(TCHAR));
+					if( _guard->GetData(column, buffer.data(), bufferBytes) )
+						row.push_back(TStringToUtf8(_tstring(buffer.data())));
+					else
+						row.push_back(std::string());	// NULL/ë¹ˆ ê°’
+				}
+				rows.push_back(std::move(row));
+			}
+
+			_guard->ClearStmt();
+			return true;
+		}
+
+		bool Exec(const TCHAR* sql, const std::vector<std::string>& params, int64* affected = nullptr)
+		{
+			std::vector<_tstring> bound;
+			if( !Prepare(sql, params, bound) )
+				return false;
+
+			if( affected != nullptr )
+				*affected = _guard->RowCount();
+			_guard->ClearStmt();
+			return true;
+		}
+
+		bool LastInsertId(int64& id)
+		{
+			std::vector<Row> rows;
+			if( !Query(_T("SELECT LAST_INSERT_ID()"), {}, 1, rows) || rows.empty() )
+				return false;
+			id = ToI64(rows.front()[0]);
+			return true;
+		}
+
+		bool Exists(const TCHAR* sql, const std::vector<std::string>& params, bool& exists)
+		{
+			std::vector<Row> rows;
+			if( !Query(sql, params, 1, rows) )
+				return false;
+			exists = !rows.empty();
+			return true;
+		}
+
+	private:
+		// ì¤€ë¹„ + ë°”ì¸ë”© + ì‹¤í–‰ê¹Œì§€. ì‹¤íŒ¨í•˜ë©´ êµ¬ë¬¸ì„ ì •ë¦¬í•˜ê³  false.
+		bool Prepare(const TCHAR* sql, const std::vector<std::string>& params, std::vector<_tstring>& bound)
+		{
+			bound.reserve(params.size());	// ë°”ì¸ë”©í•œ ë¬¸ìì—´ì˜ ì£¼ì†Œê°€ Execute()ê¹Œì§€ ë³€í•˜ë©´ ì•ˆ ëœë‹¤
+			for( const std::string& param : params )
+				bound.push_back(Utf8ToTString(param));
+
+			if( !DbUtil::PrepareOrClear(_guard, sql) )
+				return false;
+			for( size_t i = 0; i < bound.size(); ++i )
+				DbUtil::BindString(_guard, static_cast<int32>(i + 1), bound[i]);
+			return DbUtil::ExecuteOrClear(_guard);
+		}
+
+	private:
+		OdbcConnGuard& _guard;
+	};
 }
 
 #endif // ndef UC_DBHANDLERUTIL_H

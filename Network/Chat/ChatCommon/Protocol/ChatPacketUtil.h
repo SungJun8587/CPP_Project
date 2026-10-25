@@ -13,8 +13,9 @@
 #ifndef UC_CHATPACKETUTIL_H
 #define UC_CHATPACKETUTIL_H
 
-#include <Util/FixedBufUtil.h>
 #include "ChatPacketTypes.h"
+
+#include <Util/FixedBufUtil.h>
 
 #include <array>
 #include <cstring>
@@ -99,6 +100,45 @@ inline std::string PublicIdToHex(const BYTE* raw)
 inline bool HexToPublicId(std::string_view hex, PublicId& out)
 {
 	return FixedBuf::FromHex(hex, out);
+}
+
+//***************************************************************************
+// @brief FixedBuf::CopyStr와 같되, 버퍼가 작아 잘려야 할 때 UTF-8 문자 중간이 아니라
+//        문자 경계에서 자른다(깨진 문자가 남지 않는다). 남는 버퍼는 0으로 채운다.
+// @details FixedBuf::CopyStr는 바이트 단위로 자르므로 닉네임/방 이름/메시지처럼 한글이
+//          들어갈 수 있는 필드에는 이 함수를 쓴다. ASCII만 있으면 결과가 같다.
+// @param dst 복사 대상 버퍼
+// @param dstSize dst의 전체 크기(NUL 포함 바이트 수)
+// @param src 복사할 UTF-8 문자열
+// @return 전부 복사됐으면 true, 잘렸으면 false.
+//***************************************************************************
+inline bool CopyStrUtf8(char* dst, size_t dstSize, std::string_view src) noexcept
+{
+	if( dstSize == 0 )
+		return src.empty();
+
+	size_t len = (src.size() < dstSize - 1) ? src.size() : dstSize - 1;
+	if( len < src.size() )
+	{
+		// 잘리는 지점의 첫 바이트가 연속 바이트(10xxxxxx)면 문자 중간이므로 그 문자의 시작까지 물린다.
+		while( len > 0 && (static_cast<unsigned char>(src[len]) & 0xC0) == 0x80 )
+			--len;
+	}
+
+	if( len > 0 )
+		::memcpy(dst, src.data(), len);
+	::memset(dst + len, 0, dstSize - len);
+	return len == src.size();
+}
+
+//***************************************************************************
+// @brief char[N] 버전(CopyStrUtf8(char*, size_t, string_view)의 배열 편의 함수).
+//***************************************************************************
+template<size_t N>
+bool CopyStrUtf8(char(&dst)[N], std::string_view src) noexcept
+{
+	static_assert(N > 0, "CopyStrUtf8: zero-length buffer");
+	return CopyStrUtf8(dst, N, src);
 }
 
 #endif // ndef UC_CHATPACKETUTIL_H

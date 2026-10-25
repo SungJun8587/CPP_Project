@@ -161,7 +161,7 @@ namespace ChatApp
             _client.FriendRequestResultReceived += OnFriendRequestResult;
             _client.FriendRespondResultReceived += OnFriendRespondResult;
             _client.FriendRemoveResultReceived += OnFriendRemoveResult;
-            _client.FriendListItemReceived += OnFriendListItem;
+            _client.FriendListBatchReceived += OnFriendListBatch;
             _client.FriendListEndReceived += OnFriendListEnd;
             _client.FriendPendingItemReceived += OnFriendPendingItem;
             _client.FriendPendingEndReceived += OnFriendPendingEnd;
@@ -189,7 +189,7 @@ namespace ChatApp
                 _client.FriendRequestResultReceived -= OnFriendRequestResult;
                 _client.FriendRespondResultReceived -= OnFriendRespondResult;
                 _client.FriendRemoveResultReceived -= OnFriendRemoveResult;
-                _client.FriendListItemReceived -= OnFriendListItem;
+                _client.FriendListBatchReceived -= OnFriendListBatch;
                 _client.FriendListEndReceived -= OnFriendListEnd;
                 _client.FriendPendingItemReceived -= OnFriendPendingItem;
                 _client.FriendPendingEndReceived -= OnFriendPendingEnd;
@@ -956,18 +956,21 @@ namespace ChatApp
             });
         }
 
-        private void OnFriendListItem(FriendItemData data)
+        private void OnFriendListBatch(List<FriendItemData> batch)
         {
             Post(() =>
             {
-                _incomingFriends.Add(new PersonEntry
+                foreach (FriendItemData data in batch)
                 {
-                    PublicId = data.PublicId,
-                    Key = Key(data.PublicId),
-                    Nickname = data.Nickname,
-                    ProfileImageUrl = data.ProfileImageUrl,
-                    Online = data.Online,
-                });
+                    _incomingFriends.Add(new PersonEntry
+                    {
+                        PublicId = data.PublicId,
+                        Key = Key(data.PublicId),
+                        Nickname = data.Nickname,
+                        ProfileImageUrl = data.ProfileImageUrl,
+                        Online = data.Online,
+                    });
+                }
             });
         }
 

@@ -65,9 +65,9 @@ using namespace std;
 #include <Network/HTTP/HttpParseUtil.h>
 #include <Network/HTTP/HttpRequestParser.h>
 
-#include "../Common/Protocol/ChatPacketTypes.h"
-#include "../Common/Protocol/ChatPacket.h"
-#include "../Common/Protocol/ChatPacketUtil.h"
+#include "../ChatCommon/Protocol/ChatPacketTypes.h"
+#include "../ChatCommon/Protocol/ChatPacket.h"
+#include "../ChatCommon/Protocol/ChatPacketUtil.h"
 #include "ChatStressConfig.h"
 #include "ChatStressStats.h"
 #include "ChatStressReporter.h"

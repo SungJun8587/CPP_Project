@@ -53,7 +53,7 @@ namespace ChatApp
         DeleteProfileImageRes = 25,
 
         // [추가] 채팅 메시지 삭제 — 서버 쪽 ChatPacketTypes.h와 번호를
-        // 정확히 맞춰야 한다(DeleteChatMessageHandler.cpp 참고).
+        // 정확히 맞춰야 한다(ChatMessageHandler.cpp 참고).
         DeleteChatMessageReq = 26,      // Client -> Server
         DeleteChatMessageRes = 27,      // Server -> Client, 요청자에게만
         DeleteChatMessageNotify = 28,   // Server -> Client, 그 메시지가 원래 브로드캐스트된 방 전체에(요청자 포함)
@@ -95,7 +95,7 @@ namespace ChatApp
         FriendRemoveReq = 54,               // Client -> Server, 친구 삭제
         FriendRemoveRes = 55,
         FriendListReq = 56,                 // Client -> Server, 친구 목록 전체 조회
-        FriendListItemRes = 57,
+        FriendListBatchRes = 57,            // Server -> Client, 친구 목록 항목 묶음(한 패킷에 최대 20개)
         FriendListEndRes = 58,
         FriendPendingListReq = 59,          // Client -> Server, 받은 요청 목록 한 페이지 조회
         FriendPendingItemRes = 60,
@@ -180,6 +180,7 @@ namespace ChatApp
         public const int GeneratedNicknameBytes = 32;   // NicknameGenerateResPacket::nickname — kNicknameBytes와 별개 상수라 혼동 주의
 
         public const int ProfileImageUrlBytes = 256;    // kProfileImageUrlBytes
+        public const int MaxFriendsPerBatch = 20;       // kMaxFriendsPerBatch — FriendListBatchRes 한 패킷의 최대 항목 수
 
         public const int RoomNameBytes = 100;    // kRoomNameBytes
 

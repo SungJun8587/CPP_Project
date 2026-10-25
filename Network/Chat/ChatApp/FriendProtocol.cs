@@ -8,6 +8,7 @@
 //***************************************************************************
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace ChatApp
@@ -37,7 +38,7 @@ namespace ChatApp
     //***************************************************************************
     public static class FriendConstants
     {
-        public const int MaxFriends = 200;
+        public const int MaxFriends = 3000;
         public const int MaxPendingPageSize = 50;
     }
 
@@ -282,18 +283,31 @@ namespace ChatApp
             }
         }
 
-        public static FriendItemData ParseFriendListItemRes(byte[] buffer)
+        //***************************************************************************
+        // @brief FriendListBatchRes — count(1바이트) 뒤에 항목이 count개 이어지는 가변 길이 패킷.
+        //        버퍼에 실제로 들어 있는 항목까지만 읽는다(count가 과장돼도 범위를 넘지 않는다).
+        //***************************************************************************
+        public static List<FriendItemData> ParseFriendListBatchRes(byte[] buffer)
         {
+            const int entryBytes = ProtocolConstants.PublicIdBytes + ProtocolConstants.NicknameBytes
+                                   + ProtocolConstants.ProfileImageUrlBytes + 1;
+
+            var items = new List<FriendItemData>();
             using (var br = new BinaryReader(new MemoryStream(buffer)))
             {
                 br.ReadUInt16();
                 br.ReadUInt16();
-                byte[] publicId = br.ReadBytes(ProtocolConstants.PublicIdBytes);
-                string nickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
-                string profileImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
-                bool online = br.ReadByte() != 0;
-                return new FriendItemData { PublicId = publicId, Nickname = nickname, ProfileImageUrl = profileImageUrl, Online = online };
+                int count = Math.Min((int)br.ReadByte(), ProtocolConstants.MaxFriendsPerBatch);
+                for (int i = 0; i < count && buffer.Length - br.BaseStream.Position >= entryBytes; ++i)
+                {
+                    byte[] publicId = br.ReadBytes(ProtocolConstants.PublicIdBytes);
+                    string nickname = Utf8FromFixed(br.ReadBytes(ProtocolConstants.NicknameBytes));
+                    string profileImageUrl = Utf8FromFixed(br.ReadBytes(ProtocolConstants.ProfileImageUrlBytes));
+                    bool online = br.ReadByte() != 0;
+                    items.Add(new FriendItemData { PublicId = publicId, Nickname = nickname, ProfileImageUrl = profileImageUrl, Online = online });
+                }
             }
+            return items;
         }
 
         //***************************************************************************

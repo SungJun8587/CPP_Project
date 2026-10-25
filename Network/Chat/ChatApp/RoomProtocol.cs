@@ -28,6 +28,7 @@ namespace ChatApp
         RoomLimitExceeded = 4,
         InvalidName = 5,
         DbError = 6,
+        TooFast = 7,
     }
 
     // ListRoomsReqPacket::scope — 서버 ChatPacketTypes.h::ERoomListScope와
@@ -187,7 +188,7 @@ namespace ChatApp
         public int RoomUserCount;   // Success==true일 때만 유효
 
         // [추가] 성공했고 로비가 아니면 서버가 이 방의 지금 이름/방장/
-        // 이미지를 같이 실어 보낸다(RoomEnterHandler.cpp가
+        // 이미지를 같이 실어 보낸다(ChatRoomHandler.cpp가
         // CChatServerMain::RequestGetRoomInfo()로 채움) — 별도로 방 목록
         // 캐시를 참조하거나 그 캐시가 준비될 때까지 기다릴 필요가 없다.
         // 로비 입장이거나 실패면 전부 빈 문자열.

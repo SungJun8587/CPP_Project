@@ -5,7 +5,7 @@
 //***************************************************************************
 
 #include "pch.h"
-#include "../Common/ImageRef.h"
+#include "../ChatCommon/ImageRef.h"
 #include "FileServerRouter.h"
 
 CFileServerRouter::CFileServerRouter(

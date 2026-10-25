@@ -28,12 +28,18 @@ void CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session
 		return;
 
 	const std::array<BYTE, kPublicIdBytes> publicId = session->GetPublicId();
+	bool firstSession = false;
 	{
 		std::lock_guard<std::mutex> lock(_onlineMutex);
-		_onlineSessions[PublicIdToHex(publicId)] = session;
+		auto& sessions = _onlineSessions[PublicIdToHex(publicId)];
+		sessions.erase(std::remove_if(sessions.begin(), sessions.end(),
+			[](const std::weak_ptr<CChatSession>& w) { return w.expired(); }), sessions.end());
+		firstSession = sessions.empty();
+		sessions.push_back(session);
 	}
 
-	NotifyFriendPresence(publicId, true);
+	if( firstSession )
+		NotifyFriendPresence(publicId, true);	// 계정의 첫 세션일 때만 알린다
 
 	// 이 계정이 차단한 사용자 목록을 세션에 올려둔다 — 채팅 수신 필터(BroadcastChatToRoom)가 쓴다.
 	// 로드가 끝나기 전의 극히 짧은 구간에는 필터가 비어 있어 차단한 사용자의 메시지가 한두 개 전달될 수 있다.
@@ -55,11 +61,12 @@ void CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session
 //***************************************************************************
 // @brief 세션을 레지스트리에서 제거하고, 같은 계정의 다른 세션이 남아있지 않으면 친구들에게 종료를 알립니다.
 // @param session 종료되는 세션 (비교 용도로만 쓰고 소유하지 않음 — OnDisconnected 안에서 호출됨)
+// @return 같은 계정의 다른 세션이 아직 접속 중이면 true
 //***************************************************************************
-void CChatServerMain::OnFriendLogout(const CChatSession* session)
+bool CChatServerMain::OnFriendLogout(const CChatSession* session)
 {
 	if( session == nullptr )
-		return;
+		return false;
 
 	const std::array<BYTE, kPublicIdBytes> publicId = session->GetPublicId();
 	const std::string key = PublicIdToHex(publicId);
@@ -70,16 +77,27 @@ void CChatServerMain::OnFriendLogout(const CChatSession* session)
 		auto it = _onlineSessions.find(key);
 		if( it != _onlineSessions.end() )
 		{
-			auto current = it->second.lock();
-			if( current == nullptr || current.get() == session )
+			auto& sessions = it->second;
+			sessions.erase(std::remove_if(sessions.begin(), sessions.end(),
+				[session](const std::weak_ptr<CChatSession>& w)
+				{
+					auto s = w.lock();
+					return s == nullptr || s.get() == session;
+				}), sessions.end());
+
+			stillOnline = !sessions.empty();	// 같은 계정의 다른 세션이 남아 있음(다중 접속)
+			if( !stillOnline )
 				_onlineSessions.erase(it);
-			else
-				stillOnline = true;	// 중복 로그인으로 다른 세션이 이 계정을 차지하고 있음
 		}
 	}
 
 	if( !stillOnline )
-		NotifyFriendPresence(publicId, false);
+	{
+		NotifyFriendPresence(publicId, false);	// 캐시된 친구 목록을 쓰므로 항목을 지우기 전에 호출한다
+		InvalidateFriendCache(publicId);
+	}
+
+	return stillOnline;
 }
 
 //***************************************************************************
@@ -89,7 +107,48 @@ std::shared_ptr<CChatSession> CChatServerMain::FindOnlineSession(const std::arra
 {
 	std::lock_guard<std::mutex> lock(_onlineMutex);
 	auto it = _onlineSessions.find(PublicIdToHex(publicId));
-	return (it != _onlineSessions.end()) ? it->second.lock() : nullptr;
+	if( it == _onlineSessions.end() )
+		return nullptr;
+
+	// 가장 최근에 로그인한 살아있는 세션을 돌려준다.
+	for( auto rit = it->second.rbegin(); rit != it->second.rend(); ++rit )
+	{
+		if( auto s = rit->lock() )
+			return s;
+	}
+	return nullptr;
+}
+
+//***************************************************************************
+// @brief 여러 publicId의 접속 세션을 락 한 번으로 찾습니다.
+// @details 키(16진 문자열) 생성은 락 밖에서 끝내서, 락을 잡는 시간은 해시 조회에만 쓴다.
+//***************************************************************************
+std::vector<std::shared_ptr<CChatSession>> CChatServerMain::FindOnlineSessions(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids) const
+{
+	std::vector<std::string> keys;
+	keys.reserve(ids.size());
+	for( const auto& id : ids )
+		keys.push_back(PublicIdToHex(id));
+
+	std::vector<std::shared_ptr<CChatSession>> sessions(ids.size());
+	std::lock_guard<std::mutex> lock(_onlineMutex);
+	for( size_t i = 0; i < keys.size(); ++i )
+	{
+		auto it = _onlineSessions.find(keys[i]);
+		if( it == _onlineSessions.end() )
+			continue;
+
+		// 가장 최근에 로그인한 살아있는 세션.
+		for( auto rit = it->second.rbegin(); rit != it->second.rend(); ++rit )
+		{
+			if( auto s = rit->lock() )
+			{
+				sessions[i] = std::move(s);
+				break;
+			}
+		}
+	}
+	return sessions;
 }
 
 //***************************************************************************
@@ -98,23 +157,79 @@ std::shared_ptr<CChatSession> CChatServerMain::FindOnlineSession(const std::arra
 //***************************************************************************
 void CChatServerMain::NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online)
 {
-	RequestFriendOp(publicId, EFriendOp::ListFriends, nullptr, std::string(),
-		[this, publicId, online](const SFriendOpResult& res)
+	GetFriendIds(publicId,
+		[this, publicId, online](const FriendIdList& friendIds)
 		{
-			if( res.result != EFriendResult::Ok )
-				return;
-
 			FriendStatusNotifyPacket notify{};
 			InitPacket(notify, EChatPacketType::FriendStatusNotify);
 			CopyPublicId(notify.publicId, publicId);
 			notify.online = online ? 1 : 0;
 
-			for( const SFriendEntry& friendEntry : res.entries )
+			for( const auto& friendSession : FindOnlineSessions(friendIds) )
 			{
-				if( auto friendSession = FindOnlineSession(friendEntry.publicId) )
+				if( friendSession != nullptr )
 					SendPacket(friendSession, notify);
 			}
 		});
+}
+
+//***************************************************************************
+// @brief 친구 id 목록을 캐시에서 돌려주고, 없으면 DB에서 읽어 캐시에 채운 뒤 돌려줍니다.
+//***************************************************************************
+void CChatServerMain::GetFriendIds(const std::array<BYTE, kPublicIdBytes>& publicId, std::function<void(const FriendIdList& ids)> onReady)
+{
+	const std::string key = PublicIdToHex(publicId);
+
+	uint64_t gen = 0;
+	std::shared_ptr<const FriendIdList> cached;
+	{
+		std::lock_guard<std::mutex> lock(_friendCacheMutex);
+		auto it = _friendCache.find(key);
+		if( it != _friendCache.end() )
+			cached = it->second;
+		else
+			gen = _friendCacheGen.load();
+	}
+
+	// 콜백은 락 밖에서 호출한다(목록은 공유 포인터로 붙잡고 있으므로 그 사이 무효화돼도 안전하다).
+	if( cached != nullptr )
+	{
+		onReady(*cached);
+		return;
+	}
+
+	RequestFriendOp(publicId, EFriendOp::ListFriends, nullptr, std::string(),
+		[this, publicId, key, gen, onReady](const SFriendOpResult& res)
+		{
+			if( res.result != EFriendResult::Ok )
+				return;
+
+			auto ids = std::make_shared<FriendIdList>();
+			ids->reserve(res.entries.size());
+			for( const SFriendEntry& entry : res.entries )
+				ids->push_back(entry.publicId);
+
+			{
+				std::lock_guard<std::mutex> lock(_friendCacheMutex);
+				// 접속 중인 계정만, 그리고 조회를 시작한 뒤 무효화가 없었을 때만 캐시에 넣는다.
+				if( gen == _friendCacheGen.load() && IsUserOnline(publicId) )
+					_friendCache[key] = ids;
+			}
+
+			onReady(*ids);
+		});
+}
+
+//***************************************************************************
+// @brief 계정의 친구 id 캐시 항목을 지우고 세대를 올려 진행 중인 조회 결과가 캐시에 들어가지 못하게 합니다.
+//***************************************************************************
+void CChatServerMain::InvalidateFriendCache(const std::array<BYTE, kPublicIdBytes>& publicId)
+{
+	const std::string key = PublicIdToHex(publicId);
+
+	std::lock_guard<std::mutex> lock(_friendCacheMutex);
+	_friendCache.erase(key);
+	_friendCacheGen.fetch_add(1);
 }
 
 //***************************************************************************
@@ -138,10 +253,26 @@ void CChatServerMain::RequestFriendOp(
 {
 	CJobQueueRef jobQueue = _jobQueue;
 
-	auto dispatchToJobQueue = [this, jobQueue, onComplete](const SFriendOpResult& result)
+	const bool hasTarget = (targetId != nullptr);
+	const std::array<BYTE, kPublicIdBytes> requestedTarget = hasTarget ? *targetId : std::array<BYTE, kPublicIdBytes>{};
+	const std::array<BYTE, kPublicIdBytes> actorId = actor;
+
+	auto dispatchToJobQueue = [this, jobQueue, onComplete, op, hasTarget, requestedTarget, actorId](const SFriendOpResult& result)
 		{
 			if( jobQueue == nullptr )
 				return;
+
+			// 친구 관계가 바뀐 연산이 성공했으면 양쪽 계정의 친구 id 캐시를 무효화한다
+			// (콜백보다 먼저 — 콜백 안의 후속 조회가 오래된 캐시를 보지 않도록).
+			if( result.result == EFriendResult::Ok &&
+				(op == EFriendOp::Accept || op == EFriendOp::Remove || op == EFriendOp::Block ||
+					(op == EFriendOp::SendRequest && result.autoAccepted)) )
+			{
+				InvalidateFriendCache(actorId);
+				if( hasTarget )
+					InvalidateFriendCache(requestedTarget);
+				InvalidateFriendCache(result.target.publicId);
+			}
 
 			// image_ref가 상대 경로로 저장돼 있을 수 있으므로 표시용 URL로 복원한다
 			// (RequestListProfileImages()와 동일한 이유).
@@ -167,7 +298,7 @@ void CChatServerMain::RequestFriendOp(
 			}
 			else
 			{
-				FixedBuf::CopyStr(req->targetNickname, targetNickname);
+				CopyStrUtf8(req->targetNickname, targetNickname);
 			}
 			req->onComplete = dispatchToJobQueue;
 		});
@@ -195,18 +326,15 @@ void CChatServerMain::NotifyFriendProfileChanged(const std::shared_ptr<CChatSess
 	FriendProfileChangedNotifyPacket notify{};
 	InitPacket(notify, EChatPacketType::FriendProfileChangedNotify);
 	CopyPublicId(notify.publicId, publicId);
-	FixedBuf::CopyStr(notify.nickname, session->GetNickname());
-	FixedBuf::CopyStr(notify.profileImageUrl, session->GetProfileImageUrl());
+	CopyStrUtf8(notify.nickname, session->GetNickname());
+	CopyStrUtf8(notify.profileImageUrl, session->GetProfileImageUrl());
 
-	RequestFriendOp(publicId, EFriendOp::ListFriends, nullptr, std::string(),
-		[this, notify](const SFriendOpResult& res)
+	GetFriendIds(publicId,
+		[this, notify](const FriendIdList& friendIds)
 		{
-			if( res.result != EFriendResult::Ok )
-				return;
-
-			for( const SFriendEntry& friendEntry : res.entries )
+			for( const auto& friendSession : FindOnlineSessions(friendIds) )
 			{
-				if( auto friendSession = FindOnlineSession(friendEntry.publicId) )
+				if( friendSession != nullptr )
 					SendPacket(friendSession, notify);
 			}
 		});

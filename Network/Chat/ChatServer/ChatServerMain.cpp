@@ -9,6 +9,9 @@
 #include "ChatSession.h"
 #include "DbServiceManager.h"
 
+#include <chrono>
+#include <algorithm>
+
 //***************************************************************************
 // @brief 소멸자 — 아직 실행 중이면 Stop()으로 정리합니다.
 //***************************************************************************
@@ -32,6 +35,11 @@ bool CChatServerMain::Start(
 	_serverGroupId = std::move(serverGroupId);
 	_serverChannelId = std::move(serverChannelId);
 
+	// 메시지 id를 (현재 시각 ms << 10)부터 발급한다 — 재시작 후에도 id가 단조 증가해
+	// Redis에 남아 있는 방 대화 기록(RoomChatOrder/RoomChatMsg)의 id와 겹치지 않는다.
+	_nextMessageId.store(
+		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << 10);
+
 	// 1. IOCP 코어 + JobQueue(Redis/DB 콜백 디스패치용) 준비
 	_iocpCore = MakeShared<CIocpCore>();
 	_jobQueue = std::make_shared<CJobQueue>();
@@ -54,12 +62,10 @@ bool CChatServerMain::Start(
 	if( !MEMBER_DB_ASYNC.StartService(dbNodeVec, dbMaxThreadCnt) )
 		return false;
 
-	// [추가] DB(rooms 테이블)에 저장된 방 목록을 인메모리 레지스트리로
-	// 읽어들인다 — 비동기라 이 시점엔 완료를 기다리지 않는다(완료 전
-	// 짧은 창에서는 RoomEnterReq가 그 방들을 "존재하지 않음"으로 볼 수
-	// 있으나, DB 워커가 보통 매우 빨리 처리하므로 실무 영향은 미미하다고
-	// 판단). 구현은 ChatServerMainRoom.cpp 참고.
-	LoadRoomRegistryFromDb();
+	// DB(rooms 테이블)에 저장된 방 목록을 인메모리 레지스트리로 읽어들인다. 세션을 받기 전에
+	// 완료를 기다려, 기존 방이 "존재하지 않음"으로 보이는 구간이 없게 한다. 구현은 ChatServerMainRoom.cpp 참고.
+	if( !LoadRoomRegistryFromDb() )
+		return false;
 
 	// 3. IOCP 서버 서비스 시작 — 세션 팩토리가 CChatSession을 생성하며 this를 주입
 	SessionFactory factory = [this]() -> CSessionRef
@@ -101,6 +107,10 @@ bool CChatServerMain::Start(
 		return false;
 	}
 
+	// 로그인 키(User:{id})도 하트비트와 같은 TTL/주기로 갱신한다 — 서버가 비정상 종료하면
+	// 하트비트 키와 함께 로그인 키도 TTL 안에 사라진다.
+	StartMaintenance(heartbeatTtlSec, heartbeatIntervalSec);
+
 	return true;
 }
 
@@ -112,6 +122,8 @@ bool CChatServerMain::Start(
 //***************************************************************************
 void CChatServerMain::Stop()
 {
+	StopMaintenance();
+
 	if( _heartbeat )
 	{
 		_heartbeat->Stop();
@@ -147,43 +159,198 @@ std::string CChatServerMain::BuildUserKey(const std::array<BYTE, kPublicIdBytes>
 
 //***************************************************************************
 // @brief 유저 로그인 상태를 Redis에 기록합니다.
-// @details [알려진 한계] TTL을 걸지 않는다 — 로그인 상태는 정상적으로는
-//          OnUserLogout()의 DEL로만 지워진다. 서버가 크래시(정상 종료 경로를
-//          못 타는 경우)하면 이 키가 "online"으로 영구히 남을 수 있다.
+// @details 로그인 키에는 TTL(하트비트 TTL과 동일)이 걸리고, 접속 중인 동안에는
+//          RefreshLoginKeys()가 하트비트 주기로 갱신한다. 정상적으로는 OnUserLogout()의
+//          DEL로 지워지고, 서버가 비정상 종료해 DEL이 실행되지 못하면 TTL로 저절로 사라진다.
+//          HSET과 EXPIRE는 하나의 EVAL로 보내 키가 TTL 없이 남는 순간이 없게 한다.
 //***************************************************************************
 void CChatServerMain::OnUserLogin(const std::array<BYTE, kPublicIdBytes>& publicId)
 {
-	// [추가] 인메모리 온라인 집합에도 등록한다 — Redis 기록(아래)은 비동기라
-	// "지금 이 순간 온라인인지" 즉답이 필요한 요청(방 멤버 이력 조회 등)에는
-	// 못 쓴다.
-	{
-		std::lock_guard<std::mutex> lock(_onlineMutex);
-		_onlinePublicIdsHex.insert(PublicIdToHex(publicId));
-	}
-
 	if( _redisService == nullptr )
 		return;
 
+	static const std::string kLoginScript =
+		"redis.call('HSET', KEYS[1], 'serverGroupId', ARGV[1], 'serverChannelId', ARGV[2], 'status', 'online')\n"
+		"if tonumber(ARGV[3]) > 0 then redis.call('EXPIRE', KEYS[1], ARGV[3]) end\n"
+		"return 1";
+
 	CVector<std::string> args;
-	args.push_back("HSET");
+	args.push_back("EVAL");
+	args.push_back(kLoginScript);
+	args.push_back("1");
 	args.push_back(BuildUserKey(publicId));
-	args.push_back("serverGroupId");	args.push_back(_serverGroupId);
-	args.push_back("serverChannelId");	args.push_back(_serverChannelId);
-	args.push_back("status");		args.push_back("online");
+	args.push_back(_serverGroupId);
+	args.push_back(_serverChannelId);
+	args.push_back(std::to_string(_loginKeyTtlSec));
 
 	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
 }
 
 //***************************************************************************
-// @brief 유저 로그인 상태를 Redis 및 인메모리 온라인 집합에서 제거합니다.
+// @brief 유지보수 스레드를 시작합니다.
+// @param ttlSec 로그인 키 TTL(초) — 서버 하트비트 TTL과 같은 값. 0 이하면 로그인 키 갱신은 하지 않는다.
+// @param intervalSec 로그인 키 갱신 주기(초) — 서버 하트비트 주기와 같은 값. TTL 이상이면 TTL의 1/3로 보정한다.
+//***************************************************************************
+void CChatServerMain::StartMaintenance(int32 ttlSec, int32 intervalSec)
+{
+	_loginKeyTtlSec = (ttlSec > 0) ? ttlSec : 0;
+	if( _loginKeyTtlSec > 0 && (intervalSec <= 0 || intervalSec >= _loginKeyTtlSec) )
+		intervalSec = (std::max)(1, _loginKeyTtlSec / 3);
+
+	{
+		std::lock_guard<std::mutex> lock(_maintenanceMutex);
+		_maintenanceStop = false;
+	}
+	_maintenanceThread = std::thread([this, intervalSec]() { MaintenanceLoop(intervalSec); });
+}
+
+//***************************************************************************
+// @brief 유지보수 스레드를 멈추고 합류합니다(실행 중이 아니면 아무것도 하지 않음). 남은 지연 작업은 버린다.
+//***************************************************************************
+void CChatServerMain::StopMaintenance()
+{
+	{
+		std::lock_guard<std::mutex> lock(_maintenanceMutex);
+		_maintenanceStop = true;
+	}
+	_maintenanceCv.notify_all();
+
+	if( _maintenanceThread.joinable() )
+		_maintenanceThread.join();
+
+	std::lock_guard<std::mutex> lock(_maintenanceMutex);
+	_delayedTasks.clear();
+	_dirtyRoomCounts.clear();
+}
+
+void CChatServerMain::MaintenanceLoop(int32 loginKeyIntervalSec)
+{
+	using Clock = std::chrono::steady_clock;
+	auto nextLoginKeyRefresh = Clock::now() + std::chrono::seconds((std::max)(1, loginKeyIntervalSec));
+
+	std::unique_lock<std::mutex> lock(_maintenanceMutex);
+	while( !_maintenanceStop )
+	{
+		if( _maintenanceCv.wait_for(lock, std::chrono::milliseconds(kMaintenanceTickMs), [this]() { return _maintenanceStop; }) )
+			break;
+
+		lock.unlock();
+		FlushRoomUserCounts();
+		RunDueDelayedTasks();
+		if( _loginKeyTtlSec > 0 && Clock::now() >= nextLoginKeyRefresh )
+		{
+			RefreshLoginKeys();
+			nextLoginKeyRefresh = Clock::now() + std::chrono::seconds((std::max)(1, loginKeyIntervalSec));
+		}
+		lock.lock();
+	}
+}
+
+//***************************************************************************
+// @brief 표시된 방들의 현재 인원수를 각 방 멤버에게 한 번씩 알립니다.
+//***************************************************************************
+void CChatServerMain::FlushRoomUserCounts()
+{
+	std::unordered_set<int32> rooms;
+	{
+		std::lock_guard<std::mutex> lock(_maintenanceMutex);
+		if( _dirtyRoomCounts.empty() )
+			return;
+		rooms.swap(_dirtyRoomCounts);
+	}
+
+	for( int32 roomId : rooms )
+	{
+		RoomUserCountNotifyPacket notify{};
+		InitPacket(notify, EChatPacketType::RoomUserCountNotify);
+		notify.roomId = roomId;
+		notify.userCount = GetRoomUserCount(roomId);
+		BroadcastToRoom(roomId, &notify, notify.size);
+	}
+}
+
+void CChatServerMain::ScheduleDelayed(int32 delayMs, std::function<void()> task)
+{
+	if( !task )
+		return;
+
+	const auto due = std::chrono::steady_clock::now() + std::chrono::milliseconds((std::max)(0, delayMs));
+	std::lock_guard<std::mutex> lock(_maintenanceMutex);
+	_delayedTasks.emplace(due, std::move(task));
+}
+
+void CChatServerMain::RunDueDelayedTasks()
+{
+	const auto now = std::chrono::steady_clock::now();
+	std::vector<std::function<void()>> due;
+	{
+		std::lock_guard<std::mutex> lock(_maintenanceMutex);
+		auto end = _delayedTasks.upper_bound(now);
+		for( auto it = _delayedTasks.begin(); it != end; ++it )
+			due.push_back(std::move(it->second));
+		_delayedTasks.erase(_delayedTasks.begin(), end);
+	}
+	for( auto& task : due )
+		task();
+}
+
+//***************************************************************************
+// @brief 접속 중인 모든 계정의 로그인 키 TTL을 갱신합니다.
+// @details 한 번에 최대 kBatch명씩 EVAL 하나로 처리한다. 키가 없으면(Redis 재시작 등) 다시 만든다.
+//          스크립트의 "User:" 접두사는 BuildUserKey()와 같아야 한다.
+//***************************************************************************
+void CChatServerMain::RefreshLoginKeys()
+{
+	if( _redisService == nullptr || _loginKeyTtlSec <= 0 )
+		return;
+
+	std::vector<std::string> ids;
+	{
+		std::lock_guard<std::mutex> lock(_onlineMutex);
+		ids.reserve(_onlineSessions.size());
+		for( const auto& kv : _onlineSessions )
+		{
+			if( std::any_of(kv.second.begin(), kv.second.end(), [](const std::weak_ptr<CChatSession>& w) { return !w.expired(); }) )
+				ids.push_back(kv.first);
+		}
+	}
+
+	static const std::string kRefreshScript =
+		"for i = 4, #ARGV do\n"
+		"  local key = 'User:' .. ARGV[i]\n"
+		"  if redis.call('EXPIRE', key, ARGV[3]) == 0 then\n"
+		"    redis.call('HSET', key, 'serverGroupId', ARGV[1], 'serverChannelId', ARGV[2], 'status', 'online')\n"
+		"    redis.call('EXPIRE', key, ARGV[3])\n"
+		"  end\n"
+		"end\n"
+		"return 1";
+
+	constexpr size_t kBatch = 200;
+	for( size_t begin = 0; begin < ids.size(); begin += kBatch )
+	{
+		const size_t end = (std::min)(begin + kBatch, ids.size());
+
+		CVector<std::string> args;
+		args.push_back("EVAL");
+		args.push_back(kRefreshScript);
+		args.push_back("0");
+		args.push_back(_serverGroupId);
+		args.push_back(_serverChannelId);
+		args.push_back(std::to_string(_loginKeyTtlSec));
+		for( size_t i = begin; i < end; ++i )
+			args.push_back(ids[i]);
+
+		_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+	}
+}
+
+//***************************************************************************
+// @brief 유저 로그인 상태를 Redis에서 제거합니다.
+// @details 같은 계정의 다른 세션이 남아 있는지는 호출부(CChatSession::OnDisconnected)가
+//          OnFriendLogout()의 반환값으로 판단해 마지막 세션일 때만 호출한다.
 //***************************************************************************
 void CChatServerMain::OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publicId)
 {
-	{
-		std::lock_guard<std::mutex> lock(_onlineMutex);
-		_onlinePublicIdsHex.erase(PublicIdToHex(publicId));
-	}
-
 	if( _redisService == nullptr )
 		return;
 
@@ -200,7 +367,9 @@ void CChatServerMain::OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publi
 bool CChatServerMain::IsUserOnline(const std::array<BYTE, kPublicIdBytes>& publicId) const
 {
 	std::lock_guard<std::mutex> lock(_onlineMutex);
-	return _onlinePublicIdsHex.find(PublicIdToHex(publicId)) != _onlinePublicIdsHex.end();
+	auto it = _onlineSessions.find(PublicIdToHex(publicId));
+	return it != _onlineSessions.end() &&
+		std::any_of(it->second.begin(), it->second.end(), [](const std::weak_ptr<CChatSession>& w) { return !w.expired(); });
 }
 
 //***************************************************************************

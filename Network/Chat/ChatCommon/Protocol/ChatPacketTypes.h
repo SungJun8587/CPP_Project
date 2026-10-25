@@ -50,7 +50,7 @@ constexpr size_t kRoomNameBytes = 100;
 //***************************************************************************
 // @brief [추가 — 통합] DB 비동기 요청(ST_XXX_REQ::callIdent)을 식별하는
 //        값들을 전부 여기 한곳에 모았다.
-// @details 원래는 각 DB*Request.h 파일(DBSignupRequest.h 등)이 자기 값을
+// @details 원래는 각 DB*Request.h 파일(DBFriendRequest.h 등)이 자기 값을
 //          각자 선언했는데, 파일이 여러 개로 늘어나면서 같은 값을 실수로
 //          두 번 쓰는 충돌이 실제로 발생했다(kDbCallIdent_CreateRoom을
 //          처음엔 300으로 잡았다가 BYTE 범위 초과로 204로 낮췄는데,
@@ -63,22 +63,9 @@ constexpr size_t kRoomNameBytes = 100;
 //          공간을 공유한다 — 새 값을 추가할 때는 반드시 이 블록의
 //          마지막 값 다음 번호를 쓸 것.
 //***************************************************************************
-constexpr BYTE kDbCallIdent_Signup = 200;				// DBSignupRequest.h — 회원가입/재접속 검증
-constexpr BYTE kDbCallIdent_ChangeNickname = 201;		// DBChangeNicknameRequest.h — 닉네임 변경
-constexpr BYTE kDbCallIdent_SetProfileImageUrl = 202;	// DBSetProfileImageUrlRequest.h — 프로필 이미지 URL 등록
-constexpr BYTE kDbCallIdent_ListProfileImages = 203;	// DBListProfileImagesRequest.h — 프로필 이미지 갤러리 목록 조회
-constexpr BYTE kDbCallIdent_SelectProfileImage = 204;	// DBSelectProfileImageRequest.h — 갤러리 이미지 대표 지정
-constexpr BYTE kDbCallIdent_DeleteProfileImage = 205;	// DBDeleteProfileImageRequest.h — 갤러리 이미지 삭제
-constexpr BYTE kDbCallIdent_CreateRoom = 206;			// DBCreateRoomRequest.h — 방 생성
-constexpr BYTE kDbCallIdent_DeleteRoom = 207;			// DBDeleteRoomRequest.h — 방 삭제
-constexpr BYTE kDbCallIdent_RenameRoom = 208;			// DBRenameRoomRequest.h — 방 이름 변경
-constexpr BYTE kDbCallIdent_ListRooms = 209;			// DBListRoomsRequest.h — 방 목록 조회
-constexpr BYTE kDbCallIdent_TransferRoomOwner = 210;	// DBTransferRoomOwnerRequest.h — 방장 자동 이양(서버 내부 전용)
-constexpr BYTE kDbCallIdent_SetRoomImage = 211;		// DBSetRoomImageRequest.h — 방 프로필 이미지 설정/교체/해제
-constexpr BYTE kDbCallIdent_GetRoomInfo = 212;			// DBGetRoomInfoRequest.h — 방 하나의 이름/방장/이미지 조회(방 입장 응답에 바로 실어 보내기 위함)
-constexpr BYTE kDbCallIdent_ListRoomsPage = 213;		// DBListRoomsPageRequest.h — 방 목록 페이지 조회(전체/내가 참여한 방, 이름 검색)
-constexpr BYTE kDbCallIdent_RecordRoomJoin = 214;		// DBRecordRoomJoinRequest.h — 방 입장 기록(내가 참여한 방 목록의 근거)
-constexpr BYTE kDbCallIdent_ListRoomMembersPage = 215;	// DBListRoomMembersPageRequest.h — 방의 입장 이력이 있는 유저 목록 페이지 조회(접속 상태는 DB가 아니라 서버 메모리에서 붙임)
+constexpr BYTE kDbCallIdent_Account = 200;				// DBAccountRequest.h — 회원가입/재접속 검증, 닉네임 변경(연산은 EAccountOp로 구분)
+constexpr BYTE kDbCallIdent_ProfileImage = 202;	// DBProfileImageRequest.h — 프로필 이미지 등록/목록/대표 지정/삭제(연산은 EProfileImageOp로 구분)
+constexpr BYTE kDbCallIdent_Room = 206;			// DBRoomRequest.h — 방 생성/삭제/이름 변경/이미지/방장 이양/입장 기록/방 정보·목록·멤버 목록 조회(연산은 ERoomOp로 구분)
 constexpr BYTE kDbCallIdent_Friend = 216;				// DBFriendRequest.h — 친구 요청/수락/거절/삭제/목록/차단(연산은 EFriendOp로 구분)
 constexpr BYTE kDbCallIdent_Conv = 217;				// DBConvRequest.h — 대화방(1:1/그룹) 생성/초대/나가기/목록/메시지 저장·조회/읽음(연산은 EConvOp로 구분)
 // 다음 새 값은 217부터 시작할 것.
@@ -152,6 +139,7 @@ enum class ERoomResult : uint8_t
 	RoomLimitExceeded = 4,	// [추가] 1인당 생성 가능한 방 개수 상한 초과
 	InvalidName = 5,		// [추가] 방 이름 형식 위반(빈 문자열/길이 초과 등)
 	DbError = 6,			// [추가] DB 처리 오류
+	TooFast = 7,			// 방 입장 요청이 너무 잦음
 };
 
 //***************************************************************************
@@ -172,7 +160,13 @@ enum class EDeleteMessageResult : uint8_t
 //***************************************************************************
 // @brief 계정당 최대 친구 수. 친구 요청/수락 시 서버가 양쪽 모두 검사한다.
 //***************************************************************************
-constexpr int32_t kMaxFriends = 200;
+constexpr int32_t kMaxFriends = 3000;
+
+//***************************************************************************
+// @brief 친구 목록 응답(FriendListBatchRes) 한 패킷에 담는 최대 항목 수.
+//        패킷 한 개가 클라이언트가 읽는 한도(8192바이트) 안에 들어가도록 정한다.
+//***************************************************************************
+constexpr int32_t kMaxFriendsPerBatch = 20;
 
 //***************************************************************************
 // @brief 받은 친구 요청 목록 한 페이지의 최대 크기. 클라이언트가 더 큰 값을
@@ -241,6 +235,7 @@ enum class EConvResult : uint8_t
 	InvalidReply = 10,		// 답장 대상이 이 대화방의 보이는 일반 메시지가 아님(시스템/삭제됨/다른 방)
 	NotFound = 11,			// 삭제할 메시지가 없음(이미 삭제됐거나 다른 방)
 	NotSender = 12,			// 내가 보낸 메시지가 아니라 삭제할 수 없음
+	TooFast = 13,			// 전송 속도 제한 초과
 };
 
 //***************************************************************************
@@ -314,7 +309,7 @@ enum class EChatPacketType : uint16_t
 	FriendRemoveReq = 54,					// Client -> Server, 친구 삭제 요청
 	FriendRemoveRes = 55,					// Server -> Client, 친구 삭제 결과 응답
 	FriendListReq = 56,						// Client -> Server, 친구 목록 조회 요청
-	FriendListItemRes = 57,					// Server -> Client, 친구 목록 항목 단건 응답(가변 개수 스트리밍)
+	FriendListBatchRes = 57,				// Server -> Client, 친구 목록 항목 묶음 응답(한 패킷에 최대 kMaxFriendsPerBatch개, 가변 개수 스트리밍)
 	FriendListEndRes = 58,					// Server -> Client, 친구 목록 전송 완료
 	FriendPendingListReq = 59,				// Client -> Server, 받은 친구 요청 목록 한 페이지 조회 요청
 	FriendPendingItemRes = 60,				// Server -> Client, 받은 요청 항목 단건 응답(가변 개수 스트리밍)

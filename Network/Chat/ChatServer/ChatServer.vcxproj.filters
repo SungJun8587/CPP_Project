@@ -128,115 +128,19 @@
     <ClCompile Include="DBHandler\AccountDBHandler.cpp">
       <Filter>DBHandler</Filter>
     </ClCompile>
-    <ClCompile Include="DBHandler\ChangeNicknameDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\DeleteProfileImageDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\ListProfileImagesDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\SelectProfileImageDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\SetProfileImageUrlDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\ChatChangeNicknameHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\ChatLoginHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
     <ClCompile Include="PacketHandler\ChatMessageHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\ChatNicknameHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\RequestUploadTokenHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\RoomEnterHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\RoomLeaveHandler.cpp">
       <Filter>PacketHandler</Filter>
     </ClCompile>
     <ClCompile Include="PacketHandler\ServerUserCountHandler.cpp">
       <Filter>PacketHandler</Filter>
     </ClCompile>
-    <ClCompile Include="PacketHandler\SetProfileImageUrlHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\DeleteProfileImageHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\ListProfileImagesHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\SelectProfileImageHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
       <Filter>UtilCore\Thread</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\DeleteChatMessageHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\CreateRoomHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\DeleteRoomHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\ListRoomsHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\RenameRoomHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\CreateRoomDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\DeleteRoomDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\ListRoomsDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\RenameRoomDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\TransferRoomOwnerDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\SetRoomImageDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\SetRoomImageHandler.cpp">
-      <Filter>PacketHandler</Filter>
     </ClCompile>
     <ClCompile Include="ChatServerMainAccount.cpp" />
     <ClCompile Include="ChatServerMainChat.cpp" />
     <ClCompile Include="ChatServerMainRoom.cpp" />
-    <ClCompile Include="DBHandler\GetRoomInfoDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
     <ClCompile Include="ChatServerConfig.cpp" />
-    <ClCompile Include="DBHandler\ListRoomsPageDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\RecordRoomJoinDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="PacketHandler\RoomMemberListHandler.cpp">
-      <Filter>PacketHandler</Filter>
-    </ClCompile>
-    <ClCompile Include="DBHandler\ListRoomMembersPageDBHandler.cpp">
-      <Filter>DBHandler</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClCompile>
@@ -255,6 +159,24 @@
     </ClCompile>
     <ClCompile Include="ChatServerMainConv.cpp" />
     <ClCompile Include="PacketHandler\ChatConvHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\RoomDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="DBHandler\ProfileImageDBHandler.cpp">
+      <Filter>DBHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatAccountHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatProfileImageHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\ChatRoomHandler.cpp">
+      <Filter>PacketHandler</Filter>
+    </ClCompile>
+    <ClCompile Include="PacketHandler\RequestUploadTokenHandler.cpp">
       <Filter>PacketHandler</Filter>
     </ClCompile>
   </ItemGroup>
@@ -307,10 +229,10 @@
     <Filter Include="DBHandler">
       <UniqueIdentifier>{4d711ee4-30cd-4207-98b7-e690887a91cf}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Common">
+    <Filter Include="ChatCommon">
       <UniqueIdentifier>{c60254c7-3838-44dd-8454-dd8ebf6b9030}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Common\Protocol">
+    <Filter Include="ChatCommon\Protocol">
       <UniqueIdentifier>{627becff-0bf5-4cbf-a83f-754a925922b5}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -521,26 +443,10 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
       <Filter>UtilCore\Network</Filter>
     </ClInclude>
-    <ClInclude Include="DBChangeNicknameRequest.h" />
-    <ClInclude Include="DBDeleteProfileImageRequest.h" />
-    <ClInclude Include="DBListProfileImagesRequest.h" />
-    <ClInclude Include="DBSelectProfileImageRequest.h" />
-    <ClInclude Include="DBSetProfileImageUrlRequest.h" />
-    <ClInclude Include="DBSignupRequest.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
-    <ClInclude Include="DBCreateRoomRequest.h" />
-    <ClInclude Include="DBDeleteRoomRequest.h" />
-    <ClInclude Include="DBListRoomsRequest.h" />
-    <ClInclude Include="DBRenameRoomRequest.h" />
-    <ClInclude Include="DBTransferRoomOwnerRequest.h" />
-    <ClInclude Include="DBSetRoomImageRequest.h" />
-    <ClInclude Include="DBGetRoomInfoRequest.h" />
     <ClInclude Include="ChatServerConfig.h" />
-    <ClInclude Include="DBListRoomsPageRequest.h" />
-    <ClInclude Include="DBRecordRoomJoinRequest.h" />
-    <ClInclude Include="DBListRoomMembersPageRequest.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
@@ -558,25 +464,29 @@
       <Filter>UtilCore\DB</Filter>
     </ClInclude>
     <ClInclude Include="DBFriendRequest.h" />
-    <ClInclude Include="..\Common\Protocol\ChatPacket.h">
-      <Filter>Common\Protocol</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Common\Protocol\ChatPacketTypes.h">
-      <Filter>Common\Protocol</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\ImageRef.h">
-      <Filter>Common</Filter>
-    </ClInclude>
     <ClInclude Include="ChatHandlerUtil.h" />
     <ClInclude Include="RoomValidation.h" />
-    <ClInclude Include="..\Common\Protocol\ChatPacketUtil.h">
-      <Filter>Common\Protocol</Filter>
-    </ClInclude>
     <ClInclude Include="DbHandlerUtil.h" />
     <ClInclude Include="DBConvRequest.h" />
+    <ClInclude Include="RoomDbUtil.h" />
+    <ClInclude Include="DBRoomRequest.h" />
+    <ClInclude Include="DBProfileImageRequest.h" />
+    <ClInclude Include="DBAccountRequest.h" />
+    <ClInclude Include="..\ChatCommon\Protocol\ChatPacket.h">
+      <Filter>ChatCommon\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ChatCommon\Protocol\ChatPacketTypes.h">
+      <Filter>ChatCommon\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ChatCommon\Protocol\ChatPacketUtil.h">
+      <Filter>ChatCommon\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ChatCommon\ImageRef.h">
+      <Filter>ChatCommon</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

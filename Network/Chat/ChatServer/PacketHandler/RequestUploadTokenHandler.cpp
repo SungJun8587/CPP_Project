@@ -40,8 +40,7 @@ namespace
 			BindSession(sessionWeak, [](const std::shared_ptr<CChatSession>& session, bool success, const std::string& uploadToken, const std::string& fileServerUrl)
 				{
 					RequestUploadTokenResPacket res{};
-					res.size = sizeof(res);
-					res.type = static_cast<uint16>(EChatPacketType::RequestUploadTokenRes);
+					InitPacket(res, EChatPacketType::RequestUploadTokenRes);
 					res.success = success ? 1 : 0;
 					res.reason = static_cast<uint8>(success ? ELoginResult::Ok : ELoginResult::DbError);
 
@@ -56,8 +55,7 @@ namespace
 						const size_t tokenCopyLen = (std::min)(uploadToken.size(), sizeof(res.uploadToken));
 						::memcpy(res.uploadToken, uploadToken.data(), tokenCopyLen);
 
-						const size_t urlCopyLen = (std::min)(fileServerUrl.size(), sizeof(res.fileServerUrl) - 1);
-						::memcpy(res.fileServerUrl, fileServerUrl.data(), urlCopyLen);
+						CopyStrUtf8(res.fileServerUrl, fileServerUrl);
 					}
 
 					SendPacket(session, res);

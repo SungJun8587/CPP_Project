@@ -183,7 +183,7 @@
     <Filter Include="UtilCore\Network\HTTP">
       <UniqueIdentifier>{279455c2-84d4-4dd6-baf1-73e1f02d1336}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Common">
+    <Filter Include="ChatCommon">
       <UniqueIdentifier>{44954418-2de3-4609-a81b-3d79361a16ed}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -423,8 +423,8 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\ImageRef.h">
-      <Filter>Common</Filter>
+    <ClInclude Include="..\ChatCommon\ImageRef.h">
+      <Filter>ChatCommon</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

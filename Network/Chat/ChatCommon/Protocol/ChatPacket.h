@@ -120,7 +120,7 @@ struct RoomEnterResPacket : PacketHeader
 	// [추가] 성공했고 로비가 아니면(roomId != kLobbyRoomId) 그 방의 지금
 	// 이름/방장 닉네임/이미지를 같이 실어 보낸다 — 클라이언트가 별도로
 	// 방 목록 캐시를 참조하거나 그 캐시가 준비될 때까지 기다릴 필요 없이,
-	// 이 응답 하나로 방 정보를 전부 받게 하기 위함(RoomEnterHandler.cpp가
+	// 이 응답 하나로 방 정보를 전부 받게 하기 위함(ChatRoomHandler.cpp가
 	// CChatServerMain::RequestGetRoomInfo()로 채운다). 로비 입장이거나
 	// 실패면 전부 빈 문자열.
 	char	roomName[kRoomNameBytes];
@@ -399,7 +399,7 @@ struct RenameRoomNotifyPacket : PacketHeader
 //***************************************************************************
 // @brief 방 멤버 목록의 한 페이지 조회 요청 (Client -> Server).
 // @details roomId는 로그인한 사용자라면 지금 자신이 그 방에 있는지와
-//          무관하게 조회할 수 있다(RoomMemberListHandler.cpp 참고) — 방의
+//          무관하게 조회할 수 있다(ChatRoomHandler.cpp 참고) — 방의
 //          존재 자체는 이미 전체 방 목록(ListRoomsReq)으로 누구나 볼 수
 //          있으므로, 그 방의 멤버 목록을 여는 것으로 새로 노출되는 정보는
 //          없다는 판단이다. 예를 들어 RoomListPanel(방 목록 화면)에서
@@ -652,23 +652,38 @@ struct FriendRemoveResPacket : PacketHeader
 
 //***************************************************************************
 // @brief [추가] 친구 목록 조회 요청 구조체 (Client -> Server).
-// @details 바디 없음. 친구 전체를 한 번에 스트리밍한다(계정당 kMaxFriends 상한).
+// @details 바디 없음. 친구 전체를 FriendListBatchRes 여러 개로 나눠 스트리밍한 뒤
+//          FriendListEndRes로 끝낸다(계정당 kMaxFriends 상한).
 //***************************************************************************
 struct FriendListReqPacket : PacketHeader
 {
 };
 
 //***************************************************************************
-// @brief [추가] 친구 목록 항목 단건 응답 구조체 (Server -> Client).
+// @brief 친구 목록 항목 하나(FriendListBatchResPacket 안의 배열 원소).
 // @details profileImageUrl이 비어있으면 기본 이미지를 뜻한다. online은 이 서버
 //          프로세스에 로그인해 있는지 여부다.
 //***************************************************************************
-struct FriendListItemResPacket : PacketHeader
+struct FriendListEntryWire
 {
 	BYTE	publicId[kPublicIdBytes];
 	char	nickname[kNicknameBytes];
 	char	profileImageUrl[kProfileImageUrlBytes];
 	uint8	online;						// 1: 접속 중, 0: 오프라인
+};
+
+//***************************************************************************
+// @brief [추가] 친구 목록 항목 묶음 응답 구조체 (Server -> Client).
+// @details 친구가 수천 명이어도 패킷 수가 수십~수백 개로 줄도록 항목을 묶어 보낸다.
+//          가변 길이 패킷이다 — 실제로 보내는 크기(PacketHeader::size)는
+//          sizeof(PacketHeader) + sizeof(count) + count * sizeof(FriendListEntryWire)이고,
+//          entries 배열은 kMaxFriendsPerBatch까지의 최대치일 뿐이다. 수신 측은
+//          size가 아니라 count만큼만 읽는다(size가 그보다 작으면 거부).
+//***************************************************************************
+struct FriendListBatchResPacket : PacketHeader
+{
+	uint8				count;			// entries 중 유효한 항목 수(1~kMaxFriendsPerBatch)
+	FriendListEntryWire	entries[kMaxFriendsPerBatch];
 };
 
 //***************************************************************************

@@ -33,6 +33,7 @@ namespace ChatApp
         InvalidReply = 10,
         NotFound = 11,
         NotSender = 12,
+        TooFast = 13,
     }
 
     public enum ConvType : byte

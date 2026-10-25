@@ -254,7 +254,7 @@ namespace ChatApp
             _client.ConvRenameResultReceived += OnConvRenameResult;
             _client.ConvRenamedNotified += OnConvRenamedNotify;
 
-            _client.FriendListItemReceived += OnFriendListItem;
+            _client.FriendListBatchReceived += OnFriendListBatch;
             _client.FriendListEndReceived += OnFriendListEnd;
             _client.FriendAcceptedNotified += OnFriendAccepted;
             _client.FriendRemovedNotified += OnFriendRemoved;
@@ -294,7 +294,7 @@ namespace ChatApp
                 _client.ConvRenameResultReceived -= OnConvRenameResult;
                 _client.ConvRenamedNotified -= OnConvRenamedNotify;
 
-                _client.FriendListItemReceived -= OnFriendListItem;
+                _client.FriendListBatchReceived -= OnFriendListBatch;
                 _client.FriendListEndReceived -= OnFriendListEnd;
                 _client.FriendAcceptedNotified -= OnFriendAccepted;
                 _client.FriendRemovedNotified -= OnFriendRemoved;
@@ -1996,6 +1996,7 @@ namespace ChatApp
                 case ConvResult.InvalidReply: return "답장할 수 없는 메시지입니다.";
                 case ConvResult.NotFound: return "이미 삭제되었거나 없는 메시지입니다.";
                 case ConvResult.NotSender: return "내가 보낸 메시지만 삭제할 수 있습니다.";
+                case ConvResult.TooFast: return "메시지를 너무 빨리 보내고 있습니다. 잠시 후 다시 시도해 주세요.";
                 default: return "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
             }
         }
@@ -2440,15 +2441,21 @@ namespace ChatApp
 
         #region 친구 캐시 (대화 상대 선택용)
 
-        private void OnFriendListItem(FriendItemData item)
+        private void OnFriendListBatch(List<FriendItemData> batch)
         {
-            Post(() => _incomingFriends.Add(new FriendInfo
+            Post(() =>
             {
-                PublicId = item.PublicId,
-                Nickname = item.Nickname,
-                ProfileImageUrl = item.ProfileImageUrl,
-                Online = item.Online,
-            }));
+                foreach (FriendItemData item in batch)
+                {
+                    _incomingFriends.Add(new FriendInfo
+                    {
+                        PublicId = item.PublicId,
+                        Nickname = item.Nickname,
+                        ProfileImageUrl = item.ProfileImageUrl,
+                        Online = item.Online,
+                    });
+                }
+            });
         }
 
         private void OnFriendListEnd(FriendListEndData end)

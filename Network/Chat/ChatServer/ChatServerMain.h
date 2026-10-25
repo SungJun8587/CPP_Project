@@ -13,8 +13,8 @@
 #include <Redis/RedisService.h>
 #include <Redis/RedisServerHeartbeat.h>
 #include <DB/OdbcAsyncSrv.h>
-#include "DBListProfileImagesRequest.h"
-#include "DBListRoomsRequest.h"
+#include "DBProfileImageRequest.h"
+#include "DBRoomRequest.h"
 #include "DBFriendRequest.h"		// EFriendOp, SFriendOpResult
 #include "DBConvRequest.h"		// EConvOp, SConvOpResult
 
@@ -46,10 +46,13 @@ struct SRoomMemberHistoryInfo
 #include <array>
 #include <unordered_map>
 #include <unordered_set>
+#include <map>
 #include <vector>
 #include <deque>
 #include <mutex>
 #include <atomic>
+#include <thread>
+#include <condition_variable>
 
 class CChatSession;
 
@@ -147,7 +150,7 @@ public:
 
 	//***************************************************************************
 	// @brief [추가] 이 publicId가 지금 서버 어딘가에 로그인해 있는지 조회합니다.
-	// @details OnUserLogin()/OnUserLogout()이 관리하는 인메모리 집합을 그
+	// @details 접속 세션 레지스트리(_onlineSessions)를 그
 	//          자리에서 바로 확인한다 — "이 방에 지금 있는지"(GetRoomMembers())가
 	//          아니라 "서버에 지금 접속해 있는지"(다른 방/로비에 있어도 true).
 	//***************************************************************************
@@ -187,7 +190,7 @@ public:
 	// @param newNickname 바꿀 닉네임 (형식 검증은 ChangeNicknameDBHandler.cpp가 다시 수행)
 	// @param onComplete DB 워커 스레드 완료 콜백(JobQueue로 이관됨). 성공 시에도
 	//        세션의 표시용 닉네임 갱신은 이 함수가 아니라 콜백을 소비하는 쪽
-	//        (ChatChangeNicknameHandler.cpp)의 책임이다. publicId 자체는 이
+	//        (ChatAccountHandler.cpp)의 책임이다. publicId 자체는 이
 	//        요청으로 절대 바뀌지 않는다.
 	//***************************************************************************
 	void RequestChangeNickname(
@@ -319,8 +322,8 @@ public:
 	//          있으므로, 조회 시 HMGET 한 번으로 여러 메시지를 한꺼번에
 	//          가져올 수 있다(메시지마다 별도 키를 만드는 방식보다 왕복이
 	//          훨씬 적다) — RequestRoomChatHistory() 참고.
-	// @details [설계] 개수 제한 없이 전부 저장한다(방이 삭제될 때까지) —
-	//          조회 시에만 최근 1000개로 자른다.
+	// @details 방당 최근 1000개만 보관한다 — 저장하는 같은 EVAL 안에서 초과분(가장
+	//          오래된 항목)을 ZSET·HASH에서 함께 제거한다.
 	//***************************************************************************
 	void RecordRoomChatMessage(
 		int32 roomId,
@@ -422,7 +425,7 @@ public:
 	//***************************************************************************
 	// @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
 	// @details 로그인 성공 직후 자동으로 로비(kLobbyRoomId)에 배정하는 데도
-	//          쓰이고, 클라이언트의 명시적 방 입장 요청(RoomEnterHandler.cpp)
+	//          쓰이고, 클라이언트의 명시적 방 입장 요청(ChatRoomHandler.cpp)
 	//          처리에도 쓰인다 — "로비도 결국 하나의 방"이라는 관점이라 두
 	//          경우를 같은 함수로 통일했다.
 	//          기존에 있던 방/로비에서는 자동으로 빠지고, 새 위치의 멤버
@@ -607,7 +610,7 @@ public:
 
 	//***************************************************************************
 	// @brief [추가] 방 하나(roomId)의 이름/방장 닉네임/이미지를 조회합니다.
-	// @details RoomEnterHandler.cpp가 방 입장 성공 직후 호출해서, 그
+	// @details ChatRoomHandler.cpp가 방 입장 성공 직후 호출해서, 그
 	//          결과를 RoomEnterResPacket에 바로 실어 보낸다 — 클라이언트가
 	//          별도의 방 목록 캐시(RoomListPanel)에 기대지 않고 입장
 	//          응답 하나로 방 정보를 전부 받게 하기 위함(캐시가 아직
@@ -636,7 +639,7 @@ public:
 
 	//***************************************************************************
 	// @brief [추가] roomId가 실제로 존재하는 방인지(로비 포함) 확인합니다.
-	// @details RoomEnterHandler.cpp가 기존의 "1~kMaxRoomId 범위 검사"
+	// @details ChatRoomHandler.cpp가 기존의 "1~kMaxRoomId 범위 검사"
 	//          대신 이 함수로 검증하도록 바뀔 예정(3단계) — 방이 이제
 	//          고정 슬롯이 아니라 동적으로 생성/삭제되기 때문이다.
 	//***************************************************************************
@@ -656,11 +659,30 @@ public:
 	// @brief 로그인 완료 시 접속 세션 레지스트리 등록 + 친구에게 접속 알림 + 차단 목록 로드.
 	void OnFriendLogin(const std::shared_ptr<CChatSession>& session);
 
-	// @brief 세션 종료 시 레지스트리 해제 + 친구에게 접속 종료 알림.
-	void OnFriendLogout(const CChatSession* session);
+	// @brief 세션 종료 시 레지스트리 해제 + (같은 계정의 다른 세션이 없으면) 친구에게 접속 종료 알림.
+	// @return 같은 계정의 다른 세션이 아직 접속 중이면 true(계정은 여전히 온라인).
+	bool OnFriendLogout(const CChatSession* session);
+
+	using FriendIdList = std::vector<std::array<BYTE, kPublicIdBytes>>;
+
+	//***************************************************************************
+	// @brief 친구 id 목록을 돌려줍니다(접속·종료·프로필 변경 알림 대상 찾기용).
+	// @details 접속 중인 계정의 친구 id 목록을 메모리에 캐시한다. 캐시가 있으면 호출 스레드에서
+	//          즉시 onReady를 호출하고, 없으면 DB에서 읽어 JobQueue 스레드에서 호출한다
+	//          (DB 오류면 호출하지 않는다). 친구 관계가 바뀌는 연산(수락·삭제·차단·맞물린 요청)이
+	//          성공하면 양쪽 계정의 캐시를 무효화하며, 마지막 세션이 끊기면 항목을 지운다.
+	//***************************************************************************
+	void GetFriendIds(const std::array<BYTE, kPublicIdBytes>& publicId, std::function<void(const FriendIdList& ids)> onReady);
+
+	// @brief 계정의 친구 id 캐시를 무효화합니다(다음 조회 때 DB에서 다시 읽음).
+	void InvalidateFriendCache(const std::array<BYTE, kPublicIdBytes>& publicId);
 
 	// @brief publicId로 접속 중인 세션을 찾습니다(없으면 nullptr).
 	std::shared_ptr<CChatSession> FindOnlineSession(const std::array<BYTE, kPublicIdBytes>& publicId) const;
+
+	// @brief 여러 publicId의 접속 세션을 락 한 번으로 찾습니다(친구 수천 명 단위 조회용).
+	// @return ids와 같은 크기·순서. 오프라인이면 해당 칸이 nullptr.
+	std::vector<std::shared_ptr<CChatSession>> FindOnlineSessions(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids) const;
 
 	// @brief 친구 DB 연산을 비동기로 요청합니다. page/pageSize는 ListPending 전용.
 	void RequestFriendOp(
@@ -687,6 +709,28 @@ private:
 	void NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online);
 	std::string BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const;
 
+	// 유지보수 스레드 — 짧은 틱(kMaintenanceTickMs)마다 (1) 모인 방 인원수 알림을 한 번에 보내고,
+	// (2) 기한이 된 지연 작업을 실행하며, (3) 주기(intervalSec)마다 로그인 키(User:{id}) TTL을 갱신한다.
+	// 로그인 키 TTL은 서버 하트비트와 같은 TTL/주기를 쓰며, 서버가 비정상 종료하면 갱신이 멈춰
+	// 키가 TTL 안에 저절로 사라진다.
+	void StartMaintenance(int32 ttlSec, int32 intervalSec);
+	void StopMaintenance();
+	void MaintenanceLoop(int32 loginKeyIntervalSec);
+	void RefreshLoginKeys();
+	void FlushRoomUserCounts();
+	void RunDueDelayedTasks();
+
+public:
+	//***************************************************************************
+	// @brief delayMs 뒤에 유지보수 스레드에서 task를 실행하도록 예약합니다.
+	// @details 틱 단위(kMaintenanceTickMs)로 실행되므로 정밀한 타이머가 아니다.
+	//          task는 짧게 끝나야 하며(보통 jobQueue로 넘기는 정도), 서버가 멈추면 남은 예약은 버려진다.
+	//***************************************************************************
+	void ScheduleDelayed(int32 delayMs, std::function<void()> task);
+
+private:
+	static constexpr int32 kMaintenanceTickMs = 200;
+
 	//***************************************************************************
 	// @brief [추가] 방에 입장한 적이 있는 전체 유저 집합을 담는 Redis Set 키.
 	// @details "RoomMembers:{roomId}" — 원소는 publicId를 16진 문자열로 바꾼
@@ -703,9 +747,10 @@ private:
 	std::string BuildRoomMembersKey(int32 roomId) const;
 
 	//***************************************************************************
-	// @brief roomId의 갱신된 인원수를 그 방의 멤버 전원에게 알립니다.
-	// @details MoveToRoom()/LeaveCurrentRoom()이 인원수 변경 시 내부적으로
-	//          호출한다 — 직접 호출할 일 없음.
+	// @brief roomId의 인원수가 바뀌었음을 표시합니다(알림 자체는 유지보수 스레드가 모아서 보낸다).
+	// @details MoveToRoom()/LeaveCurrentRoom()이 인원수 변경 시 내부적으로 호출한다.
+	//          접속자가 몰릴 때 입·퇴장마다 방 전원에게 보내면 N^2로 늘어나므로, 틱마다
+	//          방당 최신 인원수 한 번만 보낸다. 입장한 본인은 입장 응답으로 값을 받는다.
 	//***************************************************************************
 	void NotifyRoomUserCount(int32 roomId, int32 userCount);
 
@@ -739,11 +784,12 @@ private:
 
 	//***************************************************************************
 	// @brief [추가] 서버 시작 시 DB에 저장된 모든 방을 인메모리 레지스트리로
-	//        읽어들인다(비동기 — 완료 전까지의 짧은 창에서는 RoomEnterReq가
-	//        아직 그 방들을 "존재하지 않음"으로 볼 수 있다). Start()가
-	//        MEMBER_DB_ASYNC.StartService() 성공 직후 호출한다.
+	//        읽어들인다. 로딩이 끝날 때까지 기다린다 — 세션을 받기 전에 레지스트리가
+	//        채워져 있어야 RoomEnterReq가 기존 방을 "존재하지 않음"으로 보지 않는다.
+	//        Start()가 MEMBER_DB_ASYNC.StartService() 성공 직후, IOCP 서비스 시작 전에 호출한다.
+	// @return 로딩에 성공했으면 true(실패/시간 초과면 false)
 	//***************************************************************************
-	void LoadRoomRegistryFromDb();
+	bool LoadRoomRegistryFromDb();
 
 private:
 	CIocpCoreRef							_iocpCore;
@@ -766,19 +812,31 @@ private:
 	std::unordered_map<int32, std::vector<std::weak_ptr<CChatSession>>>	_roomMembers;
 
 	//***************************************************************************
-	// @brief [추가] 지금 로그인 중인(서버 어딘가에 접속해 있는) 계정의 집합.
-	// @details OnUserLogin()/OnUserLogout()이 관리한다(Redis 기록과 별개로
-	//          인메모리에도 둔 것 — Redis 조회는 비동기라 "방 멤버 목록 조회"처럼
-	//          그 자리에서 바로 답해야 하는 요청에는 안 맞는다). publicId는
-	//          std::array라 기본 해시가 없어서, 다른 곳(BuildUserKey() 등)과
-	//          동일하게 hex 문자열로 변환해서 키로 쓴다.
+	// @brief 접속 세션 레지스트리 보호 뮤텍스. IsUserOnline()·친구 알림이 이 레지스트리를 쓴다
+	//        (Redis 조회는 비동기라 "방 멤버 목록 조회"처럼 그 자리에서 답해야 하는 요청에는 안 맞는다).
+	//        publicId는 std::array라 기본 해시가 없어서 hex 문자열을 키로 쓴다.
 	//***************************************************************************
 	mutable std::mutex	_onlineMutex;
-	std::unordered_set<std::string>	_onlinePublicIdsHex;
 
-	// [추가 — 친구 기능] publicId 16진 -> 접속 세션. _onlineMutex로 함께 보호한다.
+	// publicId 16진 -> 접속 세션. _onlineMutex로 보호한다.
 	// 친구 접속 알림/온라인 조회/프로필 변경 알림 대상 찾기용(단일 프로세스 한정).
-	std::unordered_map<std::string, std::weak_ptr<CChatSession>>	_onlineSessions;
+	std::unordered_map<std::string, std::vector<std::weak_ptr<CChatSession>>>	_onlineSessions;	// 같은 계정의 다중 세션을 모두 담는다(마지막 항목이 가장 최근)
+
+	// 접속 중인 계정의 친구 id 캐시(publicId 16진 -> 목록). 항목은 로그인 중에만 존재한다.
+	// _friendCacheGen은 무효화마다 증가해, 무효화 전에 시작한 DB 조회 결과가 뒤늦게 캐시에 들어가는 것을 막는다.
+	// 잠금 순서: _friendCacheMutex -> _onlineMutex (반대로 잡는 곳 없음).
+	std::mutex	_friendCacheMutex;
+	std::unordered_map<std::string, std::shared_ptr<const FriendIdList>>	_friendCache;
+	std::atomic<uint64_t>	_friendCacheGen{ 0 };
+
+	// 유지보수 스레드와 그 입력들.
+	int32						_loginKeyTtlSec = 0;		// 0이면 로그인 키 TTL 없음(갱신 생략)
+	std::thread					_maintenanceThread;
+	std::mutex					_maintenanceMutex;			// _maintenanceStop/_dirtyRoomCounts/_delayedTasks 보호
+	std::condition_variable		_maintenanceCv;
+	bool						_maintenanceStop = false;
+	std::unordered_set<int32>	_dirtyRoomCounts;
+	std::multimap<std::chrono::steady_clock::time_point, std::function<void()>>	_delayedTasks;
 
 	//***************************************************************************
 	// @brief [추가] 동적으로 생성/삭제되는 방의 메타데이터(이름/방장) —
@@ -812,12 +870,12 @@ private:
 	// 오래된 메시지는 삭제 요청이 와도 NotFound로 처리된다 — 채팅 로그를
 	// DB 등에 영구 보관하는 기능이 필요하면 별도로 설계해야 하고, 이건
 	// 어디까지나 "방금 보낸 메시지 취소" 수준의 가벼운 기능이다.
-	static constexpr size_t kMaxTrackedMessages = 500;
+	static constexpr size_t kMaxTrackedMessages = 20000;
 
 	mutable std::mutex							_messageOwnerMutex;
 	std::unordered_map<int64, SMessageOwnerRecord>	_messageOwners;
 	std::deque<int64>							_messageOwnerOrder;	// 삽입 순서 — 오래된 것부터 제거하기 위함
-	std::atomic<int64>							_nextMessageId{ 1 };
+	std::atomic<int64>							_nextMessageId{ 1 };	// Start()가 (현재 시각 ms << 10)으로 시드 — 재시작해도 Redis에 남은 기록의 id와 겹치지 않는다
 
 	// [설계 변경] 프로필 이미지 저장을 별도 파일 서버로 분리하면서, 이
 	// 서버는 더 이상 이미지 파일 자체를 갖고 있지 않는다 — IImageStorage/
@@ -856,6 +914,20 @@ private:
 	static bool PushDb(BYTE ident, TFill&& fill)
 	{
 		return PushDBAsyncRequest<COdbcAsyncSrv, TReq>(MEMBER_DB_ASYNC, ident, std::forward<TFill>(fill), kMaxDbQueueCapacity);
+	}
+
+	//***************************************************************************
+	// @brief PushDb()에 실패(큐 포화/서비스 종료)하면 호출 스레드에서 onComplete(failArgs...)를 직접 호출한다.
+	// @details 요청이 큐에 들어가지 않으면 DB 워커가 콜백을 부르지 않으므로, 이렇게 하지 않으면
+	//          요청한 세션이 응답을 무한정 기다리게 된다. onComplete가 비어 있으면 아무것도 하지 않는다.
+	// @param onComplete 완료 콜백(실패 시 failArgs로 호출)
+	// @param failArgs 실패를 알리는 인자들(보통 DbError 코드와 빈 결과)
+	//***************************************************************************
+	template<typename TReq, typename TFill, typename TCallback, typename... TFailArgs>
+	static void PushDbOrFail(BYTE ident, TFill&& fill, const TCallback& onComplete, TFailArgs&&... failArgs)
+	{
+		if( !PushDb<TReq>(ident, std::forward<TFill>(fill)) && onComplete )
+			onComplete(std::forward<TFailArgs>(failArgs)...);
 	}
 };
 

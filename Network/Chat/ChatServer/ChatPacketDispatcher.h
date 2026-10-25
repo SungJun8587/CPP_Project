@@ -9,7 +9,7 @@
 #define UC_CHATPACKETDISPATCHER_H
 
 #include <Network/PacketDispatcher.h>
-#include "../Common/Protocol/ChatPacket.h"
+#include "../ChatCommon/Protocol/ChatPacket.h"
 
 class CChatSession;
 

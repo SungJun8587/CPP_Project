@@ -52,6 +52,59 @@ inline std::shared_ptr<CChatSession> GetSessionRef(CChatSession& session)
 }
 
 //***************************************************************************
+// @brief 요청자 스냅샷 — 요청자가 응답 전에 끊겨도 다른 사용자에게 보내는 푸시에 쓸 수 있도록
+//        세션은 weak_ptr로, 식별자는 값으로 보관한다. 비동기 콜백에 값으로 캡처한다.
+//***************************************************************************
+struct SActor
+{
+	std::weak_ptr<CChatSession>	session;
+	PublicId					publicId{};
+};
+
+//***************************************************************************
+// @brief 로그인된 세션만 허용하고 서버와 요청자 스냅샷을 만든다.
+// @param session 패킷을 보낸 세션
+// @param server 서버 포인터를 돌려받는다
+// @param actor 요청자 스냅샷을 돌려받는다
+// @return 로그인 전이거나 서버 연결이 없으면 false.
+//***************************************************************************
+inline bool BeginActorOp(CChatSession& session, CChatServerMain*& server, SActor& actor)
+{
+	server = GetLoggedInServer(session);
+	if( server == nullptr )
+		return false;
+
+	actor.session = GetSessionRef(session);
+	actor.publicId = session.GetPublicId();
+	return true;
+}
+
+//***************************************************************************
+// @brief target이 접속 중이면 그 세션에 data를 전송한다(오프라인이면 아무것도 하지 않는다).
+//***************************************************************************
+inline void SendToOnline(CChatServerMain* server, const PublicId& target, const void* data, uint16 size)
+{
+	if( auto s = server->FindOnlineSession(target) )
+		s->Send(data, size);
+}
+
+//***************************************************************************
+// @brief ids 중 접속 중인 모든 세션에 data를 전송한다(온라인 맵 락 1회).
+// @param skip nullptr이 아니면 이 id는 건너뛴다(예: 행위자 본인 제외).
+//***************************************************************************
+inline void SendToOnlineMany(CChatServerMain* server, const std::vector<PublicId>& ids,
+	const void* data, uint16 size, const PublicId* skip = nullptr)
+{
+	const auto sessions = server->FindOnlineSessions(ids);
+	for( size_t i = 0; i < ids.size(); ++i )
+	{
+		if( sessions[i] == nullptr || (skip != nullptr && ids[i] == *skip) )
+			continue;
+		sessions[i]->Send(data, size);
+	}
+}
+
+//***************************************************************************
 // @brief 패킷 구조체 하나를 세션에 전송한다. Send(&packet, sizeof(packet))의 축약형.
 // @param session 받는 세션
 // @param packet 전송할 패킷(size/type이 채워져 있어야 한다)

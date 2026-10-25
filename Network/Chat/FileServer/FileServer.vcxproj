@@ -225,7 +225,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Regular.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
-    <ClInclude Include="..\Common\ImageRef.h" />
+    <ClInclude Include="..\ChatCommon\ImageRef.h" />
     <ClInclude Include="FileDeleteHandler.h" />
     <ClInclude Include="FileDownloadHandler.h" />
     <ClInclude Include="FileMetadata.h" />

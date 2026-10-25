@@ -5,12 +5,13 @@
 //***************************************************************************
 
 #include "pch.h"
-#include <DB/DBAsyncHandler.h>
-#include "DbServiceManager.h"
-#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
+#include <DB/DBAsyncHandler.h>
 
+#include "../ChatCommon/Protocol/ChatPacketUtil.h"
+#include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include "DBFriendRequest.h"
 
 #include <algorithm>
@@ -20,63 +21,57 @@
 namespace
 {
 	//***************************************************************************
-	// @brief 한 연결(OdbcConnGuard) 위에서 파라미터 0~2개짜리 단순 구문을 실행하는 도우미.
-	// @details 모든 파라미터는 문자열(public_id 16진 32자 또는 닉네임)이다. 각 함수는
-	//          성공 여부를 반환하고, 어떤 경로에서도 ClearStmt()를 호출해 구문을 정리한다.
+	// @brief 친구 기능용 얇은 어댑터 — 파라미터 0~2개짜리 단순 구문을 공용 DbUtil::CSql 위에서 실행한다.
+	// @details 모든 파라미터는 문자열(public_id 16진 32자 또는 닉네임)이다. p2가 nullptr이면 파라미터는 하나다.
 	//***************************************************************************
 	class CFriendSql
 	{
 	public:
-		explicit CFriendSql(OdbcConnGuard& guard) : _guard(guard) {}
+		explicit CFriendSql(OdbcConnGuard& guard) : _sql(guard) {}
 
 		// INSERT/DELETE 등 결과 집합이 없는 구문
 		bool Exec(const TCHAR* sql, const std::string& p1, const std::string* p2 = nullptr)
 		{
-			return Run(sql, p1, p2, nullptr, nullptr);
+			return _sql.Exec(sql, Params(p1, p2));
 		}
 
 		// 첫 행이 존재하는지 확인 (SELECT 1 ...)
 		bool Exists(const TCHAR* sql, const std::string& p1, const std::string* p2, bool& exists)
 		{
-			return Run(sql, p1, p2, &exists, nullptr);
+			return _sql.Exists(sql, Params(p1, p2), exists);
 		}
 
 		// SELECT COUNT(*) ... 의 첫 컬럼을 정수로 읽음
 		bool Count(const TCHAR* sql, const std::string& p1, const std::string* p2, int32& count)
 		{
 			count = 0;
-			return Run(sql, p1, p2, nullptr, &count);
+			std::vector<DbUtil::Row> rows;
+			if( !_sql.Query(sql, Params(p1, p2), 1, rows) )
+				return false;
+			if( !rows.empty() )
+				count = static_cast<int32>(DbUtil::ToI64(rows.front()[0]));
+			return true;
 		}
 
-		// 컬럼 (public_id, nickname, image_ref) 순서의 행을 전부 읽는다.
-		// nickname/image_ref가 없는 쿼리(차단 목록은 image_ref 제외)는 columnCount로 구분.
+		// 컬럼 (public_id, nickname[, image_ref]) 순서의 행을 전부 읽는다.
+		// image_ref가 없는 쿼리(차단 목록)는 columnCount=2로 구분. publicId가 깨진 행은 건너뛴다.
 		bool Fetch(const TCHAR* sql, const std::string& p1, const std::string* p2, int columnCount,
 			std::vector<SFriendEntry>& out)
 		{
-			_tstring t1 = Utf8ToTString(p1);
-			_tstring t2 = p2 ? Utf8ToTString(*p2) : _tstring();
-			if( !DbUtil::PrepareOrClear(_guard, sql) )
-			{
+			std::vector<DbUtil::Row> rows;
+			if( !_sql.Query(sql, Params(p1, p2), columnCount, rows) )
 				return false;
-			}
 
-			DbUtil::BindString(_guard, 1, t1);
-			if( p2 )
-				DbUtil::BindString(_guard, 2, t2);
-
-			if( !DbUtil::ExecuteOrClear(_guard) )
-			{
-				return false;
-			}
-
-			while( _guard->Fetch() )
+			for( const DbUtil::Row& row : rows )
 			{
 				SFriendEntry entry;
-				if( !ReadEntry(columnCount, entry) )
+				if( !HexToPublicId(row[0], entry.publicId) )
 					continue;
+				entry.nickname = row[1];
+				if( columnCount >= 3 )
+					entry.profileImageRef = row[2];	// 프로필 이미지는 없을 수 있다(COALESCE로 빈 문자열)
 				out.push_back(std::move(entry));
 			}
-			_guard->ClearStmt();
 			return true;
 		}
 
@@ -93,67 +88,17 @@ namespace
 		}
 
 	private:
-		bool Run(const TCHAR* sql, const std::string& p1, const std::string* p2, bool* exists, int32* count)
+		static std::vector<std::string> Params(const std::string& p1, const std::string* p2)
 		{
-			_tstring t1 = Utf8ToTString(p1);
-			_tstring t2 = p2 ? Utf8ToTString(*p2) : _tstring();
-			if( !DbUtil::PrepareOrClear(_guard, sql) )
-			{
-				return false;
-			}
-
-			DbUtil::BindString(_guard, 1, t1);
-			if( p2 )
-				DbUtil::BindString(_guard, 2, t2);
-
-			if( !DbUtil::ExecuteOrClear(_guard) )
-			{
-				return false;
-			}
-
-			if( exists != nullptr )
-				*exists = _guard->Fetch();
-
-			if( count != nullptr && _guard->Fetch() )
-			{
-				TCHAR buf[32] = {};
-				int32 bufLen = static_cast<int32>(sizeof(buf));
-				if( _guard->GetData(1, buf, bufLen) )
-					*count = _ttoi(buf);
-			}
-
-			_guard->ClearStmt();
-			return true;
-		}
-
-		bool ReadEntry(int columnCount, SFriendEntry& entry)
-		{
-			TCHAR idBuf[40] = {};
-			int32 idBufLen = static_cast<int32>(sizeof(idBuf));
-			if( !_guard->GetData(1, idBuf, idBufLen) )
-				return false;
-			if( !HexToPublicId(TStringToUtf8(_tstring(idBuf)), entry.publicId) )
-				return false;
-
-			TCHAR nickBuf[kNicknameBytes] = {};
-			int32 nickBufLen = static_cast<int32>(sizeof(nickBuf));
-			if( !_guard->GetData(2, nickBuf, nickBufLen) )
-				return false;
-			entry.nickname = TStringToUtf8(_tstring(nickBuf));
-
-			if( columnCount >= 3 )
-			{
-				// 프로필 이미지는 없을 수 있다(COALESCE로 빈 문자열) — 읽기 실패해도 행은 유지
-				TCHAR refBuf[kProfileImageUrlBytes] = {};
-				int32 refBufLen = static_cast<int32>(sizeof(refBuf));
-				if( _guard->GetData(3, refBuf, refBufLen) )
-					entry.profileImageRef = TStringToUtf8(_tstring(refBuf));
-			}
-			return true;
+			std::vector<std::string> params;
+			params.push_back(p1);
+			if( p2 != nullptr )
+				params.push_back(*p2);
+			return params;
 		}
 
 	private:
-		OdbcConnGuard& _guard;
+		DbUtil::CSql _sql;
 	};
 
 	// 정규화된 쌍 (작은 쪽, 큰 쪽) — friendships의 저장 규칙. 둘 다 소문자 16진 32자라 단순 문자열 비교로 충분.

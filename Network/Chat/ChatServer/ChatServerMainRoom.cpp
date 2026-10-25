@@ -9,19 +9,12 @@
 #include "ChatServerMain.h"
 #include "ChatSession.h"
 #include "DbServiceManager.h"
-#include "DBCreateRoomRequest.h"
-#include "DBDeleteRoomRequest.h"
-#include "DBRenameRoomRequest.h"
-#include "DBListRoomsRequest.h"
-#include "DBListRoomsPageRequest.h"
-#include "DBRecordRoomJoinRequest.h"
-#include "DBListRoomMembersPageRequest.h"
-#include "DBTransferRoomOwnerRequest.h"
-#include "DBSetRoomImageRequest.h"
-#include "DBGetRoomInfoRequest.h"
+#include "DBRoomRequest.h"
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
+#include <future>
 #include <memory>
 
 //***************************************************************************
@@ -195,7 +188,7 @@ int32 CChatServerMain::GetRoomUserCount(int32 roomId) const
 //***************************************************************************
 // @brief 방에 입장한 적이 있는 유저 목록(전체 이력, DB 기준)의 한 페이지를
 //        조회합니다. 각 항목에 IsUserOnline() 기준 접속 상태를 붙입니다.
-// @details DB 조회 자체(ListRoomMembersPageDBHandler.cpp)는 접속 상태를
+// @details DB 조회 자체(RoomDBHandler.cpp)는 접속 상태를
 //          모른다 — DB 워커 스레드는 인메모리 온라인 집합(_onlineMutex로
 //          보호)에 접근할 이유가 없게 하려고, 그 병합은 여기(JobQueue로
 //          이관된 뒤, 즉 로직 스레드)에서 한다.
@@ -235,39 +228,41 @@ void CChatServerMain::RequestRoomMemberHistoryPage(
 			PostToJobQueue(jobQueue, onComplete, result, totalCount, resultPage, members);
 		};
 
-	const bool pushed = PushDb<ST_LIST_ROOM_MEMBERS_PAGE_REQ>(kDbCallIdent_ListRoomMembersPage,
+	PushDbOrFail<ST_LIST_ROOM_MEMBERS_PAGE_REQ>(kDbCallIdent_Room,
 		[roomId, page, pageSize, dispatchToJobQueue](ST_LIST_ROOM_MEMBERS_PAGE_REQ* req)
 		{
 			req->roomId = roomId;
 			req->page = page;
 			req->pageSize = pageSize;
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ELoginResult::DbError, 0, 0, std::vector<SRoomMemberHistoryInfo>());
-	}
+		},
+		onComplete, ELoginResult::DbError, 0, 0, std::vector<SRoomMemberHistoryInfo>());
 }
 
 std::vector<SRoomMemberInfo> CChatServerMain::GetRoomMembers(int32 roomId) const
 {
 	std::vector<SRoomMemberInfo> members;
 
-	std::lock_guard<std::mutex> lock(_roomMutex);
-
-	auto it = _roomMembers.find(roomId);
-	if( it == _roomMembers.end() )
-		return members;
-
-	members.reserve(it->second.size());
-	for( const auto& w : it->second )
+	// 락 안에서는 세션 참조만 모으고, 문자열 복사·정렬은 락 밖에서 한다.
+	std::vector<std::shared_ptr<CChatSession>> sessions;
 	{
-		auto session = w.lock();
-		if( session == nullptr )
-			continue;
+		std::lock_guard<std::mutex> lock(_roomMutex);
 
+		auto it = _roomMembers.find(roomId);
+		if( it == _roomMembers.end() )
+			return members;
+
+		sessions.reserve(it->second.size());
+		for( const auto& w : it->second )
+		{
+			if( auto s = w.lock() )
+				sessions.push_back(std::move(s));
+		}
+	}
+
+	members.reserve(sessions.size());
+	for( const auto& session : sessions )
+	{
 		SRoomMemberInfo info;
 		info.publicId = session->GetPublicId();
 		info.nickname = session->GetNickname();
@@ -317,12 +312,11 @@ void CChatServerMain::BroadcastToRoom(int32 roomId, const void* data, uint16 siz
 //***************************************************************************
 void CChatServerMain::NotifyRoomUserCount(int32 roomId, int32 userCount)
 {
-	RoomUserCountNotifyPacket notify{};
-	InitPacket(notify, EChatPacketType::RoomUserCountNotify);
-	notify.roomId = roomId;
-	notify.userCount = userCount;
-
-	BroadcastToRoom(roomId, &notify, notify.size);
+	(void)userCount;	// 보낼 때 최신 값을 다시 읽는다(FlushRoomUserCounts)
+	{
+		std::lock_guard<std::mutex> lock(_maintenanceMutex);
+		_dirtyRoomCounts.insert(roomId);
+	}
 }
 
 //***************************************************************************
@@ -343,7 +337,7 @@ void CChatServerMain::RequestCreateRoom(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDb<ST_CREATE_ROOM_REQ>(kDbCallIdent_CreateRoom,
+	PushDbOrFail<ST_CREATE_ROOM_REQ>(kDbCallIdent_Room,
 		[this, ownerPublicId, roomName, jobQueue, onComplete](ST_CREATE_ROOM_REQ* req)
 		{
 			CopyPublicId(req->ownerPublicId, ownerPublicId);
@@ -360,13 +354,8 @@ void CChatServerMain::RequestCreateRoom(
 
 					PostToJobQueue(jobQueue, onComplete, result, newRoomId);
 				};
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ERoomResult::DbError, 0);
-	}
+		},
+		onComplete, ERoomResult::DbError, 0);
 }
 
 //***************************************************************************
@@ -390,7 +379,7 @@ void CChatServerMain::RequestDeleteRoom(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDb<ST_DELETE_ROOM_REQ>(kDbCallIdent_DeleteRoom,
+	PushDbOrFail<ST_DELETE_ROOM_REQ>(kDbCallIdent_Room,
 		[this, roomId, requesterPublicId, jobQueue, onComplete](ST_DELETE_ROOM_REQ* req)
 		{
 			req->roomId = roomId;
@@ -400,6 +389,14 @@ void CChatServerMain::RequestDeleteRoom(
 				{
 					if( result == ERoomResult::Ok )
 					{
+						// 레지스트리에서 먼저 뺀다 — 아래에서 멤버를 로비로 옮길 때 MoveToRoom()이 방장 이양/빈 방 삭제
+						// (HandleRoomOwnershipOnLeave)를 타지 않게 하려는 것이다. 이미 DB에서 지워진 방이라
+						// 순서가 반대면 방장 이양 알림·DB 갱신·중복 삭제가 헛돌며 오류 로그만 남는다.
+						{
+							std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+							_roomRegistry.erase(roomId);
+						}
+
 						std::vector<std::shared_ptr<CChatSession>> members;
 						{
 							std::lock_guard<std::mutex> lock(_roomMutex);
@@ -418,22 +415,12 @@ void CChatServerMain::RequestDeleteRoom(
 						notify.roomId = roomId;
 						BroadcastToRoom(roomId, &notify, notify.size);
 
-						// 남아있던 멤버 전원을 로비로 이동. MoveToRoom() 내부가
-						// 이 방(oldRoomId==roomId)의 방장 이양 로직도 같이 타게
-						// 되는데, 방 자체가 곧 레지스트리에서 삭제될 것이므로
-						// (바로 아래) 그 로직은 "레지스트리에 이미 없음" 경로로
-						// 빠져 아무 일도 안 한다 — 순서가 중요하다(레지스트리
-						// 삭제를 먼저 하면 이 멤버 이동들이 다른 코드 경로를
-						// 타서 예상과 달라질 수 있음).
+						// 남아있던 멤버 전원을 로비로 이동한다. 레지스트리에서 이미 빠졌으므로
+						// MoveToRoom() 안의 방장 이양 로직은 "레지스트리에 없음"으로 바로 반환한다.
 						for( auto& memberSession : members )
 						{
 							int32 lobbyCount = 0;
 							MoveToRoom(memberSession, kLobbyRoomId, lobbyCount);
-						}
-
-						{
-							std::lock_guard<std::mutex> lock(_roomRegistryMutex);
-							_roomRegistry.erase(roomId);
 						}
 
 						// [추가] 방 자체가 삭제됐으니 그 방의 대화 기록도
@@ -444,13 +431,8 @@ void CChatServerMain::RequestDeleteRoom(
 
 					PostToJobQueue(jobQueue, onComplete, result);
 				};
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ERoomResult::DbError);
-	}
+		},
+		onComplete, ERoomResult::DbError);
 }
 
 //***************************************************************************
@@ -469,7 +451,7 @@ void CChatServerMain::RequestRenameRoom(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDb<ST_RENAME_ROOM_REQ>(kDbCallIdent_RenameRoom,
+	PushDbOrFail<ST_RENAME_ROOM_REQ>(kDbCallIdent_Room,
 		[this, roomId, requesterPublicId, newName, jobQueue, onComplete](ST_RENAME_ROOM_REQ* req)
 		{
 			req->roomId = roomId;
@@ -490,19 +472,14 @@ void CChatServerMain::RequestRenameRoom(
 						RenameRoomNotifyPacket notify{};
 						InitPacket(notify, EChatPacketType::RenameRoomNotify);
 						notify.roomId = roomId;
-						FixedBuf::CopyStr(notify.newName, newName);
+						CopyStrUtf8(notify.newName, newName);
 						BroadcastToRoom(roomId, &notify, notify.size);
 					}
 
 					PostToJobQueue(jobQueue, onComplete, result);
 				};
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ERoomResult::DbError);
-	}
+		},
+		onComplete, ERoomResult::DbError);
 }
 
 //***************************************************************************
@@ -533,11 +510,7 @@ void CChatServerMain::RequestListRooms(
 	// (입장 이력이 있는 전체 유저 수)를 Redis Set(RoomMembers:{roomId})의
 	// SCARD로 채운다 — DB 쪽 COUNT 서브쿼리 대신 Redis 쪽 카운터로
 	// 옮긴 것. 페이지 하나에 최대 kMaxRoomPageSize(50)개 방이 있을 수
-	// 있으므로, SCARD를 방마다 한 번씩 병렬로 날리고(순차로 하나씩
-	// 기다리면 왕복 지연이 그대로 누적된다) 전부 응답이 와야 최종
-	// 결과를 completion으로 넘긴다. 남은 응답 개수는 std::atomic<int32>로
-	// 세고, 각 콜백은 자기 몫의 인덱스에만 쓰므로(서로 다른 원소) 별도
-	// 락 없이 안전하다.
+	// 있으므로, 그 방들의 SCARD를 EVAL 한 번으로 묶어 왕복 한 번에 받는다.
 	auto finalizeAndDispatch = [this, jobQueue, onComplete](ELoginResult result, int32 totalCount, int32 resultPage,
 		std::shared_ptr<std::vector<SRoomListEntry>> displayRooms)
 		{
@@ -558,9 +531,8 @@ void CChatServerMain::RequestListRooms(
 
 			// 항목마다 image_ref가 상대 경로로 저장돼 있으면 완전한 URL로
 			// 복원한다(ToDisplayImageUrl() 참고). shared_ptr로 감싸는 이유는
-			// 아래 SCARD 콜백들(여러 개, 서로 다른 스레드에서 올 수 있음)이
-			// 전부 이 벡터를 참조해야 하는데, 그중 마지막 콜백이 응답할
-			// 때까지 이 벡터가 살아있어야 하기 때문이다.
+			// 아래 Redis 응답 콜백이 이 벡터를 채워서 넘겨야 해서, 응답이
+			// 올 때까지 벡터가 살아있어야 하기 때문이다.
 			auto displayRooms = std::make_shared<std::vector<SRoomListEntry>>(rooms);
 			for( SRoomListEntry& entry : *displayRooms )
 				entry.imageRef = ToDisplayImageUrl(entry.imageRef);
@@ -575,32 +547,46 @@ void CChatServerMain::RequestListRooms(
 				return;
 			}
 
-			auto remaining = std::make_shared<std::atomic<int32>>(static_cast<int32>(displayRooms->size()));
+			// 페이지의 모든 방 인원수를 EVAL 한 번으로 가져온다(방마다 SCARD를 따로 보내지 않는다).
+			// 결과는 문자열 배열로 돌려받아 ZREVRANGE 응답과 같은 방식으로 읽는다.
+			// 스크립트의 키는 undeclared(ARGV)로 넘긴다 — Redis Cluster에서는 쓸 수 없는 방식이다.
+			static const std::string kCountScript =
+				"local r = {}\n"
+				"for i = 1, #ARGV do r[i] = tostring(redis.call('SCARD', ARGV[i])) end\n"
+				"return r";
 
-			for( size_t i = 0; i < displayRooms->size(); ++i )
-			{
-				CVector<std::string> args;
-				args.push_back("SCARD");
-				args.push_back(BuildRoomMembersKey((*displayRooms)[i].roomId));
+			CVector<std::string> args;
+			args.push_back("EVAL");
+			args.push_back(kCountScript);
+			args.push_back("0");
+			for( const SRoomListEntry& entry : *displayRooms )
+				args.push_back(BuildRoomMembersKey(entry.roomId));
 
-				_redisService->SendCommand(args, [finalizeAndDispatch, result, totalCount, resultPage, displayRooms, remaining, i](const RedisValue& res)
+			const bool queued = _redisService->SendCommand(args, [finalizeAndDispatch, result, totalCount, resultPage, displayRooms](const RedisValue& res)
+				{
+					// 연결 오류 등으로 Error가 오면 인원수는 기본값 0으로 남긴다
+					// (인원수 하나 때문에 방 목록 전체를 실패시키지 않는다).
+					if( res.eType != ERedisType::Error )
 					{
-						// SCARD는 정수(Integer) 응답이다. 연결 오류 등으로
-						// Error가 오면 이 방의 totalMemberCount는 DB 기본값인
-						// 0으로 남긴다(방 목록 조회 자체를 실패시키지 않는다
-						// — 인원수 하나 때문에 전체 목록이 안 보이는 것보다는
-						// 그 항목만 0으로 보이는 게 낫다는 판단).
-						if( res.eType == ERedisType::Integer )
-							(*displayRooms)[i].totalMemberCount = static_cast<int32>(res.i64Val);
+						CRedisResultSet countSet(res);
+						for( SRoomListEntry& entry : *displayRooms )
+						{
+							std::string countStr;
+							if( !countSet.GetData(countStr) )
+								break;
+							entry.totalMemberCount = static_cast<int32>(::atoi(countStr.c_str()));
+						}
+					}
 
-						// 마지막으로 도착한 응답만 최종 completion을 트리거한다.
-						if( remaining->fetch_sub(1, std::memory_order_acq_rel) == 1 )
-							finalizeAndDispatch(result, totalCount, resultPage, displayRooms);
-					});
-			}
+					finalizeAndDispatch(result, totalCount, resultPage, displayRooms);
+				});
+
+			// 큐 적재 실패(풀 없음/대기 큐 포화) 시 콜백이 오지 않으므로 인원수 0으로 바로 응답한다.
+			if( !queued )
+				finalizeAndDispatch(result, totalCount, resultPage, displayRooms);
 		};
 
-	const bool pushed = PushDb<ST_LIST_ROOMS_PAGE_REQ>(kDbCallIdent_ListRoomsPage,
+	PushDbOrFail<ST_LIST_ROOMS_PAGE_REQ>(kDbCallIdent_Room,
 		[scope, requesterPublicId, keyword, page, pageSize, dispatchToJobQueue](ST_LIST_ROOMS_PAGE_REQ* req)
 		{
 			req->scope = scope;
@@ -609,13 +595,8 @@ void CChatServerMain::RequestListRooms(
 			req->page = page;
 			req->pageSize = pageSize;
 			req->onComplete = dispatchToJobQueue;
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ELoginResult::DbError, 0, 0, std::vector<SRoomListEntry>());
-	}
+		},
+		onComplete, ELoginResult::DbError, 0, 0, std::vector<SRoomListEntry>());
 }
 
 //***************************************************************************
@@ -628,7 +609,7 @@ void CChatServerMain::RequestRecordRoomJoin(
 	if( roomId == kLobbyRoomId )
 		return;
 
-	const bool pushed = PushDb<ST_RECORD_ROOM_JOIN_REQ>(kDbCallIdent_RecordRoomJoin,
+	const bool pushed = PushDb<ST_RECORD_ROOM_JOIN_REQ>(kDbCallIdent_Room,
 		[roomId, requesterPublicId](ST_RECORD_ROOM_JOIN_REQ* req)
 		{
 			req->roomId = roomId;
@@ -677,7 +658,7 @@ void CChatServerMain::RequestSetRoomImage(
 	// (ToStorableImageRef() 참고). 외부 URL이면 그대로 통과된다.
 	const std::string storableUrl = ToStorableImageRef(newImageUrl);
 
-	const bool pushed = PushDb<ST_SET_ROOM_IMAGE_REQ>(kDbCallIdent_SetRoomImage,
+	PushDbOrFail<ST_SET_ROOM_IMAGE_REQ>(kDbCallIdent_Room,
 		[this, roomId, requesterPublicId, storableUrl, jobQueue, onComplete](ST_SET_ROOM_IMAGE_REQ* req)
 		{
 			req->roomId = roomId;
@@ -702,20 +683,15 @@ void CChatServerMain::RequestSetRoomImage(
 						notify.roomId = roomId;
 
 						const std::string displayUrl = ToDisplayImageUrl(storableUrl);
-						FixedBuf::CopyStr(notify.imageUrl, displayUrl);
+						CopyStrUtf8(notify.imageUrl, displayUrl);
 
 						BroadcastToRoom(roomId, &notify, notify.size);
 					}
 
 					PostToJobQueue(jobQueue, onComplete, result);
 				};
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(ERoomResult::DbError);
-	}
+		},
+		onComplete, ERoomResult::DbError);
 }
 
 //***************************************************************************
@@ -735,7 +711,7 @@ void CChatServerMain::RequestGetRoomInfo(
 
 	CJobQueueRef jobQueue = _jobQueue;
 
-	const bool pushed = PushDb<ST_GET_ROOM_INFO_REQ>(kDbCallIdent_GetRoomInfo,
+	PushDbOrFail<ST_GET_ROOM_INFO_REQ>(kDbCallIdent_Room,
 		[this, roomId, jobQueue, onComplete](ST_GET_ROOM_INFO_REQ* req)
 		{
 			req->roomId = roomId;
@@ -750,13 +726,8 @@ void CChatServerMain::RequestGetRoomInfo(
 
 					PostToJobQueue(jobQueue, onComplete, actuallyFound, displayInfo);
 				};
-		});
-
-	if( !pushed )
-	{
-		if( onComplete )
-			onComplete(false, SRoomListEntry());
-	}
+		},
+		onComplete, false, SRoomListEntry());
 }
 
 //***************************************************************************
@@ -814,7 +785,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 		// 경로(빈 방 자동 삭제)에서도 대화 기록을 같이 지운다.
 		ClearRoomRedisData(roomId);
 
-		PushDb<ST_DELETE_ROOM_REQ>(kDbCallIdent_DeleteRoom,
+		PushDb<ST_DELETE_ROOM_REQ>(kDbCallIdent_Room,
 			[roomId, leavingPublicId](ST_DELETE_ROOM_REQ* req)
 			{
 				req->roomId = roomId;
@@ -843,7 +814,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 			it->second.ownerPublicId = newOwnerPublicId;
 	}
 
-	PushDb<ST_TRANSFER_ROOM_OWNER_REQ>(kDbCallIdent_TransferRoomOwner,
+	PushDb<ST_TRANSFER_ROOM_OWNER_REQ>(kDbCallIdent_Room,
 		[roomId, newOwnerPublicId](ST_TRANSFER_ROOM_OWNER_REQ* req)
 		{
 			req->roomId = roomId;
@@ -858,7 +829,7 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 	RoomOwnerChangedNotifyPacket notify{};
 	InitPacket(notify, EChatPacketType::RoomOwnerChangedNotify);
 	notify.roomId = roomId;
-	FixedBuf::CopyStr(notify.newOwnerNickname, newOwnerNickname);
+	CopyStrUtf8(notify.newOwnerNickname, newOwnerNickname);
 
 	BroadcastToRoom(roomId, &notify, notify.size);
 }
@@ -871,35 +842,57 @@ void CChatServerMain::HandleRoomOwnershipOnLeave(int32 roomId, const std::array<
 //          복원한다. 형식이 깨진 값(있어서는 안 되지만 방어적으로)이면
 //          그 방 하나만 건너뛰고 나머지는 계속 로딩한다.
 //***************************************************************************
-void CChatServerMain::LoadRoomRegistryFromDb()
+bool CChatServerMain::LoadRoomRegistryFromDb()
 {
-	PushDb<ST_LIST_ROOMS_REQ>(kDbCallIdent_ListRooms,
-		[this](ST_LIST_ROOMS_REQ* req)
+	// DB 워커 스레드의 완료 콜백이 약속을 채우고, 이 함수가 그것을 기다린다(콜백이 늦게 와도 안전하도록 shared_ptr).
+	auto done = std::make_shared<std::promise<bool>>();
+	std::future<bool> doneFuture = done->get_future();
+
+	const bool pushed = PushDb<ST_LIST_ROOMS_REQ>(kDbCallIdent_Room,
+		[this, done](ST_LIST_ROOMS_REQ* req)
 		{
-			req->onComplete = [this](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
+			req->onComplete = [this, done](ELoginResult result, const std::vector<SRoomListEntry>& rooms)
 				{
 					if( result != ELoginResult::Ok )
 					{
 						LOG_ERROR(_T("LoadRoomRegistryFromDb: 방 목록 초기 로딩 실패"));
+						done->set_value(false);
 						return;
 					}
 
-					std::lock_guard<std::mutex> lock(_roomRegistryMutex);
 					int32 loadedCount = 0;
-					for( const SRoomListEntry& entry : rooms )
 					{
-						std::array<BYTE, kPublicIdBytes> ownerPublicId{};
-						if( !HexToPublicId(entry.ownerPublicId, ownerPublicId) )
+						std::lock_guard<std::mutex> lock(_roomRegistryMutex);
+						for( const SRoomListEntry& entry : rooms )
 						{
-							LOG_ERROR(_T("LoadRoomRegistryFromDb: roomId=%d의 owner_public_id 16진 디코딩 실패 — 이 방은 건너뜀"), entry.roomId);
-							continue;
-						}
+							std::array<BYTE, kPublicIdBytes> ownerPublicId{};
+							if( !HexToPublicId(entry.ownerPublicId, ownerPublicId) )
+							{
+								LOG_ERROR(_T("LoadRoomRegistryFromDb: roomId=%d의 owner_public_id 16진 디코딩 실패 — 이 방은 건너뜀"), entry.roomId);
+								continue;
+							}
 
-						_roomRegistry[entry.roomId] = SRoomInfo{ entry.name, ownerPublicId };
-						++loadedCount;
+							_roomRegistry[entry.roomId] = SRoomInfo{ entry.name, ownerPublicId };
+							++loadedCount;
+						}
 					}
 
 					LOG_INFO(_T("LoadRoomRegistryFromDb: 방 %d개 로딩 완료"), loadedCount);
+					done->set_value(true);
 				};
 		});
+
+	if( !pushed )
+	{
+		LOG_ERROR(_T("LoadRoomRegistryFromDb: DB 요청을 큐에 넣지 못함"));
+		return false;
+	}
+
+	constexpr int32 kLoadTimeoutSec = 30;
+	if( doneFuture.wait_for(std::chrono::seconds(kLoadTimeoutSec)) != std::future_status::ready )
+	{
+		LOG_ERROR(_T("LoadRoomRegistryFromDb: %d초 안에 로딩이 끝나지 않음"), kLoadTimeoutSec);
+		return false;
+	}
+	return doneFuture.get();
 }

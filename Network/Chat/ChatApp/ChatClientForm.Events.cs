@@ -1054,6 +1054,7 @@ namespace ChatApp
                 case RoomResult.RoomLimitExceeded: return "생성 가능한 방 개수를 초과했습니다.";
                 case RoomResult.InvalidName: return "방 이름이 올바르지 않습니다.";
                 case RoomResult.DbError: return "서버 오류가 발생했습니다.";
+                case RoomResult.TooFast: return "요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.";
                 default: return reason.ToString();
             }
         }

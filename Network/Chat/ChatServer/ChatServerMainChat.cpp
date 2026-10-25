@@ -20,9 +20,10 @@
 //***************************************************************************
 int64 CChatServerMain::RegisterOutgoingMessage(const std::array<BYTE, kPublicIdBytes>& senderPublicId, int32 roomId)
 {
-	const int64 messageId = _nextMessageId.fetch_add(1);
-
 	std::lock_guard<std::mutex> lock(_messageOwnerMutex);
+
+	// 발급과 큐 삽입을 같은 락 안에서 해서 _messageOwnerOrder가 항상 id 오름차순을 유지하게 한다.
+	const int64 messageId = _nextMessageId.fetch_add(1);
 
 	_messageOwners[messageId] = SMessageOwnerRecord{ senderPublicId, roomId };
 	_messageOwnerOrder.push_back(messageId);
@@ -43,11 +44,9 @@ int64 CChatServerMain::RegisterOutgoingMessage(const std::array<BYTE, kPublicIdB
 // @details [수정 — 순서 큐 정리] 삭제에 성공한 messageId를 _messageOwners에서만
 //          지우고 _messageOwnerOrder(삽입 순서 큐)에 그대로 남겨두면,
 //          나중에 RegisterOutgoingMessage()의 밀어내기 루프가 이미 없는
-//          ID를 큐에서 뽑아 erase()를 또 호출하는 낭비(해는 없지만 불필요한
-//          작업)가 쌓인다 — std::deque에서 특정 원소 하나를 지우는 건
-//          O(n)이라 매 삭제마다 하기엔 아깝지만, 이 큐는 애초에
-//          kMaxTrackedMessages(500)로 크기가 짧게 묶여있어 실질적인
-//          비용은 무시할 수준이다.
+//          ID를 큐에서 뽑아 erase()를 또 호출하는 낭비가 쌓인다.
+//          messageId는 단조 증가로 발급되므로 큐는 항상 정렬돼 있고,
+//          이분 탐색으로 위치를 찾는다.
 //***************************************************************************
 EDeleteMessageResult CChatServerMain::TryDeleteMessage(int64 messageId, const std::array<BYTE, kPublicIdBytes>& requesterPublicId, int32& outRoomId)
 {
@@ -63,8 +62,8 @@ EDeleteMessageResult CChatServerMain::TryDeleteMessage(int64 messageId, const st
 	outRoomId = it->second.roomId;
 	_messageOwners.erase(it);
 
-	auto orderIt = std::find(_messageOwnerOrder.begin(), _messageOwnerOrder.end(), messageId);
-	if( orderIt != _messageOwnerOrder.end() )
+	auto orderIt = std::lower_bound(_messageOwnerOrder.begin(), _messageOwnerOrder.end(), messageId);
+	if( orderIt != _messageOwnerOrder.end() && *orderIt == messageId )
 		_messageOwnerOrder.erase(orderIt);
 
 	return EDeleteMessageResult::Ok;
@@ -77,6 +76,9 @@ namespace
 	// RequestRoomChatHistory()와만 공유한다. 일반 텍스트/닉네임/URL에
 	// 나올 일이 없는 제어문자라 이스케이프가 필요 없다.
 	constexpr char kChatHistoryFieldDelim = '\x01';
+
+	// 방당 Redis에 보관하는 최대 대화 기록 수(조회 상한 1000과 같다).
+	constexpr int32 kMaxChatHistoryPerRoom = 1000;
 
 	std::string BuildRoomChatOrderKey(int32 roomId) { return "RoomChatOrder:" + std::to_string(roomId); }
 	std::string BuildRoomChatMsgKey(int32 roomId) { return "RoomChatMsg:" + std::to_string(roomId); }
@@ -94,13 +96,13 @@ namespace
 	//          안전망이다. 반복적으로 재시도가 발생한다면 원인(연결 끊김인지,
 	//          파싱 실패인지)을 에러 문자열(res.strVal)로 구분해서 조사해야
 	//          한다.
-	// @details 지연은 jobQueue->DoTimer()가 아니라 짧게 sleep하는 스레드를 띄운
-	//          뒤 jobQueue->DoAsync()로 되돌아오는 방식으로 건다. DoTimer()는
+	// @details 지연은 jobQueue->DoTimer()가 아니라 서버의 유지보수 스레드 지연 큐
+	//          (CChatServerMain::ScheduleDelayed)에 예약한 뒤, 기한이 되면
+	//          jobQueue->DoAsync()로 되돌아오는 방식으로 건다. DoTimer()는
 	//          CJobTimer::Distribute()를 주기적으로 호출하는 루프가 있어야만
 	//          예약된 작업이 실행되는데 이 서버는 그 루프를 두지 않기 때문이다.
-	//          재시도는 에러가 난 경우에만 일어나므로 스레드 하나 띄우는 비용은
-	//          무시할 수 있다.
 	// @param redisService 명령을 보낼 서비스
+	// @param scheduleDelayed 지연 실행 예약 함수(delayMs, task)
 	// @param jobQueue 재시도 결과를 원래 스레드 문맥으로 되돌리는 데 쓸 큐
 	//        (nRetryDelayMs > 0일 때만 사용됨)
 	// @param args Redis 명령어 및 인자
@@ -111,29 +113,28 @@ namespace
 	//        마지막 에러 값 그대로 전달된다(호출부가 기존과 동일하게
 	//        "에러/빈 응답"으로 처리하면 됨).
 	//***************************************************************************
-	void SendCommandWithRetry(CRedisService* redisService, CJobQueueRef jobQueue, const CVector<std::string>& args, int32 nMaxRetry, int32 nRetryDelayMs, std::function<void(const RedisValue&)> onResult)
+	void SendCommandWithRetry(CRedisService* redisService, CJobQueueRef jobQueue, std::function<void(int32, std::function<void()>)> scheduleDelayed, const CVector<std::string>& args, int32 nMaxRetry, int32 nRetryDelayMs, std::function<void(const RedisValue&)> onResult)
 	{
 		auto fnSend = std::make_shared<std::function<void(int32)>>();
-		*fnSend = [redisService, jobQueue, args, onResult, fnSend, nRetryDelayMs](int32 nRetryLeft)
+		*fnSend = [redisService, jobQueue, scheduleDelayed, args, onResult, fnSend, nRetryDelayMs](int32 nRetryLeft)
 			{
-				redisService->SendCommand(args, [redisService, jobQueue, args, onResult, nRetryLeft, fnSend, nRetryDelayMs](const RedisValue& res)
+				const bool queued = redisService->SendCommand(args, [redisService, jobQueue, scheduleDelayed, args, onResult, nRetryLeft, fnSend, nRetryDelayMs](const RedisValue& res)
 					{
 						if( res.eType == ERedisType::Error && nRetryLeft > 0 )
 						{
 							LOG_ERROR(_T("SendCommandWithRetry: 일시적 연결 오류로 재시도 예약 (남은재시도=%d, 지연=%dms, err=%hs)"),
 								nRetryLeft, nRetryDelayMs, res.strVal.c_str());
 
-							if( jobQueue && nRetryDelayMs > 0 )
+							if( jobQueue && scheduleDelayed && nRetryDelayMs > 0 )
 							{
-								// 지연 후 jobQueue로 복귀해 재시도한다(위 설명 참고).
-								std::thread([jobQueue, fnSend, nRetryLeft, nRetryDelayMs]()
+								// 유지보수 스레드의 지연 큐에 예약하고, 기한이 되면 jobQueue로 복귀해 재시도한다(위 설명 참고).
+								scheduleDelayed(nRetryDelayMs, [jobQueue, fnSend, nRetryLeft]()
 									{
-										std::this_thread::sleep_for(std::chrono::milliseconds(nRetryDelayMs));
 										jobQueue->DoAsync([fnSend, nRetryLeft]()
 											{
 												(*fnSend)(nRetryLeft - 1);
 											});
-									}).detach();
+									});
 							}
 							else
 							{
@@ -143,6 +144,15 @@ namespace
 						}
 						onResult(res);
 					});
+
+				// 큐 적재 실패(풀 없음/대기 큐 포화) 시 콜백이 오지 않으므로 에러 응답으로 마무리한다.
+				if( !queued )
+				{
+					RedisValue err;
+					err.eType = ERedisType::Error;
+					err.strVal = "SendCommand rejected";
+					onResult(err);
+				}
 			};
 		(*fnSend)(nMaxRetry);
 	}
@@ -180,23 +190,32 @@ void CChatServerMain::RecordRoomChatMessage(
 
 	const std::string messageIdStr = std::to_string(messageId);
 
-	// ZADD RoomChatOrder:{roomId} {messageId} {messageId} — score와 member
-	// 둘 다 messageId(문자열)로 준다. score는 정렬 기준(오름차순 발급되는
-	// int64라 시간순과 정확히 일치), member는 조회 후 HMGET에 그대로 쓸 키.
-	CVector<std::string> zaddArgs;
-	zaddArgs.push_back("ZADD");
-	zaddArgs.push_back(BuildRoomChatOrderKey(roomId));
-	zaddArgs.push_back(messageIdStr);
-	zaddArgs.push_back(messageIdStr);
-	_redisService->SendCommand(zaddArgs, [](const RedisValue& /*res*/) {});
+	// 한 번의 EVAL로 (1) ZADD RoomChatOrder:{roomId} {messageId} {messageId} — score와 member 둘 다
+	// messageId(문자열): score는 정렬 기준(오름차순 발급이라 시간순과 일치), member는 조회 후 HMGET에
+	// 그대로 쓸 키, (2) HSET RoomChatMsg:{roomId} {messageId} {serialized}, (3) 방당 kMaxChatHistoryPerRoom
+	// 개를 넘으면 가장 오래된 항목을 ZSET·HASH에서 함께 제거한다. 원자적이고 왕복도 한 번이다.
+	static const std::string kRecordScript =
+		"redis.call('ZADD', KEYS[1], ARGV[1], ARGV[1])\n"
+		"redis.call('HSET', KEYS[2], ARGV[1], ARGV[2])\n"
+		"local limit = tonumber(ARGV[3])\n"
+		"local n = redis.call('ZCARD', KEYS[1])\n"
+		"if n > limit then\n"
+		"  local old = redis.call('ZRANGE', KEYS[1], 0, n - limit - 1)\n"
+		"  redis.call('ZREM', KEYS[1], unpack(old))\n"
+		"  redis.call('HDEL', KEYS[2], unpack(old))\n"
+		"end\n"
+		"return 1";
 
-	// HSET RoomChatMsg:{roomId} {messageId} {serialized}
-	CVector<std::string> hsetArgs;
-	hsetArgs.push_back("HSET");
-	hsetArgs.push_back(BuildRoomChatMsgKey(roomId));
-	hsetArgs.push_back(messageIdStr);
-	hsetArgs.push_back(serialized);
-	_redisService->SendCommand(hsetArgs, [](const RedisValue& /*res*/) {});
+	CVector<std::string> evalArgs;
+	evalArgs.push_back("EVAL");
+	evalArgs.push_back(kRecordScript);
+	evalArgs.push_back("2");
+	evalArgs.push_back(BuildRoomChatOrderKey(roomId));
+	evalArgs.push_back(BuildRoomChatMsgKey(roomId));
+	evalArgs.push_back(messageIdStr);
+	evalArgs.push_back(serialized);
+	evalArgs.push_back(std::to_string(kMaxChatHistoryPerRoom));
+	_redisService->SendCommand(evalArgs, [](const RedisValue& /*res*/) {});
 }
 
 //***************************************************************************
@@ -288,10 +307,11 @@ void CChatServerMain::RequestRoomChatHistory(
 	// 일시적인 연결 오류는 SendCommandWithRetry()가 흡수한다. 재시도 횟수와
 	// 지연은 풀의 재연결 주기(기본 3초)보다 짧게 두어, 방 입장 응답이
 	// 최악의 경우에도 약 1초(2회 x 500ms) 안에 끝나도록 했다.
+	auto scheduleDelayed = [this](int32 delayMs, std::function<void()> task) { ScheduleDelayed(delayMs, std::move(task)); };
 	constexpr int32 kChatHistoryMaxRetry = 2;
 	constexpr int32 kChatHistoryRetryDelayMs = 500;
 
-	SendCommandWithRetry(_redisService.get(), jobQueue, zrevrangeArgs, kChatHistoryMaxRetry, kChatHistoryRetryDelayMs, [this, jobQueue, onComplete, msgKey](const RedisValue& orderRes)
+	SendCommandWithRetry(_redisService.get(), jobQueue, scheduleDelayed, zrevrangeArgs, kChatHistoryMaxRetry, kChatHistoryRetryDelayMs, [this, jobQueue, scheduleDelayed, onComplete, msgKey](const RedisValue& orderRes)
 		{
 			CRedisResultSet orderSet(orderRes);
 
@@ -316,7 +336,7 @@ void CChatServerMain::RequestRoomChatHistory(
 			for( const std::string& id : messageIds )
 				hmgetArgs.push_back(id);
 
-			SendCommandWithRetry(_redisService.get(), jobQueue, hmgetArgs, kChatHistoryMaxRetry, kChatHistoryRetryDelayMs, [jobQueue, onComplete, messageIds](const RedisValue& hmgetRes)
+			SendCommandWithRetry(_redisService.get(), jobQueue, scheduleDelayed, hmgetArgs, kChatHistoryMaxRetry, kChatHistoryRetryDelayMs, [jobQueue, onComplete, messageIds](const RedisValue& hmgetRes)
 				{
 					CRedisResultSet hmgetSet(hmgetRes);
 

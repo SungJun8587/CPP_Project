@@ -18,8 +18,8 @@ SET NAMES utf8mb4;
 -- 내 계정 닉네임(이미 가입된 계정)
 SET @me = (SELECT public_id FROM users WHERE nickname = '내닉네임');
 
--- 1로 바꾸면 친구 상한(200명) 테스트용으로 lim_001~lim_192 를 추가 친구로 넣어
--- 기존 친구 8명과 합쳐 정확히 200명으로 맞춘다(그 상태에서 요청 수락/발송 시 FriendLimit 확인).
+-- 1로 바꾸면 친구 상한(3000명) 테스트용으로 lim_001~lim_2992 를 추가 친구로 넣어
+-- 기존 친구 8명과 합쳐 정확히 3000명으로 맞춘다(그 상태에서 요청 수락/발송 시 FriendLimit 확인).
 SET @fill_to_limit = 0;
 -- ===========================================================================
 
@@ -50,19 +50,21 @@ INSERT INTO seed_people (nickname, kind, idx) VALUES
 DROP TEMPORARY TABLE IF EXISTS seed_nums;
 CREATE TEMPORARY TABLE seed_nums (n INT NOT NULL PRIMARY KEY);
 INSERT INTO seed_nums (n)
-SELECT a.d + b.d * 10 + c.d * 100 + 1
+SELECT a.d + b.d * 10 + c.d * 100 + e.d * 1000 + 1
 FROM (SELECT 0 d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
       UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) a,
      (SELECT 0 d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
       UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) b,
-     (SELECT 0 d UNION ALL SELECT 1) c;
+     (SELECT 0 d UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4
+      UNION ALL SELECT 5 UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9) c,
+     (SELECT 0 d UNION ALL SELECT 1 UNION ALL SELECT 2) e;
 
 INSERT INTO seed_people (nickname, kind, idx)
 SELECT CONCAT('req_', LPAD(n, 3, '0')), 'request', n FROM seed_nums WHERE n <= 120;
 
--- 친구 상한 테스트(옵션): 기존 친구 8명 + 192명 = 200명
+-- 친구 상한 테스트(옵션): 기존 친구 8명 + 2992명 = 3000명
 INSERT INTO seed_people (nickname, kind, idx)
-SELECT CONCAT('lim_', LPAD(n, 3, '0')), 'lim', n FROM seed_nums WHERE @fill_to_limit = 1 AND n <= 192;
+SELECT CONCAT('lim_', LPAD(n, 3, '0')), 'lim', n FROM seed_nums WHERE @fill_to_limit = 1 AND n <= 2992;
 
 -- ---------------------------------------------------------------------------
 -- 2) users — public_id는 닉네임으로부터 정해지는 고정 값(MD5, 소문자 16진 32자),

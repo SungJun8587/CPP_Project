@@ -10,6 +10,7 @@
 //***************************************************************************
 
 using System;
+using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Threading;
 
@@ -67,7 +68,7 @@ namespace ChatApp
         public event Action<FriendRequestResData> FriendRequestResultReceived;
         public event Action<FriendRespondResData> FriendRespondResultReceived;
         public event Action<FriendTargetResData> FriendRemoveResultReceived;
-        public event Action<FriendItemData> FriendListItemReceived;
+        public event Action<List<FriendItemData>> FriendListBatchReceived;   // 친구 목록 한 묶음(패킷 하나)
         public event Action<FriendListEndData> FriendListEndReceived;
         public event Action<FriendPendingItemData> FriendPendingItemReceived;
         public event Action<FriendPendingEndData> FriendPendingEndReceived;
@@ -459,8 +460,8 @@ namespace ChatApp
                     FriendRemoveResultReceived?.Invoke(PacketParser.ParseFriendTargetRes(full));
                     break;
 
-                case PacketType.FriendListItemRes:
-                    FriendListItemReceived?.Invoke(PacketParser.ParseFriendListItemRes(full));
+                case PacketType.FriendListBatchRes:
+                    FriendListBatchReceived?.Invoke(PacketParser.ParseFriendListBatchRes(full));
                     break;
 
                 case PacketType.FriendListEndRes:

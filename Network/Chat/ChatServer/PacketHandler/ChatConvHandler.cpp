@@ -21,57 +21,22 @@
 
 namespace
 {
-	// 요청자 정보 스냅샷 — 요청자가 응답 전에 끊겨도 다른 멤버 푸시에 쓸 수 있도록 값으로 보관한다.
-	struct SActor
-	{
-		std::weak_ptr<CChatSession>	session;
-		PublicId					publicId{};
-	};
-
-	bool BeginOp(CChatSession& session, CChatServerMain*& server, SActor& actor)
-	{
-		server = GetLoggedInServer(session);
-		if( server == nullptr )
-			return false;
-
-		actor.session = GetSessionRef(session);
-		actor.publicId = session.GetPublicId();
-		return true;
-	}
-
-	//***************************************************************************
-	// @brief UTF-8 문자 경계를 지켜 고정폭 char 배열에 복사한다(잘려도 깨진 문자가 남지 않음).
-	//***************************************************************************
-	template<size_t N>
-	void CopyUtf8Safe(char(&dst)[N], const std::string& src)
-	{
-		size_t len = (std::min)(src.size(), N - 1);
-		if( len < src.size() )
-		{
-			// 잘리는 지점이 문자 중간(연속 바이트 0b10xxxxxx)이면 그 문자의 시작까지 물린다.
-			while( len > 0 && (static_cast<unsigned char>(src[len]) & 0xC0) == 0x80 )
-				--len;
-		}
-		::memset(dst, 0, N);
-		::memcpy(dst, src.data(), len);
-	}
-
 	void FillSummary(ConvSummaryFields& out, const SConvSummary& s)
 	{
 		::memset(&out, 0, sizeof(out));
 		out.convId = s.convId;
 		out.type = s.type;
-		FixedBuf::CopyStr(out.name, s.name);
+		CopyStrUtf8(out.name, s.name);
 		out.memberCount = s.memberCount;
 		out.unreadCount = s.unreadCount;
 		out.lastMsgId = s.lastMsgId;
 		out.lastMsgTime = s.lastMsgTime;
 		out.lastKind = s.lastKind;
-		CopyUtf8Safe(out.lastMessage, s.lastMessage);
+		CopyStrUtf8(out.lastMessage, s.lastMessage);
 		out.myLastReadMsgId = s.myLastReadMsgId;
 		CopyPublicId(out.peerPublicId, s.peer.publicId);
-		FixedBuf::CopyStr(out.peerNickname, s.peer.nickname);
-		FixedBuf::CopyStr(out.peerImageUrl, s.peer.profileImageRef);
+		CopyStrUtf8(out.peerNickname, s.peer.nickname);
+		CopyStrUtf8(out.peerImageUrl, s.peer.profileImageRef);
 	}
 
 	void FillMessage(ConvMessageNotifyPacket& out, const SConvMessage& m)
@@ -81,29 +46,23 @@ namespace
 		out.kind = m.kind;
 		if( m.hasSender )
 			CopyPublicId(out.senderPublicId, m.sender);
-		FixedBuf::CopyStr(out.senderNickname, m.senderNickname);
-		FixedBuf::CopyStr(out.senderImageUrl, m.senderImageRef);
+		CopyStrUtf8(out.senderNickname, m.senderNickname);
+		CopyStrUtf8(out.senderImageUrl, m.senderImageRef);
 		out.timestamp = m.timestamp;
-		CopyUtf8Safe(out.message, m.body);
+		CopyStrUtf8(out.message, m.body);
 
 		out.replyToMsgId = m.replyToMsgId;
 		if( m.replyToMsgId > 0 )
 		{
 			out.replyKind = m.replyKind;
-			FixedBuf::CopyStr(out.replySenderNickname, m.replySenderNickname);
+			CopyStrUtf8(out.replySenderNickname, m.replySenderNickname);
 			// 미리보기는 텍스트 대상의 첫 줄만(사진은 클라이언트가 "(사진)"으로 표시).
 			if( m.replyKind == static_cast<uint8>(EConvMessageKind::Text) )
 			{
 				const size_t cut = m.replyBody.find_first_of("\r\n");
-				CopyUtf8Safe(out.replyPreview, cut == std::string::npos ? m.replyBody : m.replyBody.substr(0, cut));
+				CopyStrUtf8(out.replyPreview, cut == std::string::npos ? m.replyBody : m.replyBody.substr(0, cut));
 			}
 		}
-	}
-
-	void SendToOnline(CChatServerMain* server, const PublicId& target, const void* data, uint16 size)
-	{
-		if( auto s = server->FindOnlineSession(target) )
-			s->Send(data, size);
 	}
 
 	//***************************************************************************
@@ -120,16 +79,24 @@ namespace
 		InitPacket(notify, EChatPacketType::ConvMessageNotify);
 		FillMessage(notify, res.newMsg);
 
-		const std::string senderKey = res.newMsg.hasSender ? PublicIdToHex(res.newMsg.sender) : std::string();
+		// 수신자마다 락을 잡지 않도록 대상을 추린 뒤 세션을 한 번에 조회한다.
+		std::vector<PublicId> targets;
+		targets.reserve(res.recipients.size());
 		for( const PublicId& recipient : res.recipients )
 		{
 			if( res.silent && recipient != actor )
 				continue;
+			targets.push_back(recipient);
+		}
 
-			auto session = server->FindOnlineSession(recipient);
+		const std::string senderKey = res.newMsg.hasSender ? PublicIdToHex(res.newMsg.sender) : std::string();
+		const auto sessions = server->FindOnlineSessions(targets);
+		for( size_t i = 0; i < targets.size(); ++i )
+		{
+			const auto& session = sessions[i];
 			if( session == nullptr || !session->IsConnected() )
 				continue;
-			if( res.newMsg.hasSender && recipient != res.newMsg.sender && session->IsBlockingHex(senderKey) )
+			if( res.newMsg.hasSender && targets[i] != res.newMsg.sender && session->IsBlockingHex(senderKey) )
 				continue;
 			session->Send(&notify, sizeof(notify));
 		}
@@ -151,8 +118,7 @@ namespace
 		InitPacket(notify, EChatPacketType::ConvUpdatedNotify);
 		FillSummary(notify.summary, forInvitee);
 
-		for( const PublicId& added : res.addedMembers )
-			SendToOnline(server, added, &notify, sizeof(notify));
+		SendToOnlineMany(server, res.addedMembers, &notify, sizeof(notify));
 	}
 
 	// ── 1:1 열기 ─────────────────────────────────────────────────────────
@@ -162,7 +128,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const PublicId target = ToPublicId(packet->publicId);
@@ -198,7 +164,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int32 count = packet->count;
@@ -222,7 +188,7 @@ namespace
 			[name, members, count](ST_CONV_REQ* req)
 			{
 				req->op = EConvOp::CreateGroup;
-				FixedBuf::CopyStr(req->name, name);
+				CopyStrUtf8(req->name, name);
 				req->targetCount = count;
 				for( int32 i = 0; i < count; ++i )
 					::memcpy(req->targets[i], (*members)[i].data(), kPublicIdBytes);
@@ -257,7 +223,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
@@ -313,7 +279,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
@@ -348,7 +314,7 @@ namespace
 	{
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		server->RequestConvOp(actor.publicId,
@@ -389,10 +355,20 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
+		if( !session.AllowMessage() )
+		{
+			ConvSendResPacket out{};
+			InitPacket(out, EChatPacketType::ConvSendRes);
+			out.reason = static_cast<uint8>(EConvResult::TooFast);
+			out.convId = convId;
+			SendPacket(session, out);
+			return;
+		}
+
 		const int64 replyToMsgId = (std::max<int64>)(0, packet->replyToMsgId);
 		const uint8 kind = packet->kind;
 		std::string message = FixedBuf::ReadStr(packet->message);
@@ -422,7 +398,7 @@ namespace
 				req->convId = convId;
 				req->msgKind = kind;
 				req->replyToMsgId = replyToMsgId;
-				FixedBuf::CopyStr(req->message, message);
+				CopyStrUtf8(req->message, message);
 			},
 			[server, actor, convId](const SConvOpResult& res)
 			{
@@ -451,7 +427,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
@@ -462,7 +438,7 @@ namespace
 			{
 				req->op = EConvOp::Rename;
 				req->convId = convId;
-				FixedBuf::CopyStr(req->name, name);
+				CopyStrUtf8(req->name, name);
 			},
 			[server, actor, convId](const SConvOpResult& res)
 			{
@@ -484,9 +460,8 @@ namespace
 				ConvRenamedNotifyPacket notify{};
 				InitPacket(notify, EChatPacketType::ConvRenamedNotify);
 				notify.convId = convId;
-				FixedBuf::CopyStr(notify.name, res.renamedTo);
-				for( const PublicId& recipient : res.recipients )
-					SendToOnline(server, recipient, &notify, sizeof(notify));
+				CopyStrUtf8(notify.name, res.renamedTo);
+				SendToOnlineMany(server, res.recipients, &notify, sizeof(notify));
 
 				PushMessage(server, res, actor.publicId);	// "OO님이 이름을 변경했습니다" 안내
 			});
@@ -499,7 +474,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
@@ -534,8 +509,7 @@ namespace
 				InitPacket(notify, EChatPacketType::ConvDeletedNotify);
 				notify.convId = convId;
 				notify.msgId = res.deletedMsgId;
-				for( const PublicId& recipient : res.recipients )
-					SendToOnline(server, recipient, &notify, sizeof(notify));
+				SendToOnlineMany(server, res.recipients, &notify, sizeof(notify));
 			});
 	}
 
@@ -546,7 +520,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
@@ -601,7 +575,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
@@ -626,11 +600,7 @@ namespace
 				CopyPublicId(notify.readerPublicId, actor.publicId);
 				notify.upToMsgId = res.readUpTo;
 
-				for( const PublicId& recipient : res.recipients )
-				{
-					if( recipient != actor.publicId )
-						SendToOnline(server, recipient, &notify, sizeof(notify));
-				}
+				SendToOnlineMany(server, res.recipients, &notify, sizeof(notify), &actor.publicId);
 			});
 	}
 
@@ -641,7 +611,7 @@ namespace
 
 		CChatServerMain* server = nullptr;
 		SActor actor;
-		if( !BeginOp(session, server, actor) )
+		if( !BeginActorOp(session, server, actor) )
 			return;
 
 		const int64 convId = packet->convId;
@@ -662,16 +632,23 @@ namespace
 				int32 sent = 0;
 				if( ok )
 				{
+					std::vector<PublicId> ids;
+					ids.reserve(res.members.size());
 					for( const SConvMember& member : res.members )
+						ids.push_back(member.publicId);
+					const auto onlineSessions = server->FindOnlineSessions(ids);
+
+					for( size_t i = 0; i < res.members.size(); ++i )
 					{
+						const SConvMember& member = res.members[i];
 						ConvMemberItemResPacket item{};
 						InitPacket(item, EChatPacketType::ConvMemberItemRes);
 						item.convId = convId;
 						CopyPublicId(item.publicId, member.publicId);
-						FixedBuf::CopyStr(item.nickname, member.nickname);
-						FixedBuf::CopyStr(item.profileImageUrl, member.profileImageRef);
+						CopyStrUtf8(item.nickname, member.nickname);
+						CopyStrUtf8(item.profileImageUrl, member.profileImageRef);
 						item.lastReadMsgId = member.lastReadMsgId;
-						item.online = (server->FindOnlineSession(member.publicId) != nullptr) ? 1 : 0;
+						item.online = (onlineSessions[i] != nullptr) ? 1 : 0;
 						SendPacket(me, item);
 						++sent;
 					}

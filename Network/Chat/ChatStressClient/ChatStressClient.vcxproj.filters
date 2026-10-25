@@ -122,10 +122,10 @@
     <Filter Include="UtilCore\Crypto">
       <UniqueIdentifier>{23f5596c-1294-47e9-a247-70fabdd5a067}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Common">
+    <Filter Include="ChatCommon">
       <UniqueIdentifier>{2875778f-6652-463c-aca9-0cc7a6d731d4}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Common\Protocol">
+    <Filter Include="ChatCommon\Protocol">
       <UniqueIdentifier>{1cc1559f-c4c2-466a-80b4-2bac1dc38862}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
@@ -272,17 +272,17 @@
     <ClInclude Include="ChatStressStats.h" />
     <ClInclude Include="ChatStressScheduler.h" />
     <ClInclude Include="ChatStressReporter.h" />
-    <ClInclude Include="..\Common\Protocol\ChatPacket.h">
-      <Filter>Common\Protocol</Filter>
-    </ClInclude>
-    <ClInclude Include="..\Common\Protocol\ChatPacketTypes.h">
-      <Filter>Common\Protocol</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
-    <ClInclude Include="..\Common\Protocol\ChatPacketUtil.h">
-      <Filter>Common\Protocol</Filter>
+    <ClInclude Include="..\ChatCommon\Protocol\ChatPacket.h">
+      <Filter>ChatCommon\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ChatCommon\Protocol\ChatPacketTypes.h">
+      <Filter>ChatCommon\Protocol</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ChatCommon\Protocol\ChatPacketUtil.h">
+      <Filter>ChatCommon\Protocol</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
