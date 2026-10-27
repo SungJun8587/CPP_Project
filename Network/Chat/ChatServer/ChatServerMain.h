@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_CHATSERVERMAIN_H
-#define UC_CHATSERVERMAIN_H
+#ifndef CHATSERVERMAIN_H
+#define CHATSERVERMAIN_H
 
 #include <ServerConnectInfo.h>		
 #include <Crypto/CryptoUtil.h>
@@ -187,7 +187,7 @@ public:
 	// @brief 로그인된 계정(publicId로 식별)의 닉네임 변경을 DB 비동기 워커에 요청합니다.
 	// @param session 요청을 보낸 세션(로그인 상태여야 함 — 호출부가 사전 확인)
 	// @param publicId 대상 계정의 안정 식별자(세션의 GetPublicId())
-	// @param newNickname 바꿀 닉네임 (형식 검증은 ChangeNicknameDBHandler.cpp가 다시 수행)
+	// @param newNickname 바꿀 닉네임 (형식 검증은 AccountDBHandler.cpp가 다시 수행)
 	// @param onComplete DB 워커 스레드 완료 콜백(JobQueue로 이관됨). 성공 시에도
 	//        세션의 표시용 닉네임 갱신은 이 함수가 아니라 콜백을 소비하는 쪽
 	//        (ChatAccountHandler.cpp)의 책임이다. publicId 자체는 이
@@ -390,6 +390,15 @@ public:
 	//***************************************************************************
 	bool IsOwnedImageUrl(const std::string& url) const;
 
+	//***************************************************************************
+	// @brief 프로필/방 이미지로 url을 등록해도 되는지 판별한다.
+	// @details 빈 문자열(해제)과 외부 URL은 허용한다. 우리 파일 서버 URL이면
+	//          경로가 FileServerKeys 규칙을 만족하고 owner가 publicId 본인일 때만
+	//          허용한다 — 남의 업로드 파일을 자기 이미지로 등록한 뒤 지워서
+	//          그 파일의 삭제를 예약시키는 것을 막는다.
+	//***************************************************************************
+	bool IsImageUrlUsableBy(const std::array<BYTE, kPublicIdBytes>& publicId, const std::string& url) const;
+
 	// [수정 — 이동] EDeleteMessageResult는 이제 ChatPacketTypes.h에 있다
 	// (ChatPacket.h가 그 헤더를 include하므로 이 파일에서 그대로 쓸 수 있다) —
 	// 와이어 프로토콜 값이라 ERoomResult/ELoginResult와 같은 자리로 옮겼다.
@@ -405,9 +414,26 @@ public:
 	// @param senderPublicId 이 메시지를 보낸 계정의 안정 식별자(소유권 검증용)
 	// @param roomId 이 메시지가 브로드캐스트되는 방(나중에 삭제 알림도
 	//        같은 방으로 보내야 하므로 여기서 같이 기억해둔다)
+	// @param fileRelativePath 파일 첨부 메시지면 발신자 소유 파일의 상대 경로
+	//        (ExtractOwnFileAttachmentPath() 결과), 아니면 빈 문자열 —
+	//        메시지 삭제가 성공하면 이 파일도 예약 삭제된다.
 	// @return 새로 발급된 메시지 ID(1부터 시작하는 단조 증가값)
 	//***************************************************************************
-	int64 RegisterOutgoingMessage(const std::array<BYTE, kPublicIdBytes>& senderPublicId, int32 roomId);
+	int64 RegisterOutgoingMessage(const std::array<BYTE, kPublicIdBytes>& senderPublicId, int32 roomId, const std::string& fileRelativePath = std::string());
+
+	//***************************************************************************
+	// @brief 채팅 메시지 텍스트가 "[FILE:이름:크기]{파일서버URL}/images/{owner}/{name}"
+	//        형식이고 그 파일이 발신자 본인 소유({owner}==발신자 public_id 16진)
+	//        일 때만 상대 경로("{owner}/{name}")를 돌려줍니다 — 남의 파일 URL을
+	//        끼워 넣어 삭제를 유도하는 것을 막기 위한 소유권 검증.
+	// @return 조건 불충족 시 빈 문자열.
+	//***************************************************************************
+	std::string ExtractOwnFileAttachmentPath(const std::array<BYTE, kPublicIdBytes>& senderPublicId, const std::string& message) const;
+
+	//***************************************************************************
+	// @brief 파일 서버 상대 경로를 예약 삭제 큐(FileServer:PendingDeletions)에 등록합니다.
+	//***************************************************************************
+	void ScheduleFileDeletion(const std::string& relativePath);
 
 	//***************************************************************************
 	// @brief [추가] 메시지 삭제를 시도합니다 — 존재 여부와 소유권을 확인한
@@ -418,9 +444,11 @@ public:
 	// @param requesterPublicId 요청자의 안정 식별자 — 메시지 소유자와
 	//        일치해야 삭제가 허용된다.
 	// @param outRoomId [out] 성공 시(Ok)만 유효 — 이 메시지가 원래 있던 방 번호.
+	// @param outFileRelativePath [out] 성공 시(Ok)만 유효 — 첨부 파일이 있으면
+	//        그 상대 경로(호출부가 ScheduleFileDeletion()으로 예약), 없으면 빈 문자열.
 	// @return EDeleteMessageResult (성공은 Ok)
 	//***************************************************************************
-	EDeleteMessageResult TryDeleteMessage(int64 messageId, const std::array<BYTE, kPublicIdBytes>& requesterPublicId, int32& outRoomId);
+	EDeleteMessageResult TryDeleteMessage(int64 messageId, const std::array<BYTE, kPublicIdBytes>& requesterPublicId, int32& outRoomId, std::string& outFileRelativePath);
 
 	//***************************************************************************
 	// @brief 세션을 지정한 위치(로비 또는 특정 룸)로 옮깁니다.
@@ -496,6 +524,13 @@ public:
 	//          달리 이건 방 멤버십 기준으로 대상을 제한한다.
 	//***************************************************************************
 	void BroadcastToRoom(int32 roomId, const void* data, uint16 size);
+
+	//***************************************************************************
+	// @brief 방(로비 포함)에 지금 접속해 있는 세션의 스냅샷을 반환합니다.
+	// @details _roomMutex 안에서 weak_ptr을 lock()해 shared_ptr만 모아 락을
+	//          풀고 돌려준다. 호출부는 락 밖에서 Send/문자열 복사 등을 하면 된다.
+	//***************************************************************************
+	std::vector<std::shared_ptr<CChatSession>> SnapshotRoomSessions(int32 roomId) const;
 
 	//***************************************************************************
 	// @brief 이 서버 프로세스의 현재 전체 접속자 수(TCP 연결 기준, 로그인
@@ -863,6 +898,7 @@ private:
 	{
 		std::array<BYTE, kPublicIdBytes>	senderPublicId;
 		int32								roomId = -1;
+		std::string							fileRelativePath;	// 파일 첨부 메시지면 발신자 소유 파일의 상대 경로
 	};
 
 	// [추가] 최근 메시지 추적(삭제 기능용) — 서버 전체를 통틀어 최근
@@ -931,4 +967,4 @@ private:
 	}
 };
 
-#endif // ndef UC_CHATSERVERMAIN_H
+#endif // ndef CHATSERVERMAIN_H

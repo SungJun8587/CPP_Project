@@ -169,7 +169,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\BaseODBC.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncHandler.h" />
@@ -225,7 +224,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConnectInfo.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
@@ -237,6 +235,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="..\ChatCommon\FileServerKeys.h" />
     <ClInclude Include="..\ChatCommon\ImageRef.h" />
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacket.h" />
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacketTypes.h" />
@@ -267,7 +266,6 @@
     <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl" />
     <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl" />
     <None Include="..\..\..\..\Library\UtilCore\Memory\Singleton.inl" />
-    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

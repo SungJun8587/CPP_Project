@@ -18,8 +18,8 @@
 // ChatSession.h / ChatServerMain.h 뒤에 include 되어야 합니다.
 //***************************************************************************
 
-#ifndef UC_CHATHANDLERUTIL_H
-#define UC_CHATHANDLERUTIL_H
+#ifndef CHATHANDLERUTIL_H
+#define CHATHANDLERUTIL_H
 
 #include <memory>
 #include <tuple>
@@ -198,4 +198,4 @@ auto MakeJobQueueDispatcher(CJobQueueRef jobQueue, TCallback onComplete)
 		};
 }
 
-#endif // ndef UC_CHATHANDLERUTIL_H
+#endif // ndef CHATHANDLERUTIL_H

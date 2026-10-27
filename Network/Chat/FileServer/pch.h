@@ -58,7 +58,6 @@ using namespace std;
 
 #include <Thread/CacheAlignment.h>
 #include <Thread/DeadLockProfiler.h>
-#include <Thread/SpinLock.h>
 #include <Thread/SRWLock.h>
 #include <Thread/PlatformLock.h>
 #include <Thread/ThreadManager.h>
@@ -87,16 +86,13 @@ using namespace std;
 #include <Redis/RedisCommon.h>
 
 #include "../ChatCommon/ImageRef.h"
+#include "../ChatCommon/FileServerKeys.h"
 #include "FileServerConfig.h"
 #include "FileStorage.h"
 #include "LocalFileStorage.h"
-#include "FileSendBufferPool.h"
-#include "FileMetadata.h"
-#include "FileMetadataRepository.h"
 #include "FileServerSession.h"
 #include "FileUploadHandler.h"
 #include "FileDownloadHandler.h"
-#include "FileDeleteHandler.h"
 #include "FileServerRouter.h"
 #include "FileServerMain.h"
 

@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_DBACCOUNTREQUEST_H
-#define UC_DBACCOUNTREQUEST_H
+#ifndef DBACCOUNTREQUEST_H
+#define DBACCOUNTREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
 
@@ -107,4 +107,4 @@ struct ST_CHANGE_NICKNAME_REQ : public ST_ACCOUNT_REQ_BASE
 		const std::string& newNickname)>	onComplete;
 };
 
-#endif // ndef UC_DBACCOUNTREQUEST_H
+#endif // ndef DBACCOUNTREQUEST_H

@@ -18,14 +18,14 @@
 //        그 발신자/방 정보를 삭제 검증용으로 기억해둔다(kMaxTrackedMessages개
 //        초과 시 가장 오래된 항목부터 자동으로 밀어낸다).
 //***************************************************************************
-int64 CChatServerMain::RegisterOutgoingMessage(const std::array<BYTE, kPublicIdBytes>& senderPublicId, int32 roomId)
+int64 CChatServerMain::RegisterOutgoingMessage(const std::array<BYTE, kPublicIdBytes>& senderPublicId, int32 roomId, const std::string& fileRelativePath)
 {
 	std::lock_guard<std::mutex> lock(_messageOwnerMutex);
 
 	// 발급과 큐 삽입을 같은 락 안에서 해서 _messageOwnerOrder가 항상 id 오름차순을 유지하게 한다.
 	const int64 messageId = _nextMessageId.fetch_add(1);
 
-	_messageOwners[messageId] = SMessageOwnerRecord{ senderPublicId, roomId };
+	_messageOwners[messageId] = SMessageOwnerRecord{ senderPublicId, roomId, fileRelativePath };
 	_messageOwnerOrder.push_back(messageId);
 
 	while( _messageOwnerOrder.size() > kMaxTrackedMessages )
@@ -48,7 +48,7 @@ int64 CChatServerMain::RegisterOutgoingMessage(const std::array<BYTE, kPublicIdB
 //          messageId는 단조 증가로 발급되므로 큐는 항상 정렬돼 있고,
 //          이분 탐색으로 위치를 찾는다.
 //***************************************************************************
-EDeleteMessageResult CChatServerMain::TryDeleteMessage(int64 messageId, const std::array<BYTE, kPublicIdBytes>& requesterPublicId, int32& outRoomId)
+EDeleteMessageResult CChatServerMain::TryDeleteMessage(int64 messageId, const std::array<BYTE, kPublicIdBytes>& requesterPublicId, int32& outRoomId, std::string& outFileRelativePath)
 {
 	std::lock_guard<std::mutex> lock(_messageOwnerMutex);
 
@@ -60,6 +60,7 @@ EDeleteMessageResult CChatServerMain::TryDeleteMessage(int64 messageId, const st
 		return EDeleteMessageResult::NotOwner;
 
 	outRoomId = it->second.roomId;
+	outFileRelativePath = std::move(it->second.fileRelativePath);
 	_messageOwners.erase(it);
 
 	auto orderIt = std::lower_bound(_messageOwnerOrder.begin(), _messageOwnerOrder.end(), messageId);
@@ -67,6 +68,29 @@ EDeleteMessageResult CChatServerMain::TryDeleteMessage(int64 messageId, const st
 		_messageOwnerOrder.erase(orderIt);
 
 	return EDeleteMessageResult::Ok;
+}
+
+//***************************************************************************
+// @brief 파일 첨부 메시지의 파일 상대 경로를 발신자 소유일 때만 추출한다.
+//***************************************************************************
+std::string CChatServerMain::ExtractOwnFileAttachmentPath(const std::array<BYTE, kPublicIdBytes>& senderPublicId, const std::string& message) const
+{
+	static const std::string kPrefix = "[FILE:";
+	if( _fileServerUrl.empty() || message.compare(0, kPrefix.size(), kPrefix) != 0 )
+		return std::string();
+
+	const size_t close = message.find(']', kPrefix.size());
+	if( close == std::string::npos )
+		return std::string();
+
+	const std::string relativePath = ImageRef::ExtractOwnedRelativePath(_fileServerUrl, message.substr(close + 1));
+
+	// 파일 서버 저장소와 같은 경로 규칙을 만족하고(FileServerKeys), owner가 발신자 본인이어야 한다.
+	const std::string ownerPrefix = PublicIdToHex(senderPublicId) + "/";
+	if( !FileServerKeys::IsValidRelativePath(relativePath) || relativePath.compare(0, ownerPrefix.size(), ownerPrefix) != 0 )
+		return std::string();
+
+	return relativePath;
 }
 
 namespace
@@ -113,48 +137,67 @@ namespace
 	//        마지막 에러 값 그대로 전달된다(호출부가 기존과 동일하게
 	//        "에러/빈 응답"으로 처리하면 됨).
 	//***************************************************************************
+	// 재시도 간에 공유되는 불변 상태. 콜백이 이 구조체를 shared_ptr로 붙들 뿐
+	// 자기 자신을 가리키지 않으므로 순환 참조가 없고, 마지막 콜백이 끝나면 해제된다.
+	struct SRetryState
+	{
+		CRedisService* redisService = nullptr;
+		CJobQueueRef jobQueue;
+		std::function<void(int32, std::function<void()>)> scheduleDelayed;
+		CVector<std::string> args;
+		int32 nRetryDelayMs = 0;
+		std::function<void(const RedisValue&)> onResult;
+	};
+
+	void AttemptSend(const std::shared_ptr<SRetryState>& state, int32 nRetryLeft)
+	{
+		const bool queued = state->redisService->SendCommand(state->args, [state, nRetryLeft](const RedisValue& res)
+			{
+				if( res.eType == ERedisType::Error && nRetryLeft > 0 )
+				{
+					LOG_ERROR(_T("SendCommandWithRetry: 일시적 연결 오류로 재시도 예약 (남은재시도=%d, 지연=%dms, err=%hs)"),
+						nRetryLeft, state->nRetryDelayMs, res.strVal.c_str());
+
+					if( state->jobQueue && state->scheduleDelayed && state->nRetryDelayMs > 0 )
+					{
+						// 유지보수 스레드의 지연 큐에 예약하고, 기한이 되면 jobQueue로 복귀해 재시도한다(위 설명 참고).
+						state->scheduleDelayed(state->nRetryDelayMs, [state, nRetryLeft]()
+							{
+								state->jobQueue->DoAsync([state, nRetryLeft]()
+									{
+										AttemptSend(state, nRetryLeft - 1);
+									});
+							});
+					}
+					else
+					{
+						AttemptSend(state, nRetryLeft - 1);
+					}
+					return;
+				}
+				state->onResult(res);
+			});
+
+		// 큐 적재 실패(풀 없음/대기 큐 포화) 시 콜백이 오지 않으므로 에러 응답으로 마무리한다.
+		if( !queued )
+		{
+			RedisValue err;
+			err.eType = ERedisType::Error;
+			err.strVal = "SendCommand rejected";
+			state->onResult(err);
+		}
+	}
+
 	void SendCommandWithRetry(CRedisService* redisService, CJobQueueRef jobQueue, std::function<void(int32, std::function<void()>)> scheduleDelayed, const CVector<std::string>& args, int32 nMaxRetry, int32 nRetryDelayMs, std::function<void(const RedisValue&)> onResult)
 	{
-		auto fnSend = std::make_shared<std::function<void(int32)>>();
-		*fnSend = [redisService, jobQueue, scheduleDelayed, args, onResult, fnSend, nRetryDelayMs](int32 nRetryLeft)
-			{
-				const bool queued = redisService->SendCommand(args, [redisService, jobQueue, scheduleDelayed, args, onResult, nRetryLeft, fnSend, nRetryDelayMs](const RedisValue& res)
-					{
-						if( res.eType == ERedisType::Error && nRetryLeft > 0 )
-						{
-							LOG_ERROR(_T("SendCommandWithRetry: 일시적 연결 오류로 재시도 예약 (남은재시도=%d, 지연=%dms, err=%hs)"),
-								nRetryLeft, nRetryDelayMs, res.strVal.c_str());
-
-							if( jobQueue && scheduleDelayed && nRetryDelayMs > 0 )
-							{
-								// 유지보수 스레드의 지연 큐에 예약하고, 기한이 되면 jobQueue로 복귀해 재시도한다(위 설명 참고).
-								scheduleDelayed(nRetryDelayMs, [jobQueue, fnSend, nRetryLeft]()
-									{
-										jobQueue->DoAsync([fnSend, nRetryLeft]()
-											{
-												(*fnSend)(nRetryLeft - 1);
-											});
-									});
-							}
-							else
-							{
-								(*fnSend)(nRetryLeft - 1);
-							}
-							return;
-						}
-						onResult(res);
-					});
-
-				// 큐 적재 실패(풀 없음/대기 큐 포화) 시 콜백이 오지 않으므로 에러 응답으로 마무리한다.
-				if( !queued )
-				{
-					RedisValue err;
-					err.eType = ERedisType::Error;
-					err.strVal = "SendCommand rejected";
-					onResult(err);
-				}
-			};
-		(*fnSend)(nMaxRetry);
+		auto state = std::make_shared<SRetryState>();
+		state->redisService = redisService;
+		state->jobQueue = std::move(jobQueue);
+		state->scheduleDelayed = std::move(scheduleDelayed);
+		state->args = args;
+		state->nRetryDelayMs = nRetryDelayMs;
+		state->onResult = std::move(onResult);
+		AttemptSend(state, nMaxRetry);
 	}
 }
 

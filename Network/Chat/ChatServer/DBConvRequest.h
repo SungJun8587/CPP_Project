@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_DBCONVREQUEST_H
-#define UC_DBCONVREQUEST_H
+#ifndef DBCONVREQUEST_H
+#define DBCONVREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
 
@@ -136,4 +136,4 @@ struct ST_CONV_REQ : public st_DBAsyncRq
 	std::function<void(const SConvOpResult& result)>	onComplete;
 };
 
-#endif // ndef UC_DBCONVREQUEST_H
+#endif // ndef DBCONVREQUEST_H

@@ -167,7 +167,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
@@ -191,7 +190,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />
-    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

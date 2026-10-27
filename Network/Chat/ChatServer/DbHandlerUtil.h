@@ -7,8 +7,8 @@
 // DB 핸들러 .cpp에서 DbServiceManager.h 뒤에 include 한다.
 //***************************************************************************
 
-#ifndef UC_DBHANDLERUTIL_H
-#define UC_DBHANDLERUTIL_H
+#ifndef DBHANDLERUTIL_H
+#define DBHANDLERUTIL_H
 
 #include <DB/OdbcConnPool.h>
 #include <Util/EncodingConvert.h>
@@ -153,6 +153,18 @@ namespace DbUtil
 			return true;
 		}
 
+		// SELECT COUNT(*) ... 처럼 첫 행 첫 컬럼이 정수인 쿼리의 값을 읽는다(행이 없으면 0).
+		bool Count(const TCHAR* sql, const std::vector<std::string>& params, int32& count)
+		{
+			count = 0;
+			std::vector<Row> rows;
+			if( !Query(sql, params, 1, rows) )
+				return false;
+			if( !rows.empty() )
+				count = static_cast<int32>(ToI64(rows.front()[0]));
+			return true;
+		}
+
 		bool Exists(const TCHAR* sql, const std::vector<std::string>& params, bool& exists)
 		{
 			std::vector<Row> rows;
@@ -173,7 +185,13 @@ namespace DbUtil
 			if( !DbUtil::PrepareOrClear(_guard, sql) )
 				return false;
 			for( size_t i = 0; i < bound.size(); ++i )
-				DbUtil::BindString(_guard, static_cast<int32>(i + 1), bound[i]);
+			{
+				if( !DbUtil::BindString(_guard, static_cast<int32>(i + 1), bound[i]) )
+				{
+					_guard->ClearStmt();
+					return false;
+				}
+			}
 			return DbUtil::ExecuteOrClear(_guard);
 		}
 
@@ -182,4 +200,4 @@ namespace DbUtil
 	};
 }
 
-#endif // ndef UC_DBHANDLERUTIL_H
+#endif // ndef DBHANDLERUTIL_H

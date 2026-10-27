@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_DBFRIENDREQUEST_H
-#define UC_DBFRIENDREQUEST_H
+#ifndef DBFRIENDREQUEST_H
+#define DBFRIENDREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
 
@@ -80,4 +80,4 @@ struct ST_FRIEND_REQ : public st_DBAsyncRq
 	std::function<void(const SFriendOpResult& result)>	onComplete;
 };
 
-#endif // ndef UC_DBFRIENDREQUEST_H
+#endif // ndef DBFRIENDREQUEST_H

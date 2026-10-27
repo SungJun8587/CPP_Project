@@ -178,14 +178,6 @@ int32 CChatServerMain::GetRoomUserCount(int32 roomId) const
 }
 
 //***************************************************************************
-// @brief 방(로비 포함)에 지금 실제로 접속해 있는 멤버의 프로필을 조회합니다.
-// @details GetRoomUserCount()와 동일하게 _roomMembers를 락 안에서 훑되,
-//          세션마다 shared_ptr을 lock()해 닉네임/프로필 이미지 URL을 그
-//          자리에서 바로 복사해둔다 — 락을 놓은 뒤에는 그 세션이 다른
-//          방으로 옮기거나 끊길 수 있으므로, 락 구간 밖으로 shared_ptr
-//          자체를 들고 나가지 않고 필요한 값만 복사해서 가져나온다.
-//***************************************************************************
-//***************************************************************************
 // @brief 방에 입장한 적이 있는 유저 목록(전체 이력, DB 기준)의 한 페이지를
 //        조회합니다. 각 항목에 IsUserOnline() 기준 접속 상태를 붙입니다.
 // @details DB 조회 자체(RoomDBHandler.cpp)는 접속 상태를
@@ -239,26 +231,19 @@ void CChatServerMain::RequestRoomMemberHistoryPage(
 		onComplete, ELoginResult::DbError, 0, 0, std::vector<SRoomMemberHistoryInfo>());
 }
 
+//***************************************************************************
+// @brief 방(로비 포함)에 지금 실제로 접속해 있는 멤버의 프로필을 조회합니다.
+// @details 락 안에서는 SnapshotRoomSessions()로 세션 참조만 모으고, 닉네임/프로필
+//          이미지 URL 복사와 정렬은 락 밖에서 한다.
+//***************************************************************************
 std::vector<SRoomMemberInfo> CChatServerMain::GetRoomMembers(int32 roomId) const
 {
 	std::vector<SRoomMemberInfo> members;
 
 	// 락 안에서는 세션 참조만 모으고, 문자열 복사·정렬은 락 밖에서 한다.
-	std::vector<std::shared_ptr<CChatSession>> sessions;
-	{
-		std::lock_guard<std::mutex> lock(_roomMutex);
-
-		auto it = _roomMembers.find(roomId);
-		if( it == _roomMembers.end() )
-			return members;
-
-		sessions.reserve(it->second.size());
-		for( const auto& w : it->second )
-		{
-			if( auto s = w.lock() )
-				sessions.push_back(std::move(s));
-		}
-	}
+	const std::vector<std::shared_ptr<CChatSession>> sessions = SnapshotRoomSessions(roomId);
+	if( sessions.empty() )
+		return members;
 
 	members.reserve(sessions.size());
 	for( const auto& session : sessions )
@@ -277,6 +262,28 @@ std::vector<SRoomMemberInfo> CChatServerMain::GetRoomMembers(int32 roomId) const
 }
 
 //***************************************************************************
+// @brief 방(로비 포함)에 지금 접속해 있는 세션의 스냅샷을 반환합니다.
+//***************************************************************************
+std::vector<std::shared_ptr<CChatSession>> CChatServerMain::SnapshotRoomSessions(int32 roomId) const
+{
+	std::vector<std::shared_ptr<CChatSession>> sessions;
+
+	std::lock_guard<std::mutex> lock(_roomMutex);
+
+	auto it = _roomMembers.find(roomId);
+	if( it == _roomMembers.end() )
+		return sessions;
+
+	sessions.reserve(it->second.size());
+	for( const auto& w : it->second )
+	{
+		if( auto s = w.lock() )
+			sessions.push_back(std::move(s));
+	}
+	return sessions;
+}
+
+//***************************************************************************
 // @brief 지정한 방(로비 포함)에 있는 세션들에게만 브로드캐스트합니다.
 //***************************************************************************
 void CChatServerMain::BroadcastToRoom(int32 roomId, const void* data, uint16 size)
@@ -284,23 +291,7 @@ void CChatServerMain::BroadcastToRoom(int32 roomId, const void* data, uint16 siz
 	if( data == nullptr || size == 0 )
 		return;
 
-	std::vector<std::shared_ptr<CChatSession>> targets;
-	{
-		std::lock_guard<std::mutex> lock(_roomMutex);
-
-		auto it = _roomMembers.find(roomId);
-		if( it == _roomMembers.end() )
-			return;
-
-		targets.reserve(it->second.size());
-		for( auto& w : it->second )
-		{
-			if( auto s = w.lock() )
-				targets.push_back(s);
-		}
-	}
-
-	for( auto& s : targets )
+	for( auto& s : SnapshotRoomSessions(roomId) )
 	{
 		if( s->IsConnected() )
 			s->Send(data, size);
@@ -397,18 +388,7 @@ void CChatServerMain::RequestDeleteRoom(
 							_roomRegistry.erase(roomId);
 						}
 
-						std::vector<std::shared_ptr<CChatSession>> members;
-						{
-							std::lock_guard<std::mutex> lock(_roomMutex);
-							auto it = _roomMembers.find(roomId);
-							if( it != _roomMembers.end() )
-							{
-								members.reserve(it->second.size());
-								for( auto& w : it->second )
-									if( auto s = w.lock() )
-										members.push_back(s);
-							}
-						}
+						const std::vector<std::shared_ptr<CChatSession>> members = SnapshotRoomSessions(roomId);
 
 						DeleteRoomNotifyPacket notify{};
 						InitPacket(notify, EChatPacketType::DeleteRoomNotify);
@@ -417,7 +397,7 @@ void CChatServerMain::RequestDeleteRoom(
 
 						// 남아있던 멤버 전원을 로비로 이동한다. 레지스트리에서 이미 빠졌으므로
 						// MoveToRoom() 안의 방장 이양 로직은 "레지스트리에 없음"으로 바로 반환한다.
-						for( auto& memberSession : members )
+						for( const auto& memberSession : members )
 						{
 							int32 lobbyCount = 0;
 							MoveToRoom(memberSession, kLobbyRoomId, lobbyCount);

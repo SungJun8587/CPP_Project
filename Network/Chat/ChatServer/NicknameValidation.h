@@ -4,18 +4,17 @@
 //
 //***************************************************************************
 
-#ifndef UC_NICKNAMEVALIDATION_H
-#define UC_NICKNAMEVALIDATION_H
+#ifndef NICKNAMEVALIDATION_H
+#define NICKNAMEVALIDATION_H
 
 #include <cctype>
 #include <cstdint>
 #include <cstddef>
 
 //***************************************************************************
-// [설계 노트] 원래 AccountDBHandler.cpp 안에 있던 걸 여기로 뺐다 —
-// ChangeNicknameDBHandler.cpp(닉네임 변경)도 정확히 같은 검증 규칙을
-// 써야 하는데, 익명 네임스페이스 안에 있으면 파일 밖에서 재사용할 수
-// 없었기 때문이다.
+// [설계 노트] 회원가입과 닉네임 변경(AccountDBHandler.cpp)이 정확히 같은
+// 검증 규칙을 써야 하고, 클라이언트 쪽 사전 검증과도 규칙을 공유하므로
+// 특정 .cpp의 익명 네임스페이스가 아니라 이 헤더에 둔다.
 //***************************************************************************
 namespace NicknameValidation
 {
@@ -100,4 +99,4 @@ namespace NicknameValidation
 	}
 }
 
-#endif // ndef UC_NICKNAMEVALIDATION_H
+#endif // ndef NICKNAMEVALIDATION_H

@@ -352,24 +352,10 @@ void CChatServerMain::BroadcastChatToRoom(int32 roomId, const std::array<BYTE, k
 	if( data == nullptr || size == 0 )
 		return;
 
-	std::vector<std::shared_ptr<CChatSession>> targets;
-	{
-		std::lock_guard<std::mutex> lock(_roomMutex);
-
-		auto it = _roomMembers.find(roomId);
-		if( it == _roomMembers.end() )
-			return;
-
-		targets.reserve(it->second.size());
-		for( auto& w : it->second )
-		{
-			if( auto s = w.lock() )
-				targets.push_back(s);
-		}
-	}
+	const std::vector<std::shared_ptr<CChatSession>> targets = SnapshotRoomSessions(roomId);
 
 	const std::string senderKey = PublicIdToHex(senderPublicId);	// 수신자마다 다시 변환하지 않도록 한 번만
-	for( auto& s : targets )
+	for( const auto& s : targets )
 	{
 		if( s->IsConnected() && !s->IsBlockingHex(senderKey) )
 			s->Send(data, size);

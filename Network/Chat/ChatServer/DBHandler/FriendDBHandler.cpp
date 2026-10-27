@@ -5,9 +5,9 @@
 //***************************************************************************
 
 #include "pch.h"
+#include <DB/DBAsyncHandler.h>
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
-#include <DB/DBAsyncHandler.h>
 
 #include "../ChatCommon/Protocol/ChatPacketUtil.h"
 #include "DbServiceManager.h"
@@ -21,85 +21,40 @@
 namespace
 {
 	//***************************************************************************
-	// @brief 친구 기능용 얇은 어댑터 — 파라미터 0~2개짜리 단순 구문을 공용 DbUtil::CSql 위에서 실행한다.
-	// @details 모든 파라미터는 문자열(public_id 16진 32자 또는 닉네임)이다. p2가 nullptr이면 파라미터는 하나다.
+	// @brief 컬럼 (public_id, nickname[, image_ref]) 순서의 행을 전부 SFriendEntry로 읽는다.
+	// @details image_ref가 없는 쿼리(차단 목록)는 columnCount=2로 구분한다. publicId가 깨진 행은 건너뛴다.
 	//***************************************************************************
-	class CFriendSql
+	bool FetchEntries(DbUtil::CSql& sql, const TCHAR* query, const std::vector<std::string>& params,
+		int columnCount, std::vector<SFriendEntry>& out)
 	{
-	public:
-		explicit CFriendSql(OdbcConnGuard& guard) : _sql(guard) {}
+		std::vector<DbUtil::Row> rows;
+		if( !sql.Query(query, params, columnCount, rows) )
+			return false;
 
-		// INSERT/DELETE 등 결과 집합이 없는 구문
-		bool Exec(const TCHAR* sql, const std::string& p1, const std::string* p2 = nullptr)
+		for( const DbUtil::Row& row : rows )
 		{
-			return _sql.Exec(sql, Params(p1, p2));
+			SFriendEntry entry;
+			if( !HexToPublicId(row[0], entry.publicId) )
+				continue;
+			entry.nickname = row[1];
+			if( columnCount >= 3 )
+				entry.profileImageRef = row[2];	// 프로필 이미지는 없을 수 있다(COALESCE로 빈 문자열)
+			out.push_back(std::move(entry));
 		}
+		return true;
+	}
 
-		// 첫 행이 존재하는지 확인 (SELECT 1 ...)
-		bool Exists(const TCHAR* sql, const std::string& p1, const std::string* p2, bool& exists)
-		{
-			return _sql.Exists(sql, Params(p1, p2), exists);
-		}
-
-		// SELECT COUNT(*) ... 의 첫 컬럼을 정수로 읽음
-		bool Count(const TCHAR* sql, const std::string& p1, const std::string* p2, int32& count)
-		{
-			count = 0;
-			std::vector<DbUtil::Row> rows;
-			if( !_sql.Query(sql, Params(p1, p2), 1, rows) )
-				return false;
-			if( !rows.empty() )
-				count = static_cast<int32>(DbUtil::ToI64(rows.front()[0]));
-			return true;
-		}
-
-		// 컬럼 (public_id, nickname[, image_ref]) 순서의 행을 전부 읽는다.
-		// image_ref가 없는 쿼리(차단 목록)는 columnCount=2로 구분. publicId가 깨진 행은 건너뛴다.
-		bool Fetch(const TCHAR* sql, const std::string& p1, const std::string* p2, int columnCount,
-			std::vector<SFriendEntry>& out)
-		{
-			std::vector<DbUtil::Row> rows;
-			if( !_sql.Query(sql, Params(p1, p2), columnCount, rows) )
-				return false;
-
-			for( const DbUtil::Row& row : rows )
-			{
-				SFriendEntry entry;
-				if( !HexToPublicId(row[0], entry.publicId) )
-					continue;
-				entry.nickname = row[1];
-				if( columnCount >= 3 )
-					entry.profileImageRef = row[2];	// 프로필 이미지는 없을 수 있다(COALESCE로 빈 문자열)
-				out.push_back(std::move(entry));
-			}
-			return true;
-		}
-
-		// WHERE 절의 단일 값으로 계정 한 명을 읽는다. 없으면 found=false.
-		bool LoadUser(const TCHAR* sql, const std::string& key, SFriendEntry& entry, bool& found)
-		{
-			std::vector<SFriendEntry> rows;
-			if( !Fetch(sql, key, nullptr, 3, rows) )
-				return false;
-			found = !rows.empty();
-			if( found )
-				entry = std::move(rows.front());
-			return true;
-		}
-
-	private:
-		static std::vector<std::string> Params(const std::string& p1, const std::string* p2)
-		{
-			std::vector<std::string> params;
-			params.push_back(p1);
-			if( p2 != nullptr )
-				params.push_back(*p2);
-			return params;
-		}
-
-	private:
-		DbUtil::CSql _sql;
-	};
+	// WHERE 절의 단일 값으로 계정 한 명을 읽는다. 없으면 found=false.
+	bool LoadUser(DbUtil::CSql& sql, const TCHAR* query, const std::string& key, SFriendEntry& entry, bool& found)
+	{
+		std::vector<SFriendEntry> rows;
+		if( !FetchEntries(sql, query, { key }, 3, rows) )
+			return false;
+		found = !rows.empty();
+		if( found )
+			entry = std::move(rows.front());
+		return true;
+	}
 
 	// 정규화된 쌍 (작은 쪽, 큰 쪽) — friendships의 저장 규칙. 둘 다 소문자 16진 32자라 단순 문자열 비교로 충분.
 	void MakePair(const std::string& x, const std::string& y, std::string& lo, std::string& hi)
@@ -148,10 +103,235 @@ namespace
 		_T("SELECT u.public_id, u.nickname FROM user_blocks b ")
 		_T("JOIN users u ON u.public_id = b.blocked_id ")
 		_T("WHERE b.blocker_id = ? ORDER BY b.created_at");
+
+	//***************************************************************************
+	// @brief 연산 하나를 처리하는 동안 연산 함수들이 공유하는 상태.
+	// @details target/lo/hi는 단건 연산에서 ResolveTarget()이 채운다(목록 연산에서는 쓰지 않는다).
+	//***************************************************************************
+	struct SFriendCtx
+	{
+		ST_FRIEND_REQ* req;
+		SFriendOpResult& out;
+		DbUtil::CSql& sql;
+		std::string			me;			// 요청자 public_id(16진 32자)
+		std::string			target;		// 대상 public_id(16진 32자)
+		std::string			lo, hi;		// (me, target)을 friendships 저장 규칙대로 정규화한 쌍
+	};
+
+	// ── 목록 연산 ─────────────────────────────────────────────────────────
+
+	EFriendResult HandleListFriends(SFriendCtx& c)
+	{
+		return FetchEntries(c.sql, kSqlListFriends, { c.me, c.me }, 3, c.out.entries) ? EFriendResult::Ok : EFriendResult::DbError;
+	}
+
+	EFriendResult HandleListPending(SFriendCtx& c)
+	{
+		// 페이지 크기를 1~kMaxPendingPageSize로, 페이지 번호를 0~마지막 페이지로 보정한다.
+		// LIMIT/OFFSET은 문자열 파라미터로 바인딩하면 서버 측 prepare에서 거부될 수 있어
+		// 서버가 보정한 정수를 SQL 텍스트에 직접 넣는다(외부 문자열이 아니므로 주입 위험 없음).
+		int32 total = 0;
+		if( !c.sql.Count(kSqlCountPending, { c.me }, total) )
+			return EFriendResult::DbError;
+
+		const int32 pageSize = (std::max)(1, (std::min)(c.req->pageSize, kMaxPendingPageSize));
+		const int32 lastPage = (total > 0) ? ((total - 1) / pageSize) : 0;
+		const int32 page = (std::max)(0, (std::min)(c.req->page, lastPage));
+
+		c.out.totalCount = total;
+		c.out.pageSize = pageSize;
+		c.out.page = page;
+
+		if( total > 0 )
+		{
+			_tstring query = kSqlListPending;
+			query += Utf8ToTString(" LIMIT " + std::to_string(pageSize) + " OFFSET " + std::to_string(page * pageSize));
+
+			if( !FetchEntries(c.sql, query.c_str(), { c.me }, 3, c.out.entries) )
+				return EFriendResult::DbError;
+		}
+		return EFriendResult::Ok;
+	}
+
+	EFriendResult HandleListBlocks(SFriendCtx& c)
+	{
+		return FetchEntries(c.sql, kSqlListBlocks, { c.me }, 2, c.out.entries) ? EFriendResult::Ok : EFriendResult::DbError;
+	}
+
+	// ── 단건 연산 ─────────────────────────────────────────────────────────
+
+	// 대상 계정을 읽어 c.out.target/c.target/c.lo/c.hi를 채운다. 없으면 UserNotFound, 자기 자신이면 SelfTarget.
+	EFriendResult ResolveTarget(SFriendCtx& c)
+	{
+		bool found = false;
+		bool ok;
+		if( c.req->hasTargetId )
+		{
+			const std::string targetHex = PublicIdToHex(c.req->targetPublicId);
+			ok = LoadUser(c.sql, kSqlUserById, targetHex, c.out.target, found);
+		}
+		else
+		{
+			char safeBuf[sizeof(c.req->targetNickname) + 1] = {};
+			::memcpy(safeBuf, c.req->targetNickname, sizeof(c.req->targetNickname));
+			ok = LoadUser(c.sql, kSqlUserByNickname, std::string(safeBuf), c.out.target, found);
+		}
+		if( !ok )
+			return EFriendResult::DbError;
+		if( !found )
+			return EFriendResult::UserNotFound;
+
+		c.target = PublicIdToHex(c.out.target.publicId);
+		if( c.target == c.me )
+			return EFriendResult::SelfTarget;
+
+		MakePair(c.me, c.target, c.lo, c.hi);
+		return EFriendResult::Ok;
+	}
+
+	// 친구 관계 성립(요청 삭제 포함). requester/accepter는 정리할 대기 요청의 방향이다.
+	// 양쪽 친구 수 상한을 검사한다.
+	EFriendResult EstablishFriendship(SFriendCtx& c, const std::string& requester, const std::string& accepter)
+	{
+		int32 myCount = 0, otherCount = 0;
+		if( !c.sql.Count(kSqlFriendCount, { c.me, c.me }, myCount) ||
+			!c.sql.Count(kSqlFriendCount, { c.target, c.target }, otherCount) )
+			return EFriendResult::DbError;
+		if( myCount >= kMaxFriends || otherCount >= kMaxFriends )
+			return EFriendResult::FriendLimit;
+
+		if( !c.sql.Exec(kSqlInsertFriend, { c.lo, c.hi }) )
+			return EFriendResult::DbError;
+		// 어느 방향의 대기 요청이든 정리 (둘 다 없을 수도 있음)
+		if( !c.sql.Exec(kSqlDeleteRequest, { requester, accepter }) ||
+			!c.sql.Exec(kSqlDeleteRequest, { accepter, requester }) )
+			return EFriendResult::DbError;
+		return EFriendResult::Ok;
+	}
+
+	EFriendResult HandleSendRequest(SFriendCtx& c)
+	{
+		bool exists = false;
+
+		// 내가 차단한 상대에게는 요청 불가 (차단 해제 후 가능)
+		if( !c.sql.Exists(kSqlBlockExists, { c.me, c.target }, exists) )
+			return EFriendResult::DbError;
+		if( exists )
+			return EFriendResult::BlockedByMe;
+
+		// 상대가 나를 차단함 — 차단 사실을 드러내지 않도록 성공으로 응답하되 저장/알림은 하지 않는다.
+		if( !c.sql.Exists(kSqlBlockExists, { c.target, c.me }, exists) )
+			return EFriendResult::DbError;
+		if( exists )
+		{
+			c.out.silent = true;
+			return EFriendResult::Ok;
+		}
+
+		if( !c.sql.Exists(kSqlIsFriend, { c.lo, c.hi }, exists) )
+			return EFriendResult::DbError;
+		if( exists )
+			return EFriendResult::AlreadyFriends;
+
+		if( !c.sql.Exists(kSqlRequestExists, { c.me, c.target }, exists) )
+			return EFriendResult::DbError;
+		if( exists )
+			return EFriendResult::AlreadyRequested;
+
+		// 상대가 이미 나에게 요청을 보낸 상태면 서로 원하는 것이므로 즉시 친구로 만든다.
+		if( !c.sql.Exists(kSqlRequestExists, { c.target, c.me }, exists) )
+			return EFriendResult::DbError;
+		if( exists )
+		{
+			const EFriendResult r = EstablishFriendship(c, c.target, c.me);
+			c.out.autoAccepted = (r == EFriendResult::Ok);
+			return r;
+		}
+
+		int32 myCount = 0;
+		if( !c.sql.Count(kSqlFriendCount, { c.me, c.me }, myCount) )
+			return EFriendResult::DbError;
+		if( myCount >= kMaxFriends )
+			return EFriendResult::FriendLimit;
+
+		return c.sql.Exec(kSqlInsertRequest, { c.me, c.target }) ? EFriendResult::Ok : EFriendResult::DbError;
+	}
+
+	EFriendResult HandleAccept(SFriendCtx& c)
+	{
+		bool exists = false;
+		if( !c.sql.Exists(kSqlRequestExists, { c.target, c.me }, exists) )
+			return EFriendResult::DbError;
+		if( !exists )
+			return EFriendResult::NoPendingRequest;
+		return EstablishFriendship(c, c.target, c.me);
+	}
+
+	EFriendResult HandleReject(SFriendCtx& c)
+	{
+		bool exists = false;
+		if( !c.sql.Exists(kSqlRequestExists, { c.target, c.me }, exists) )
+			return EFriendResult::DbError;
+		if( !exists )
+			return EFriendResult::NoPendingRequest;
+		return c.sql.Exec(kSqlDeleteRequest, { c.target, c.me }) ? EFriendResult::Ok : EFriendResult::DbError;
+	}
+
+	EFriendResult HandleRemove(SFriendCtx& c)
+	{
+		bool exists = false;
+		if( !c.sql.Exists(kSqlIsFriend, { c.lo, c.hi }, exists) )
+			return EFriendResult::DbError;
+		if( !exists )
+			return EFriendResult::NotFriends;
+		return c.sql.Exec(kSqlDeleteFriend, { c.lo, c.hi }) ? EFriendResult::Ok : EFriendResult::DbError;
+	}
+
+	EFriendResult HandleBlock(SFriendCtx& c)
+	{
+		bool exists = false;
+		if( !c.sql.Exists(kSqlBlockExists, { c.me, c.target }, exists) )
+			return EFriendResult::DbError;
+		if( exists )
+			return EFriendResult::AlreadyBlocked;
+
+		if( !c.sql.Exec(kSqlInsertBlock, { c.me, c.target }) )
+			return EFriendResult::DbError;
+
+		// 차단하면 친구 관계와 양방향 대기 요청을 모두 정리한다.
+		if( !c.sql.Exists(kSqlIsFriend, { c.lo, c.hi }, exists) )
+			return EFriendResult::DbError;
+		if( exists )
+		{
+			if( !c.sql.Exec(kSqlDeleteFriend, { c.lo, c.hi }) )
+				return EFriendResult::DbError;
+			c.out.friendshipRemoved = true;
+		}
+		if( !c.sql.Exec(kSqlDeleteRequest, { c.me, c.target }) || !c.sql.Exec(kSqlDeleteRequest, { c.target, c.me }) )
+			return EFriendResult::DbError;
+		return EFriendResult::Ok;
+	}
+
+	EFriendResult HandleUnblock(SFriendCtx& c)
+	{
+		bool exists = false;
+		if( !c.sql.Exists(kSqlBlockExists, { c.me, c.target }, exists) )
+			return EFriendResult::DbError;
+		if( !exists )
+			return EFriendResult::NotBlocked;
+		return c.sql.Exec(kSqlDeleteBlock, { c.me, c.target }) ? EFriendResult::Ok : EFriendResult::DbError;
+	}
+
+	// 대상 계정을 먼저 확인한 뒤 단건 연산 함수를 실행한다.
+	EFriendResult RunWithTarget(SFriendCtx& c, EFriendResult(*handler)(SFriendCtx&))
+	{
+		const EFriendResult r = ResolveTarget(c);
+		return (r == EFriendResult::Ok) ? handler(c) : r;
+	}
 }
 
 //***************************************************************************
-// @brief 친구 기능 연산 하나를 처리합니다. 어떤 경로에서도 onComplete가 정확히 한 번 호출됩니다.
+// @brief 친구 기능 연산 하나를 op에 따라 연산별 함수로 나눠 처리합니다. 어떤 경로에서도 onComplete가 정확히 한 번 호출됩니다.
 // @details 여러 구문을 하나의 트랜잭션으로 묶지 않는다(프로필 이미지 대표 변경과 같은 실용적
 //          타협). 모든 쓰기를 INSERT IGNORE / 조건부 DELETE로 멱등하게 구성했고, 순서를
 //          "관계 생성 -> 요청 삭제"로 둬서 중간에 실패해도 재시도하면 수렴한다
@@ -177,206 +357,22 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Friend)
 		return finish(EFriendResult::DbError);
 	}
 
-	CFriendSql sql(guard);
-	const std::string me = PublicIdToHex(req->publicId);
-
-	// ── 목록 조회 ──────────────────────────────────────────────────────────
-	switch( req->op )
-	{
-	case EFriendOp::ListFriends:
-		return finish(sql.Fetch(kSqlListFriends, me, &me, 3, out.entries) ? EFriendResult::Ok : EFriendResult::DbError);
-	case EFriendOp::ListPending:
-	{
-		// 페이지 크기를 1~kMaxPendingPageSize로, 페이지 번호를 0~마지막 페이지로 보정한다.
-		// LIMIT/OFFSET은 문자열 파라미터로 바인딩하면 서버 측 prepare에서 거부될 수 있어
-		// 서버가 보정한 정수를 SQL 텍스트에 직접 넣는다(외부 문자열이 아니므로 주입 위험 없음).
-		int32 total = 0;
-		if( !sql.Count(kSqlCountPending, me, nullptr, total) )
-			return finish(EFriendResult::DbError);
-
-		const int32 pageSize = (std::max)(1, (std::min)(req->pageSize, kMaxPendingPageSize));
-		const int32 lastPage = (total > 0) ? ((total - 1) / pageSize) : 0;
-		const int32 page = (std::max)(0, (std::min)(req->page, lastPage));
-
-		out.totalCount = total;
-		out.pageSize = pageSize;
-		out.page = page;
-
-		if( total > 0 )
-		{
-			_tstring query = kSqlListPending;
-			query += Utf8ToTString(" LIMIT " + std::to_string(pageSize) + " OFFSET " + std::to_string(page * pageSize));
-
-			if( !sql.Fetch(query.c_str(), me, nullptr, 3, out.entries) )
-				return finish(EFriendResult::DbError);
-		}
-		return finish(EFriendResult::Ok);
-	}
-	case EFriendOp::ListBlocks:
-		return finish(sql.Fetch(kSqlListBlocks, me, nullptr, 2, out.entries) ? EFriendResult::Ok : EFriendResult::DbError);
-	default:
-		break;
-	}
-
-	// ── 단건 연산: 대상 계정 확인 ──────────────────────────────────────────
-	bool found = false;
-	bool ok;
-	if( req->hasTargetId )
-	{
-		const std::string targetHex = PublicIdToHex(req->targetPublicId);
-		ok = sql.LoadUser(kSqlUserById, targetHex, out.target, found);
-	}
-	else
-	{
-		char safeBuf[sizeof(req->targetNickname) + 1] = {};
-		::memcpy(safeBuf, req->targetNickname, sizeof(req->targetNickname));
-		ok = sql.LoadUser(kSqlUserByNickname, std::string(safeBuf), out.target, found);
-	}
-	if( !ok )
-		return finish(EFriendResult::DbError);
-	if( !found )
-		return finish(EFriendResult::UserNotFound);
-
-	const std::string target = PublicIdToHex(out.target.publicId);
-	if( target == me )
-		return finish(EFriendResult::SelfTarget);
-
-	std::string lo, hi;
-	MakePair(me, target, lo, hi);
-
-	// 친구 관계 성립(요청 삭제 포함). accepter=me, requester=상대 또는 그 반대일 수 있어 방향은 호출부가 정한다.
-	// 양쪽 친구 수 상한을 검사한다.
-	auto establishFriendship = [&](const std::string& requester, const std::string& accepter) -> EFriendResult
-		{
-			int32 myCount = 0, otherCount = 0;
-			if( !sql.Count(kSqlFriendCount, me, &me, myCount) ||
-				!sql.Count(kSqlFriendCount, target, &target, otherCount) )
-				return EFriendResult::DbError;
-			if( myCount >= kMaxFriends || otherCount >= kMaxFriends )
-				return EFriendResult::FriendLimit;
-
-			if( !sql.Exec(kSqlInsertFriend, lo, &hi) )
-				return EFriendResult::DbError;
-			// 어느 방향의 대기 요청이든 정리 (둘 다 없을 수도 있음)
-			if( !sql.Exec(kSqlDeleteRequest, requester, &accepter) ||
-				!sql.Exec(kSqlDeleteRequest, accepter, &requester) )
-				return EFriendResult::DbError;
-			return EFriendResult::Ok;
-		};
-
-	bool exists = false;
+	DbUtil::CSql sql(guard);
+	SFriendCtx ctx{ req, out, sql, PublicIdToHex(req->publicId), std::string(), std::string(), std::string() };
 
 	switch( req->op )
 	{
-	case EFriendOp::SendRequest:
-	{
-		// 내가 차단한 상대에게는 요청 불가 (차단 해제 후 가능)
-		if( !sql.Exists(kSqlBlockExists, me, &target, exists) )
-			return finish(EFriendResult::DbError);
-		if( exists )
-			return finish(EFriendResult::BlockedByMe);
-
-		// 상대가 나를 차단함 — 차단 사실을 드러내지 않도록 성공으로 응답하되 저장/알림은 하지 않는다.
-		if( !sql.Exists(kSqlBlockExists, target, &me, exists) )
-			return finish(EFriendResult::DbError);
-		if( exists )
-		{
-			out.silent = true;
-			return finish(EFriendResult::Ok);
-		}
-
-		if( !sql.Exists(kSqlIsFriend, lo, &hi, exists) )
-			return finish(EFriendResult::DbError);
-		if( exists )
-			return finish(EFriendResult::AlreadyFriends);
-
-		if( !sql.Exists(kSqlRequestExists, me, &target, exists) )
-			return finish(EFriendResult::DbError);
-		if( exists )
-			return finish(EFriendResult::AlreadyRequested);
-
-		// 상대가 이미 나에게 요청을 보낸 상태면 서로 원하는 것이므로 즉시 친구로 만든다.
-		if( !sql.Exists(kSqlRequestExists, target, &me, exists) )
-			return finish(EFriendResult::DbError);
-		if( exists )
-		{
-			const EFriendResult r = establishFriendship(target, me);
-			out.autoAccepted = (r == EFriendResult::Ok);
-			return finish(r);
-		}
-
-		int32 myCount = 0;
-		if( !sql.Count(kSqlFriendCount, me, &me, myCount) )
-			return finish(EFriendResult::DbError);
-		if( myCount >= kMaxFriends )
-			return finish(EFriendResult::FriendLimit);
-
-		return finish(sql.Exec(kSqlInsertRequest, me, &target) ? EFriendResult::Ok : EFriendResult::DbError);
+	case EFriendOp::ListFriends:	return finish(HandleListFriends(ctx));
+	case EFriendOp::ListPending:	return finish(HandleListPending(ctx));
+	case EFriendOp::ListBlocks:		return finish(HandleListBlocks(ctx));
+	case EFriendOp::SendRequest:	return finish(RunWithTarget(ctx, HandleSendRequest));
+	case EFriendOp::Accept:			return finish(RunWithTarget(ctx, HandleAccept));
+	case EFriendOp::Reject:			return finish(RunWithTarget(ctx, HandleReject));
+	case EFriendOp::Remove:			return finish(RunWithTarget(ctx, HandleRemove));
+	case EFriendOp::Block:			return finish(RunWithTarget(ctx, HandleBlock));
+	case EFriendOp::Unblock:		return finish(RunWithTarget(ctx, HandleUnblock));
 	}
 
-	case EFriendOp::Accept:
-	{
-		if( !sql.Exists(kSqlRequestExists, target, &me, exists) )
-			return finish(EFriendResult::DbError);
-		if( !exists )
-			return finish(EFriendResult::NoPendingRequest);
-		return finish(establishFriendship(target, me));
-	}
-
-	case EFriendOp::Reject:
-	{
-		if( !sql.Exists(kSqlRequestExists, target, &me, exists) )
-			return finish(EFriendResult::DbError);
-		if( !exists )
-			return finish(EFriendResult::NoPendingRequest);
-		return finish(sql.Exec(kSqlDeleteRequest, target, &me) ? EFriendResult::Ok : EFriendResult::DbError);
-	}
-
-	case EFriendOp::Remove:
-	{
-		if( !sql.Exists(kSqlIsFriend, lo, &hi, exists) )
-			return finish(EFriendResult::DbError);
-		if( !exists )
-			return finish(EFriendResult::NotFriends);
-		return finish(sql.Exec(kSqlDeleteFriend, lo, &hi) ? EFriendResult::Ok : EFriendResult::DbError);
-	}
-
-	case EFriendOp::Block:
-	{
-		if( !sql.Exists(kSqlBlockExists, me, &target, exists) )
-			return finish(EFriendResult::DbError);
-		if( exists )
-			return finish(EFriendResult::AlreadyBlocked);
-
-		if( !sql.Exec(kSqlInsertBlock, me, &target) )
-			return finish(EFriendResult::DbError);
-
-		// 차단하면 친구 관계와 양방향 대기 요청을 모두 정리한다.
-		if( !sql.Exists(kSqlIsFriend, lo, &hi, exists) )
-			return finish(EFriendResult::DbError);
-		if( exists )
-		{
-			if( !sql.Exec(kSqlDeleteFriend, lo, &hi) )
-				return finish(EFriendResult::DbError);
-			out.friendshipRemoved = true;
-		}
-		if( !sql.Exec(kSqlDeleteRequest, me, &target) || !sql.Exec(kSqlDeleteRequest, target, &me) )
-			return finish(EFriendResult::DbError);
-		return finish(EFriendResult::Ok);
-	}
-
-	case EFriendOp::Unblock:
-	{
-		if( !sql.Exists(kSqlBlockExists, me, &target, exists) )
-			return finish(EFriendResult::DbError);
-		if( !exists )
-			return finish(EFriendResult::NotBlocked);
-		return finish(sql.Exec(kSqlDeleteBlock, me, &target) ? EFriendResult::Ok : EFriendResult::DbError);
-	}
-
-	default:
-		break;
-	}
-
+	LOG_ERROR(_T("kDbCallIdent_Friend: unknown op %d"), static_cast<int>(req->op));
 	return finish(EFriendResult::DbError);
 }

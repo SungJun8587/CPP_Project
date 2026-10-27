@@ -33,7 +33,7 @@ namespace
 
 		const std::array<BYTE, kPublicIdBytes> publicId = session.GetPublicId();
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestUploadToken(sessionRef, publicId,

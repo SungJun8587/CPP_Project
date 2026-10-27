@@ -122,9 +122,6 @@
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
     <ClCompile Include="FileServerRouter.cpp" />
-    <ClCompile Include="FileMetadataRepository.cpp" />
-    <ClCompile Include="FileSendBufferPool.cpp" />
-    <ClCompile Include="FileDeleteHandler.cpp" />
     <ClCompile Include="FileDownloadHandler.cpp" />
     <ClCompile Include="FileUploadHandler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\FileStream.cpp">
@@ -164,9 +161,6 @@
     </Filter>
     <Filter Include="UtilCore\Containers\Map">
       <UniqueIdentifier>{53f6d9fc-50d6-4679-8632-96a36cb58daa}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="UtilCore\Containers\Stack">
-      <UniqueIdentifier>{8a76f4f8-bceb-49b0-8e3c-8fc2e7e70e53}</UniqueIdentifier>
     </Filter>
     <Filter Include="UtilCore\Redis">
       <UniqueIdentifier>{42101fe8-215e-4e84-82b4-13ec1f24764c}</UniqueIdentifier>
@@ -249,13 +243,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h">
-      <Filter>UtilCore\Containers\Stack</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h">
-      <Filter>UtilCore\Thread</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
@@ -390,10 +378,6 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="FileServerRouter.h" />
-    <ClInclude Include="FileMetadata.h" />
-    <ClInclude Include="FileMetadataRepository.h" />
-    <ClInclude Include="FileSendBufferPool.h" />
-    <ClInclude Include="FileDeleteHandler.h" />
     <ClInclude Include="FileDownloadHandler.h" />
     <ClInclude Include="FileUploadHandler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FileStream.h">
@@ -426,11 +410,11 @@
     <ClInclude Include="..\ChatCommon\ImageRef.h">
       <Filter>ChatCommon</Filter>
     </ClInclude>
+    <ClInclude Include="..\ChatCommon\FileServerKeys.h">
+      <Filter>ChatCommon</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
-      <Filter>UtilCore\Thread</Filter>
-    </None>
     <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl">
       <Filter>UtilCore\Job</Filter>
     </None>

@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_FILESERVERCONFIG_H
-#define UC_FILESERVERCONFIG_H
+#ifndef FILESERVERCONFIG_H
+#define FILESERVERCONFIG_H
 
 #include <ServerConfig.h>
 #include <Memory/Singleton.h>
@@ -104,4 +104,4 @@ private:
 	int64					_nMaxUploadBytes;						// 업로드 최대 크기(바이트) — int64(2GB를 넘는 대용량 업로드 지원 목적)
 };
 
-#endif // ndef UC_FILESERVERCONFIG_H
+#endif // ndef FILESERVERCONFIG_H

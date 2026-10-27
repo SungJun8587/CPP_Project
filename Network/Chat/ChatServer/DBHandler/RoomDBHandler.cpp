@@ -9,9 +9,9 @@
 //***************************************************************************
 
 #include "pch.h"
+#include <DB/DBAsyncHandler.h>
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
-#include <DB/DBAsyncHandler.h>
 
 #include "../ChatCommon/Protocol/ChatPacketUtil.h"
 #include "DbServiceManager.h"
@@ -58,7 +58,7 @@ namespace
 		if( req->maxRoomsPerOwner > 0 )
 		{
 			int32 currentCount = 0;
-			if( !RoomDb::CountRows(sql, _T("SELECT COUNT(*) FROM rooms WHERE owner_public_id = ?"),
+			if( !sql.Count(_T("SELECT COUNT(*) FROM rooms WHERE owner_public_id = ?"),
 				{ ownerPublicIdHex }, currentCount) )
 			{
 				fail();
@@ -432,7 +432,7 @@ namespace
 		// 1. 조건에 맞는 전체 개수.
 		int32 totalCount = 0;
 		const _tstring countQuery = _tstring(_T("SELECT COUNT(*) ")) + fromWhere;
-		if( !RoomDb::CountRows(sql, countQuery.c_str(), params, totalCount) )
+		if( !sql.Count(countQuery.c_str(), params, totalCount) )
 		{
 			fail();
 			return EDBReturnType::INVALID;
@@ -512,7 +512,7 @@ namespace
 
 		// 1. 이 방에 입장 이력이 있는 전체 유저 수.
 		int32 totalCount = 0;
-		if( !RoomDb::CountRows(sql, _T("SELECT COUNT(*) FROM room_members WHERE room_id = ?"), params, totalCount) )
+		if( !sql.Count(_T("SELECT COUNT(*) FROM room_members WHERE room_id = ?"), params, totalCount) )
 		{
 			fail();
 			return EDBReturnType::INVALID;

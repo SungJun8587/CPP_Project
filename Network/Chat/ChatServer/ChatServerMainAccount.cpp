@@ -203,7 +203,7 @@ void CChatServerMain::RequestUploadToken(
 
 	const std::string tokenHex = Crypto::CCryptoUtil::ToHex(randomBytes, sizeof(randomBytes));
 	const std::string publicIdHex = PublicIdToHex(publicId);
-	const std::string redisKey = "UploadToken:" + tokenHex;
+	const std::string redisKey = FileServerKeys::kUploadTokenPrefix + tokenHex;
 	const std::string fileServerUrl = _fileServerUrl;
 
 	// SET key value EX seconds — 한 커맨드로 등록+TTL을 동시에 건다
@@ -214,7 +214,7 @@ void CChatServerMain::RequestUploadToken(
 	args.push_back(redisKey);
 	args.push_back(publicIdHex);
 	args.push_back("EX");
-	args.push_back("60");
+	args.push_back(std::to_string(FileServerKeys::kUploadTokenTtlSec));
 
 	// SendCommand()는 풀이 없거나 대기 큐가 가득 차면 false를 반환하며 이때는 콜백이
 	// 호출되지 않는다 — 호출부가 응답을 영원히 기다리지 않도록 여기서 실패를 알린다.

@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_ROOMVALIDATION_H
-#define UC_ROOMVALIDATION_H
+#ifndef ROOMVALIDATION_H
+#define ROOMVALIDATION_H
 
 #include <string>
 
@@ -25,4 +25,4 @@ namespace RoomValidation
 	}
 }
 
-#endif // ndef UC_ROOMVALIDATION_H
+#endif // ndef ROOMVALIDATION_H

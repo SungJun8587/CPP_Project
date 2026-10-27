@@ -163,7 +163,17 @@ namespace
 		if( server == nullptr )
 			return;
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		// 남의 파일 서버 URL은 거절한다(IsImageUrlUsableBy() 참고).
+		if( !server->IsImageUrlUsableBy(session.GetPublicId(), imageUrl) )
+		{
+			SetRoomImageResPacket res{};
+			InitPacket(res, EChatPacketType::SetRoomImageRes);
+			res.reason = static_cast<uint8>(ERoomResult::DbError);
+			SendPacket(session, res);
+			return;
+		}
+
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSetRoomImage(sessionRef, roomId, session.GetPublicId(), imageUrl,
@@ -322,7 +332,7 @@ namespace
 			return;
 		}
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 
 		int32 newUserCount = 0;
 		server->MoveToRoom(sessionRef, roomId, newUserCount);
@@ -432,7 +442,7 @@ namespace
 		if( server == nullptr )
 			return;
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 
 		const int32 oldRoomId = session.GetRoomId();
 
@@ -541,7 +551,7 @@ namespace
 	{
 		CChatServerMain* server = session.GetServer();
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestRoomMemberHistoryPage(roomId, page, pageSize,

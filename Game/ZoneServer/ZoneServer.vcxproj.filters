@@ -1,0 +1,310 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="ZoneServerMain.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\BaseGlobal.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\BaseTLS.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\NetAddress.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\NetService.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\NetworkFactory.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\RingBuffer.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\SocketUtils.cpp">
+      <Filter>UtilCore\Network</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\IocpCore.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\IocpListener.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\IocpService.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\IocpSession.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.cpp">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\Allocator.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\Memory.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\MemoryPool.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="BattleZone.cpp" />
+    <ClCompile Include="ZoneLinkSession.cpp" />
+    <ClCompile Include="ZonePlayer.cpp" />
+    <ClCompile Include="ZoneServer.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\Zone.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\ZoneEntity.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="ZoneServerMain.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h">
+      <Filter>UtilCore\Containers\Map</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseGlobal.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseTLS.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\NetAddress.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\NetService.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\NetworkCommon.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\NetworkFactory.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\NetworkRedefineDataType.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\Packet.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\PacketDispatcher.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\RingBuffer.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\Session.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\SocketUtils.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpEvent.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpListener.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpService.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpSession.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpSessionManager.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpWorkerPool.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\SendBuffer.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\CacheAlignment.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\PlatformLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\SRWLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\SyncValue.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\ThreadManager.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Allocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Containers.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Memory.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\ObjectPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\RawAllocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Singleton.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\CommonUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\ScopeExit.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="BattleZone.h" />
+    <ClInclude Include="ZoneLinkSession.h" />
+    <ClInclude Include="ZonePlayer.h" />
+    <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\FieldZone.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\GridAOI.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\Zone.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\ZoneEntity.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\ZoneMath.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\FieldZoneBase.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{33ddb6ef-7bee-4a79-b93c-749c9d7f1709}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers">
+      <UniqueIdentifier>{dcc12006-ad4b-4c72-b8ed-3b9f00322a8f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Map">
+      <UniqueIdentifier>{8c12fd3c-729b-45e1-ad34-340795faa0a3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Network">
+      <UniqueIdentifier>{5fbd9abe-d562-4b8d-a3e3-3a0c338dcb65}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Network\IOCP">
+      <UniqueIdentifier>{33a0f63d-53dd-47b7-90e7-f0489460d41f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Thread">
+      <UniqueIdentifier>{1d130b0c-ce33-4910-b675-0f97260a5662}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Memory">
+      <UniqueIdentifier>{44a91a3b-ff8e-4527-9014-565a0515b96f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{ccd3ae94-a891-445e-b45f-9947925f7633}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GameCommon">
+      <UniqueIdentifier>{8233d6a4-f890-4245-8176-a65d9083599a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GameCommon\ZoneCommon">
+      <UniqueIdentifier>{76081ff7-dd6d-4599-b388-a9801bf6263f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GameCommon\ZoneCore">
+      <UniqueIdentifier>{73f049dc-25fb-416e-8e3a-2e5b00754e7c}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
+      <Filter>UtilCore\Containers\Map</Filter>
+    </None>
+    <None Include="..\..\..\Library\UtilCore\Memory\Singleton.inl">
+      <Filter>UtilCore\Memory</Filter>
+    </None>
+  </ItemGroup>
+</Project>

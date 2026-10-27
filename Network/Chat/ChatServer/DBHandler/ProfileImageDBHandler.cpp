@@ -10,12 +10,11 @@
 
 #include "pch.h"
 #include <DB/DBAsyncHandler.h>
+#include "DbServiceManager.h"
+#include "DbHandlerUtil.h"
 #include <Crypto/CryptoUtil.h>
 #include <Util/EncodingConvert.h>
 
-#include "../ChatCommon/Protocol/ChatPacketUtil.h"
-#include "DbServiceManager.h"
-#include "DbHandlerUtil.h"
 #include "DBProfileImageRequest.h"
 
 #include <cstring>
@@ -23,16 +22,15 @@
 namespace
 {
 	//***************************************************************************
-	// @brief 외부 URL을 user_profile_images에 새 행으로 등록하고 대표(status=1)로
-	//        지정합니다. 빈 문자열이면 기존 대표 행을 0으로 내리기만 합니다.
-	// @details [설계] 두 단계 쿼리로 처리한다:
-	//          1) UPDATE user_profile_images SET status=0 WHERE user_public_id=? AND status=1
-	//             — 기존에 대표였던 행이 있으면 먼저 내린다.
-	//          2) (빈 문자열이 아니면) INSERT ... VALUES (..., status=1)
-	//             — 새 행을 곧바로 대표로 등록한다.
-	//          이 두 쿼리는 하나의 명시적 트랜잭션으로 묶여있지 않다 — 1번
-	//          성공 후 서버가 죽으면 "대표가 하나도 없는" 상태로 잠깐 남을 수
-	//          있다(create_chat_db.sql 주석 참고, 실용적 타협).
+	// @brief URL을 갤러리의 대표(status=1) 이미지로 지정합니다. 빈 문자열이면
+	//        기존 대표를 0으로 내리기만 합니다.
+	// @details [설계] 같은 URL이 이 유저의 갤러리에 이미 있으면 새 행을 만들지 않고
+	//          그 행을 대표로 올린다 — 같은 참조를 가리키는 행이 둘이 되면 한쪽을
+	//          지울 때 파일 서버의 실제 파일이 삭제돼 다른 행이 깨지기 때문이다.
+	//          없으면 status=0으로 먼저 INSERT한 뒤, SelectProfileImage와 같은 단일
+	//          UPDATE(CASE)로 대표를 전환한다. INSERT가 실패하면 기존 대표가 그대로
+	//          남고, UPDATE가 실패해도 기존 대표가 유지되므로(새 행은 일반 이미지로
+	//          남음) "대표가 하나도 없는" 상태가 생기지 않는다.
 	//***************************************************************************
 	EDBReturnType HandleSet(ST_SET_PROFILE_IMAGE_URL_REQ* req, OdbcConnGuard& guard)
 	{
@@ -55,37 +53,57 @@ namespace
 		}
 		DbUtil::CSql sql(guard);
 
-		// 1) 기존 대표 이미지 해제
-		if( !sql.Exec(_T("UPDATE user_profile_images SET status = 0 WHERE user_public_id = ? AND status = 1"),
-			{ publicIdHex }) )
-		{
-			fail();
-			return EDBReturnType::INVALID;
-		}
-
 		// 빈 문자열 = "해제"만 하고 끝 — 새로 등록할 URL이 없다.
 		if( newUrl.empty() )
 		{
+			if( !sql.Exec(_T("UPDATE user_profile_images SET status = 0 WHERE user_public_id = ? AND status = 1"),
+				{ publicIdHex }) )
+			{
+				fail();
+				return EDBReturnType::INVALID;
+			}
+
 			if( req->onComplete )
 				req->onComplete(ELoginResult::Ok, publicId, newUrl, 0);
 			return EDBReturnType::OK;
 		}
 
-		// 2) 새 URL을 대표로 등록 — file_size는 항상 0. 실제 파일 크기는 이제
-		// 채팅 서버가 알 방법이 없다(이미지 저장을 파일 서버로 분리했으므로).
-		if( !sql.Exec(_T("INSERT INTO user_profile_images (user_public_id, image_ref, file_size, status) VALUES (?, ?, 0, 1)"),
-			{ publicIdHex, newUrl }) )
+		// 같은 URL이 이미 있으면 재사용(URL은 대소문자를 구분하므로 이진 비교).
+		std::vector<DbUtil::Row> rows;
+		if( !sql.Query(_T("SELECT image_id FROM user_profile_images WHERE user_public_id = ? AND image_ref = BINARY ? ORDER BY image_id LIMIT 1"),
+			{ publicIdHex, newUrl }, 1, rows) )
 		{
 			fail();
 			return EDBReturnType::INVALID;
 		}
 
-		// AUTO_INCREMENT로 방금 생성된 image_id. 실패해도 등록 자체는 성공이므로 0으로 둔다.
-		int64 newImageId = 0;
-		sql.LastInsertId(newImageId);
+		int64 imageId = 0;
+		if( !rows.empty() )
+		{
+			imageId = DbUtil::ToI64(rows.front()[0]);
+		}
+		else
+		{
+			// file_size는 항상 0 — 이미지 저장을 파일 서버로 분리했으므로 채팅 서버는 크기를 모른다.
+			if( !sql.Exec(_T("INSERT INTO user_profile_images (user_public_id, image_ref, file_size, status) VALUES (?, ?, 0, 0)"),
+				{ publicIdHex, newUrl }) || !sql.LastInsertId(imageId) || imageId <= 0 )
+			{
+				fail();
+				return EDBReturnType::INVALID;
+			}
+		}
+
+		const std::string imageIdText = std::to_string(imageId);
+		if( !sql.Exec(_T("UPDATE user_profile_images SET status = CASE WHEN image_id = ? THEN 1 ELSE 0 END ")
+			_T("WHERE user_public_id = ? AND (status = 1 OR image_id = ?)"),
+			{ imageIdText, publicIdHex, imageIdText }) )
+		{
+			fail();
+			return EDBReturnType::INVALID;
+		}
 
 		if( req->onComplete )
-			req->onComplete(ELoginResult::Ok, publicId, newUrl, newImageId);
+			req->onComplete(ELoginResult::Ok, publicId, newUrl, imageId);
 		return EDBReturnType::OK;
 	}
 
@@ -105,7 +123,7 @@ namespace
 		DbUtil::CSql sql(guard);
 
 		std::vector<DbUtil::Row> rows;
-		if( !sql.Query(_T("SELECT image_id, image_ref, status FROM user_profile_images WHERE user_public_id = ? ORDER BY created_at DESC"),
+		if( !sql.Query(_T("SELECT image_id, image_ref, status FROM user_profile_images WHERE user_public_id = ? ORDER BY created_at DESC, image_id DESC"),
 			{ publicIdHex }, 3, rows) )
 		{
 			if( req->onComplete )

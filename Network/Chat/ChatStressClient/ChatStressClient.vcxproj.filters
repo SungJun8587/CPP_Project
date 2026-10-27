@@ -209,9 +209,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h">
-      <Filter>UtilCore\Thread</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
@@ -288,9 +285,6 @@
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
       <Filter>UtilCore\Containers\Map</Filter>
-    </None>
-    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
-      <Filter>UtilCore\Thread</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_DBROOMREQUEST_H
-#define UC_DBROOMREQUEST_H
+#ifndef DBROOMREQUEST_H
+#define DBROOMREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
 
@@ -58,7 +58,7 @@ struct ST_CREATE_ROOM_REQ : public ST_ROOM_REQ_BASE
 	ST_CREATE_ROOM_REQ() : ST_ROOM_REQ_BASE(ERoomOp::Create) {}
 
 	BYTE		ownerPublicId[kPublicIdBytes] = {};	// 생성 요청자(=새 방장)의 안정 식별자
-	std::string	roomName;								// 방 이름(형식 검증은 CreateRoomHandler.cpp가 먼저 수행)
+	std::string	roomName;								// 방 이름(형식 검증은 ChatRoomHandler.cpp가 먼저 수행)
 
 	// [설계] 1인당 생성 가능한 방 개수 상한을 호출부(패킷 핸들러)가 서버
 	// 설정에서 읽어 여기 실어 보낸다 — DB 핸들러 자신은 설정 파일에 접근할
@@ -93,7 +93,7 @@ struct ST_RENAME_ROOM_REQ : public ST_ROOM_REQ_BASE
 
 	int32		roomId = 0;
 	BYTE		requesterPublicId[kPublicIdBytes] = {};	// 방장인지 확인할 대상
-	std::string	newName;										// 형식 검증은 RenameRoomHandler.cpp가 먼저 수행
+	std::string	newName;										// 형식 검증은 ChatRoomHandler.cpp가 먼저 수행
 
 	std::function<void(ERoomResult result)>	onComplete;
 };
@@ -201,7 +201,7 @@ struct ST_LIST_ROOMS_REQ : public ST_ROOM_REQ_BASE
 //***************************************************************************
 // @struct ST_GET_ROOM_INFO_REQ
 // @brief 방 하나(roomId)의 이름/방장 닉네임/이미지를 조회한다.
-// @details [설계] RoomEnterHandler.cpp가 방 입장 성공 직후 이 요청으로 방
+// @details [설계] ChatRoomHandler.cpp가 방 입장 성공 직후 이 요청으로 방
 //          정보를 가져와 RoomEnterResPacket에 그대로 실어 보낸다 — 클라이언트가
 //          별도로 방 목록 캐시를 참조하거나 그 캐시가 준비될 때까지 기다릴
 //          필요 없이, 입장 응답 하나로 이름/방장/이미지까지 한 번에 받는다.
@@ -283,4 +283,4 @@ struct ST_LIST_ROOM_MEMBERS_PAGE_REQ : public ST_ROOM_REQ_BASE
 	std::function<void(ELoginResult result, int32 totalCount, int32 page, const std::vector<SRoomMemberHistoryEntry>& members)>	onComplete;
 };
 
-#endif // ndef UC_DBROOMREQUEST_H
+#endif // ndef DBROOMREQUEST_H

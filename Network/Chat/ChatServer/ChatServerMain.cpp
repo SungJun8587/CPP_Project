@@ -49,7 +49,7 @@ bool CChatServerMain::Start(
 	if( !_redisService->Init(redisNodeVec, redisPoolSize) )
 		return false;
 
-	// 2-1. 회원 DB(ODBC) 초기화. 회원가입/재접속 검증 핸들러(kDbCallIdent_Signup)는
+	// 2-1. 회원 DB(ODBC) 초기화. 회원가입/재접속 검증 핸들러(kDbCallIdent_Account)는
 	// AccountDBHandler.cpp의 DECLARE_DBASYNC_HANDLER_EX 매크로가 정적
 	// 초기화 시점(main() 진입 전)에 MEMBER_DB_ASYNC(CDbServiceManager::Instance().MemberDB())에
 	// 이미 등록해뒀으므로 여기서 핸들러를 별도로 만들거나 등록할 필요는
@@ -80,6 +80,14 @@ bool CChatServerMain::Start(
 	_service = std::static_pointer_cast<CIocpServerService>(service);
 	if( _service == nullptr )
 		return false;
+
+	// keep-alive: FIN/RST 없이 사라진 피어를 감지한다. 접속 수 상한: 설정의 MaxSessionCount를 실제 상한으로 적용한다.
+	// 유휴 타임아웃(SetIdleTimeout)은 켜지 않는다 — 채팅 클라이언트는 주기적으로 보내는 하트비트가 없어,
+	// 방에서 조용히 읽기만 하는 정상 사용자가 끊길 수 있다. 클라이언트 하트비트를 도입할 때 함께 정한다.
+	CIocpSession::SocketOptions socketOptions;
+	socketOptions.keepAlive = true;
+	_service->SetSessionSocketOptions(socketOptions);
+	_service->SetEnforceMaxSessionCount(true);
 
 	if( !_service->Start() )
 	{
@@ -403,13 +411,20 @@ void CChatServerMain::ScheduleFileDeletionIfOwned(const std::string& deletedImag
 
 	// "{fileServerUrl}/images/{상대경로}" 형식만 우리 파일 서버 소유로 본다(ImageRef 규약).
 	// 외부 URL(사용자가 직접 등록한 URL 등)은 우리가 지울 대상이 아니다.
-	const std::string relativePath = ImageRef::ExtractOwnedRelativePath(_fileServerUrl, deletedImageRef);
-	if( relativePath.empty() )
+	ScheduleFileDeletion(ImageRef::ExtractOwnedRelativePath(_fileServerUrl, deletedImageRef));
+}
+
+//***************************************************************************
+// @brief 파일 서버 상대 경로를 예약 삭제 큐에 등록한다(파일 서버가 소비).
+//***************************************************************************
+void CChatServerMain::ScheduleFileDeletion(const std::string& relativePath)
+{
+	if( relativePath.empty() || _redisService == nullptr )
 		return;
 
 	CVector<std::string> args;
 	args.push_back("RPUSH");
-	args.push_back("FileServer:PendingDeletions");
+	args.push_back(FileServerKeys::kPendingDeletionsKey);
 	args.push_back(relativePath);
 
 	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
@@ -444,4 +459,20 @@ std::string CChatServerMain::ToDisplayImageUrl(const std::string& imageRef) cons
 bool CChatServerMain::IsOwnedImageUrl(const std::string& url) const
 {
 	return !ImageRef::ExtractOwnedRelativePath(_fileServerUrl, url).empty();
+}
+
+//***************************************************************************
+// @brief 프로필/방 이미지로 url을 등록해도 되는지 판별한다.
+//***************************************************************************
+bool CChatServerMain::IsImageUrlUsableBy(const std::array<BYTE, kPublicIdBytes>& publicId, const std::string& url) const
+{
+	if( url.empty() )
+		return true;
+
+	const std::string relativePath = ImageRef::ExtractOwnedRelativePath(_fileServerUrl, url);
+	if( relativePath.empty() )
+		return true;	// 외부 URL
+
+	const std::string ownerPrefix = PublicIdToHex(publicId) + "/";
+	return FileServerKeys::IsValidRelativePath(relativePath) && relativePath.compare(0, ownerPrefix.size(), ownerPrefix) == 0;
 }

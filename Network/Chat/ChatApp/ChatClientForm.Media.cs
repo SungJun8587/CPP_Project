@@ -21,9 +21,9 @@ namespace ChatApp
     {
 
         //***************************************************************************
-        // @brief 파일 첨부 카드의 × 버튼 클릭 처리 — 파일 서버에 실제 DELETE
-        //        요청을 보내고, 채팅 서버에도 messageId로 삭제를 요청해서
-        //        같은 방/로비의 다른 사람들 화면에서도 지워지게 한다.
+        // @brief 파일 첨부 카드의 × 버튼 클릭 처리 — 채팅 서버에 messageId로
+        //        삭제를 요청한다 — 같은 방/로비의 다른 사람들 화면에서도 지워지고,
+        //        첨부 파일도 서버가 삭제한다.
         // @details [수정 — messageId 기반으로 전환] 예전엔 파일 URL을 그대로
         //          식별자로 써서 서버가 재검증 없이 릴레이했는데, 이제는
         //          서버가 발급한 messageId + 소유권 검증(TryDeleteMessage())을
@@ -32,13 +32,12 @@ namespace ChatApp
         //          지우지 않고, 서버의 DeleteChatMessageNotify가 돌아올
         //          때(OnDeleteChatMessageNotified)로 미뤘다 — 그래야 혹시
         //          소유권 검증에 실패해도 화면과 서버 상태가 어긋나지 않는다.
-        // @details [알려진 한계] 파일 서버의 DELETE /images/{path}는 갤러리
-        //          이미지 삭제와 마찬가지로 별도 인증이 없다(기존부터
-        //          알려진 한계) — 파일 자체는 URL만 알면 누구나 지울 수
-        //          있다. 다만 "채팅창에서 카드가 사라지는" 것은 이제
-        //          messageId 소유권 검증을 거친다.
+        // @details 파일 서버에는 HTTP 삭제 API가 없다 — 채팅 서버가 소유권을
+        //          확인하고 메시지를 지운 뒤, 그 메시지의 첨부 파일을 파일
+        //          서버 삭제 큐에 등록해 비동기로 지운다. 클라이언트는 파일
+        //          서버를 직접 호출하지 않는다.
         //***************************************************************************
-        private async void DeleteFileAttachment(int itemIndex)
+        private void DeleteFileAttachment(int itemIndex)
         {
             if (itemIndex < 0 || itemIndex >= _listBoxChat.Items.Count)
                 return;
@@ -64,20 +63,7 @@ namespace ChatApp
                 return;
             }
 
-            string url = fileMatch.Groups["url"].Value;
-
-            try
-            {
-                await _httpClient.DeleteAsync(url);
-            }
-            catch (Exception ex)
-            {
-                // 네트워크 오류 등 — 서버 파일은 못 지웠을 수 있지만, 채팅
-                // 목록에서는 아래 messageId 삭제 요청 결과에 맡긴다.
-                AppendSystemLog("[시스템] 파일 서버에서 삭제 요청이 실패했습니다: " + ex.Message, ColorSystemError);
-            }
-
-            // 채팅 서버에 messageId 기반 삭제를 요청한다 — 실제 화면 제거는
+            // 채팅 서버에 messageId 기반 삭제를 요청한다(첨부 파일 삭제 포함) — 실제 화면 제거는
             // 서버가 소유권을 확인한 뒤 보내주는 DeleteChatMessageNotify를
             // 받았을 때(OnDeleteChatMessageNotified) 이뤄진다.
             _client?.RequestDeleteChatMessage(item.MessageId);

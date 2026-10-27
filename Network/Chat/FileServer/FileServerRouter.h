@@ -4,13 +4,12 @@
 //
 //***************************************************************************
 
-#ifndef UC_FILESERVERROUTER_H
-#define UC_FILESERVERROUTER_H
+#ifndef FILESERVERROUTER_H
+#define FILESERVERROUTER_H
 
 #include "FileServerSession.h"
 #include "FileUploadHandler.h"
 #include "FileDownloadHandler.h"
-#include "FileDeleteHandler.h"
 #include <Network/HTTP/HttpPacketBuilder.h>
 #include <Network/HTTP/HttpRequestParser.h>
 
@@ -30,9 +29,7 @@ public:
 	CFileServerRouter(
 		IFileStorage* storage,
 		CRedisService* redisService,
-		CFileMetadataRepository* metadataRepo,
-		std::string publicBaseUrl,
-		int64 maxUploadBytes);
+		std::string publicBaseUrl);
 
 	//***************************************************************************
 	// @brief 완성된 HTTP 요청 하나를 라우팅합니다(CFileServerSession::OnRecv()가
@@ -40,14 +37,17 @@ public:
 	//***************************************************************************
 	void HandleRequest(std::shared_ptr<CFileServerSession> session, const CHttpRequestParser& request);
 
-private:
-	static void SendSimpleResponse(std::shared_ptr<CFileServerSession> session, int statusCode, const std::string& statusText,
-		const std::string& contentType, const std::string& body, bool keepAlive);
+	//***************************************************************************
+	// @brief 업로드 토큰 확인(CFileUploadHandler::VerifyUploadToken 참고).
+	//***************************************************************************
+	void VerifyUploadToken(const std::string& tokenHex, std::function<void(bool valid, const std::string& ownerPublicIdHex)> onComplete)
+	{
+		_uploadHandler.VerifyUploadToken(tokenHex, std::move(onComplete));
+	}
 
 private:
 	CFileUploadHandler		_uploadHandler;
 	CFileDownloadHandler	_downloadHandler;
-	CFileDeleteHandler		_deleteHandler;
 };
 
-#endif // ndef UC_FILESERVERROUTER_H
+#endif // ndef FILESERVERROUTER_H

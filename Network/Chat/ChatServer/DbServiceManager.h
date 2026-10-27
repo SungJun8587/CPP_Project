@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_DBSERVICEMANAGER_H
-#define UC_DBSERVICEMANAGER_H
+#ifndef DBSERVICEMANAGER_H
+#define DBSERVICEMANAGER_H
 
 #include <DB/OdbcAsyncSrv.h>
 #include <memory>
@@ -86,4 +86,4 @@ private:
 //***************************************************************************
 #define MEMBER_DB_ASYNC (CDbServiceManager::Instance().MemberDB())
 
-#endif // ndef UC_DBSERVICEMANAGER_H
+#endif // ndef DBSERVICEMANAGER_H

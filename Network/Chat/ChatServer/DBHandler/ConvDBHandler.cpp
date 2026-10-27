@@ -25,7 +25,6 @@ namespace
 	using PublicIdArr = std::array<BYTE, kPublicIdBytes>;
 	using Row = DbUtil::Row;
 	using DbUtil::ToI64;
-	using CConvSql = DbUtil::CSql;	// 공용 문자열 파라미터 구문 도우미(DbHandlerUtil.h)
 
 	// 정규화된 쌍 (작은 쪽, 큰 쪽) — friendships/direct_key의 저장 규칙. 소문자 16진 32자라 문자열 비교로 충분.
 	void MakePair(const std::string& x, const std::string& y, std::string& lo, std::string& hi)
@@ -167,25 +166,6 @@ namespace
 		CConvWork(ST_CONV_REQ* req, OdbcConnGuard& guard, SConvOpResult& out)
 			: _req(req), _sql(guard), _out(out), _me(PublicIdToHex(req->publicId))
 		{
-		}
-
-		EConvResult Run()
-		{
-			switch( _req->op )
-			{
-			case EConvOp::OpenDirect:	return OpenDirect();
-			case EConvOp::CreateGroup:	return CreateGroup();
-			case EConvOp::Invite:		return Invite();
-			case EConvOp::Leave:		return Leave();
-			case EConvOp::List:			return List();
-			case EConvOp::Send:			return Send();
-			case EConvOp::History:		return History();
-			case EConvOp::MarkRead:		return MarkRead();
-			case EConvOp::Members:		return Members();
-			case EConvOp::Delete:		return Delete();
-			case EConvOp::Rename:		return Rename();
-			}
-			return EConvResult::DbError;
 		}
 
 	private:
@@ -434,6 +414,7 @@ namespace
 			return joined;
 		}
 
+	public:
 		// ── 1:1 열기 ────────────────────────────────────────────────────────
 		EConvResult OpenDirect()
 		{
@@ -607,10 +588,10 @@ namespace
 			if( !_sql.Exec(kSqlDeleteMember, { std::to_string(_req->convId), _me }) )
 				return EConvResult::DbError;
 
-			std::vector<Row> rows;
-			if( !_sql.Query(kSqlMemberCount, { std::to_string(_req->convId) }, 1, rows) || rows.empty() )
+			int32 remaining = 0;
+			if( !_sql.Count(kSqlMemberCount, { std::to_string(_req->convId) }, remaining) )
 				return EConvResult::DbError;
-			if( ToI64(rows.front()[0]) <= 0 )
+			if( remaining <= 0 )
 			{
 				// 마지막 멤버가 나가면 방 자체를 지운다(메시지는 CASCADE).
 				return _sql.Exec(kSqlDeleteConv, { std::to_string(_req->convId) }) ? EConvResult::Ok : EConvResult::DbError;
@@ -871,14 +852,14 @@ namespace
 
 	private:
 		ST_CONV_REQ* _req;
-		CConvSql		_sql;
+		DbUtil::CSql	_sql;
 		SConvOpResult& _out;
 		std::string		_me;
 	};
 }
 
 //***************************************************************************
-// @brief 대화방 연산 하나를 처리합니다. 어떤 경로에서도 onComplete가 정확히 한 번 호출됩니다.
+// @brief 대화방 연산 하나를 op에 따라 연산별 함수로 나눠 처리합니다. 어떤 경로에서도 onComplete가 정확히 한 번 호출됩니다.
 //***************************************************************************
 DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Conv)
 {
@@ -901,7 +882,25 @@ DECLARE_DBASYNC_HANDLER_EX(MEMBER_DB_ASYNC, kDbCallIdent_Conv)
 	}
 
 	CConvWork work(req, guard, out);
-	const EConvResult result = work.Run();
+	EConvResult result = EConvResult::DbError;
+	switch( req->op )
+	{
+	case EConvOp::OpenDirect:	result = work.OpenDirect();		break;
+	case EConvOp::CreateGroup:	result = work.CreateGroup();	break;
+	case EConvOp::Invite:		result = work.Invite();			break;
+	case EConvOp::Leave:		result = work.Leave();			break;
+	case EConvOp::List:			result = work.List();			break;
+	case EConvOp::Send:			result = work.Send();			break;
+	case EConvOp::History:		result = work.History();		break;
+	case EConvOp::MarkRead:		result = work.MarkRead();		break;
+	case EConvOp::Members:		result = work.Members();		break;
+	case EConvOp::Delete:		result = work.Delete();			break;
+	case EConvOp::Rename:		result = work.Rename();			break;
+	default:
+		LOG_ERROR(_T("kDbCallIdent_Conv: unknown op %d"), static_cast<int>(req->op));
+		break;
+	}
+
 	if( result == EConvResult::DbError )
 		LOG_ERROR(_T("kDbCallIdent_Conv: DB operation failed."));
 	return finish(result);

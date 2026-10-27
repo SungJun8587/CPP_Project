@@ -56,7 +56,6 @@ using namespace std;
 
 #include <Thread/CacheAlignment.h>
 #include <Thread/DeadLockProfiler.h>
-#include <Thread/SpinLock.h>
 #include <Thread/SRWLock.h>
 #include <Thread/PlatformLock.h>
 #include <Thread/ThreadManager.h>
@@ -95,6 +94,7 @@ using namespace std;
 #include "../ChatCommon/Protocol/ChatPacket.h"
 #include "../ChatCommon/Protocol/ChatPacketUtil.h"
 #include "../ChatCommon/ImageRef.h"
+#include "../ChatCommon/FileServerKeys.h"
 #include "ChatServerConfig.h"
 #include "ChatPacketDispatcher.h"
 #include "DbServiceManager.h"

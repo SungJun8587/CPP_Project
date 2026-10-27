@@ -1,5 +1,4 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // FileDownloadHandler.h : interface for the CFileDownloadHandler class.
 //
 // [설계 — Router/Handler 분리] CFileServerMain::HandleGetImage()에 있던
@@ -7,11 +6,10 @@
 // 교체한 것 외에 동작 변화는 없다.
 //***************************************************************************
 
-#ifndef UC_FILEDOWNLOADHANDLER_H
-#define UC_FILEDOWNLOADHANDLER_H
+#ifndef FILEDOWNLOADHANDLER_H
+#define FILEDOWNLOADHANDLER_H
 
 #include "FileStorage.h"
-#include "FileSendBufferPool.h"
 #include "FileServerSession.h"
 #include <Network/HTTP/HttpRange.h>
 #include <Network/HTTP/HttpPacketBuilder.h>
@@ -47,11 +45,6 @@ private:
 	//***************************************************************************
 	static std::string GuessContentType(const std::string& path);
 
-	//***************************************************************************
-	// @brief 텍스트 본문 HTTP 응답 하나를 조립해서 전송한다(에러 응답 전용).
-	//***************************************************************************
-	static void SendSimpleResponse(std::shared_ptr<CFileServerSession> session, int statusCode, const std::string& statusText,
-		const std::string& contentType, const std::string& body, bool keepAlive);
 
 	//***************************************************************************
 	// @brief 요청 Range가 파일 크기를 벗어나는 등 처리 불가능할 때 416
@@ -63,4 +56,4 @@ private:
 	IFileStorage* _storage;	// CFileServerMain 소유 — 빌려 씀(수명 비소유)
 };
 
-#endif // ndef UC_FILEDOWNLOADHANDLER_H
+#endif // ndef FILEDOWNLOADHANDLER_H

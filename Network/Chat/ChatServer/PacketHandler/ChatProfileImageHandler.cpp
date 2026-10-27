@@ -79,7 +79,7 @@ namespace
 		const std::array<BYTE, kPublicIdBytes> publicId = session.GetPublicId();
 		const int64 imageId = packet->imageId;
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSelectProfileImage(sessionRef, publicId, imageId,
@@ -179,7 +179,17 @@ namespace
 
 		const std::array<BYTE, kPublicIdBytes> publicId = session.GetPublicId();
 
-		auto sessionRef = std::static_pointer_cast<CChatSession>(session.shared_from_this());
+		// 남의 파일 서버 URL은 거절한다(IsImageUrlUsableBy() 참고).
+		if( !server->IsImageUrlUsableBy(publicId, newUrl) )
+		{
+			SetProfileImageUrlResPacket res{};
+			InitPacket(res, EChatPacketType::SetProfileImageUrlRes);
+			res.reason = static_cast<uint8>(ELoginResult::DbError);
+			SendPacket(session, res);
+			return;
+		}
+
+		auto sessionRef = GetSessionRef(session);
 		std::weak_ptr<CChatSession> sessionWeak = sessionRef;
 
 		server->RequestSetProfileImageUrl(sessionRef, publicId, newUrl,

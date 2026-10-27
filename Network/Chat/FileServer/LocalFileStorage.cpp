@@ -1,9 +1,7 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // LocalFileStorage.cpp: implementation of the CLocalFileStorage class.
 //
-// [설계 변경 — 일반화] LocalFileImageStorage.cpp를 대체한다. 로직은 완전히
-// 동일하고 클래스/메서드 이름과 로그 태그만 IFileStorage/CLocalFileStorage에
-// 맞춰 바꿨다.
 //***************************************************************************
 
 #include "pch.h"
@@ -24,51 +22,48 @@ CLocalFileStorage::CLocalFileStorage(_tstring baseDir)
 {
 }
 
-//***************************************************************************
-// @brief 파일을 {baseDir}/{ownerId}/{무작위파일명}{확장자}에 저장한다.
-//***************************************************************************
-bool CLocalFileStorage::SaveFile(
-	const std::string& ownerId,
-	const std::string& fileExtension,
-	const std::vector<BYTE>& data,
-	std::string& outRelativePath)
+namespace
 {
-	// 파일명 충돌 방지 — 같은 계정이 여러 파일을 올려도 서로 안 겹치게 매번
-	// 새로 생성한 무작위 16바이트를 16진 인코딩해서 쓴다.
+	// ".png" 같은 확장자를 정제한다 — 점 + 영숫자 1~8자가 아니면 ".bin".
+	std::string SanitizeExtension(const std::string& ext)
+	{
+		if( ext.size() < 2 || ext.size() > 1 + FileServerKeys::kStoredExtMaxLen || ext[0] != '.' )
+			return ".bin";
+		for( size_t i = 1; i < ext.size(); ++i )
+			if( !FileServerKeys::IsAlnum(ext[i]) )
+				return ".bin";
+		return ext;
+	}
+}
+
+bool CLocalFileStorage::ResolvePath(const std::string& relativePath, fs::path& outFullPath) const
+{
+	// 채팅 서버와 공유하는 규칙(Common/FileServerKeys.h)으로 검증한다.
+	if( !FileServerKeys::IsValidRelativePath(relativePath) )
+		return false;
+
+	const size_t slash = relativePath.find('/');
+	const std::string owner = relativePath.substr(0, slash);
+	const std::string name = relativePath.substr(slash + 1);
+
+	outFullPath = fs::path(_baseDir) / fs::path(Utf8ToTString(owner)) / fs::path(Utf8ToTString(name));
+	return true;
+}
+
+bool CLocalFileStorage::NewRelativePath(const std::string& ownerId, const std::string& fileExtension, std::string& outRelativePath)
+{
+	if( !FileServerKeys::IsValidOwnerId(ownerId) )
+	{
+		LOG_ERROR(_T("CLocalFileStorage: 유효하지 않은 ownerId"));
+		return false;
+	}
+
+	// 파일명 충돌/추측 방지 — 매번 새로 생성한 무작위 16바이트를 16진 인코딩.
 	BYTE randomName[16] = {};
 	if( !Crypto::CCryptoUtil::GenerateRandomBytes(randomName, sizeof(randomName)) )
 		return false;
 
-	const std::string fileNameHex = Crypto::CCryptoUtil::ToHex(randomName, sizeof(randomName));
-	const std::string relativePath = ownerId + "/" + fileNameHex + fileExtension;
-
-	const fs::path fullPath = fs::path(_baseDir) / fs::path(Utf8ToTString(relativePath));
-
-	std::error_code ec;
-	fs::create_directories(fullPath.parent_path(), ec);
-	if( ec )
-	{
-		LOG_ERROR(_T("CLocalFileStorage::SaveFile: create_directories 실패 (%hs)"), ec.message().c_str());
-		return false;
-	}
-
-	std::ofstream ofs(fullPath, std::ios::binary | std::ios::trunc);
-	if( !ofs.is_open() )
-	{
-		LOG_ERROR(_T("CLocalFileStorage::SaveFile: 파일 열기 실패"));
-		return false;
-	}
-
-	if( !data.empty() )
-		ofs.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
-
-	if( !ofs.good() )
-	{
-		LOG_ERROR(_T("CLocalFileStorage::SaveFile: 쓰기 실패"));
-		return false;
-	}
-
-	outRelativePath = relativePath;
+	outRelativePath = ownerId + "/" + Crypto::CCryptoUtil::ToHex(randomName, sizeof(randomName)) + SanitizeExtension(fileExtension);
 	return true;
 }
 
@@ -90,14 +85,13 @@ bool CLocalFileStorage::SaveFileFromPath(
 	const std::string& sourceFilePath,
 	std::string& outRelativePath)
 {
-	BYTE randomName[16] = {};
-	if( !Crypto::CCryptoUtil::GenerateRandomBytes(randomName, sizeof(randomName)) )
+	std::string relativePath;
+	if( !NewRelativePath(ownerId, fileExtension, relativePath) )
 		return false;
 
-	const std::string fileNameHex = Crypto::CCryptoUtil::ToHex(randomName, sizeof(randomName));
-	const std::string relativePath = ownerId + "/" + fileNameHex + fileExtension;
-
-	const fs::path fullPath = fs::path(_baseDir) / fs::path(Utf8ToTString(relativePath));
+	fs::path fullPath;
+	if( !ResolvePath(relativePath, fullPath) )
+		return false;
 
 	std::error_code ec;
 	fs::create_directories(fullPath.parent_path(), ec);
@@ -132,45 +126,13 @@ bool CLocalFileStorage::SaveFileFromPath(
 }
 
 //***************************************************************************
-// @brief relativePath로 저장된 파일을 그대로 읽어온다.
-//***************************************************************************
-bool CLocalFileStorage::LoadFile(const std::string& relativePath, std::vector<BYTE>& outData)
-{
-	// [방어] "../" 등으로 baseDir 바깥을 가리키려는 경로 조작 시도를 막는다 —
-	// GET 요청 경로에서 그대로 넘어올 수 있는 값이라 반드시 검증해야 한다.
-	if( relativePath.find("..") != std::string::npos )
-		return false;
-
-	const fs::path fullPath = fs::path(_baseDir) / fs::path(Utf8ToTString(relativePath));
-
-	std::ifstream ifs(fullPath, std::ios::binary | std::ios::ate);
-	if( !ifs.is_open() )
-		return false;
-
-	const std::streamsize fileSize = ifs.tellg();
-	if( fileSize < 0 )
-		return false;
-
-	ifs.seekg(0, std::ios::beg);
-
-	outData.resize(static_cast<size_t>(fileSize));
-	if( fileSize > 0 && !ifs.read(reinterpret_cast<char*>(outData.data()), fileSize) )
-		return false;
-
-	return true;
-}
-
-//***************************************************************************
 // @brief relativePath의 파일을 스트림으로 연다.
 //***************************************************************************
 std::unique_ptr<CFileStream> CLocalFileStorage::OpenStream(const std::string& relativePath)
 {
-	// [방어] LoadFile()/DeleteFile()과 동일한 이유 — "../" 등으로 baseDir
-	// 바깥을 가리키려는 경로 조작 시도를 막는다.
-	if( relativePath.find("..") != std::string::npos )
+	fs::path fullPath;
+	if( !ResolvePath(relativePath, fullPath) )
 		return nullptr;
-
-	const fs::path fullPath = fs::path(_baseDir) / fs::path(Utf8ToTString(relativePath));
 
 	auto stream = std::make_unique<CFileStream>();
 	if( !stream->Open(fullPath.string()) )
@@ -180,22 +142,22 @@ std::unique_ptr<CFileStream> CLocalFileStorage::OpenStream(const std::string& re
 }
 
 //***************************************************************************
-// @brief relativePath의 파일을 스트림으로 연다.
+// @brief relativePath의 파일을 삭제한다.
+// @details 파일이 애초에 없으면 성공(최종 상태가 "없음"). 경로가 유효하지
+//          않거나 파일시스템 오류면 false.
 //***************************************************************************
 bool CLocalFileStorage::DeleteFile(const std::string& relativePath)
 {
-	// [방어] LoadFile()와 동일한 이유 — "../" 등으로 baseDir 바깥을
-	// 가리키려는 경로 조작 시도를 막는다.
-	if( relativePath.find("..") != std::string::npos )
+	fs::path fullPath;
+	if( !ResolvePath(relativePath, fullPath) )
 		return false;
 
-	const fs::path fullPath = fs::path(_baseDir) / fs::path(Utf8ToTString(relativePath));
-
 	std::error_code ec;
-	fs::remove(fullPath, ec);
-
-	// [설계] 애초에 파일이 없었던 경우까지 실패로 취급하지 않는다 —
-	// IFileStorage::DeleteFile() 문서 참고. "그 경로에 파일이 없는
-	// 상태"라는 최종 결과 자체를 성공으로 본다(ec 유무와 무관하게).
+	fs::remove(fullPath, ec); // 없는 파일이면 ec 없이 false 반환
+	if( ec )
+	{
+		LOG_ERROR(_T("CLocalFileStorage::DeleteFile: 삭제 실패 (%hs)"), ec.message().c_str());
+		return false;
+	}
 	return true;
 }

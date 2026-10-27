@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_DBPROFILEIMAGEREQUEST_H
-#define UC_DBPROFILEIMAGEREQUEST_H
+#ifndef DBPROFILEIMAGEREQUEST_H
+#define DBPROFILEIMAGEREQUEST_H
 
 #include <DB/DBAsyncSrv.h>
 
@@ -49,7 +49,7 @@ struct ST_PROFILE_IMAGE_REQ_BASE : public st_DBAsyncRq
 // @brief 로그인된 계정(publicId로 식별)에 외부 URL을 새 갤러리 항목으로
 //        등록하고 대표(status=1)로 지정하는 요청.
 // @details 빈 문자열이면 "대표 이미지 해제"(기존 status=1 행을 0으로만
-// 내림, 새로 등록하지 않음)로 처리한다. ChangeNicknameDBHandler.cpp와는
+// 내림, 새로 등록하지 않음)로 처리한다. AccountDBHandler.cpp의 닉네임 변경과는
 // 달리 UPDATE 한 번이 아니라 "기존 대표 해제 + 신규 등록"의 두 단계
 // 쿼리다(ProfileImageDBHandler.cpp 참고).
 //***************************************************************************
@@ -131,4 +131,4 @@ struct ST_DELETE_PROFILE_IMAGE_REQ : public ST_PROFILE_IMAGE_REQ_BASE
 	std::function<void(ELoginResult result, int64 imageId, bool wasActive, const std::string& deletedImageRef)>	onComplete;
 };
 
-#endif // ndef UC_DBPROFILEIMAGEREQUEST_H
+#endif // ndef DBPROFILEIMAGEREQUEST_H

@@ -6,8 +6,8 @@
 // 부분을 DbUtil::CSql 위로 모은다. DbHandlerUtil.h 뒤에 include 한다.
 //***************************************************************************
 
-#ifndef UC_ROOMDBUTIL_H
-#define UC_ROOMDBUTIL_H
+#ifndef ROOMDBUTIL_H
+#define ROOMDBUTIL_H
 
 #include "DBRoomRequest.h"
 
@@ -81,19 +81,6 @@ namespace RoomDb
 		const int32 lastPage = (totalCount - 1) / pageSize;
 		return (std::min)((std::max)(page, 0), lastPage);
 	}
-
-	//***************************************************************************
-	// @brief COUNT(*) 한 줄짜리 쿼리를 실행해 개수를 돌려준다.
-	//***************************************************************************
-	inline bool CountRows(DbUtil::CSql& sql, const TCHAR* countSql,
-		const std::vector<std::string>& params, int32& totalCount)
-	{
-		std::vector<DbUtil::Row> rows;
-		if( !sql.Query(countSql, params, 1, rows) )
-			return false;
-		totalCount = rows.empty() ? 0 : static_cast<int32>(DbUtil::ToI64(rows.front()[0]));
-		return true;
-	}
 }
 
-#endif // ndef UC_ROOMDBUTIL_H
+#endif // ndef ROOMDBUTIL_H

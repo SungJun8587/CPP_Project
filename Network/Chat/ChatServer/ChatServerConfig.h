@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_CHATSERVERCONFIG_H
-#define UC_CHATSERVERCONFIG_H
+#ifndef CHATSERVERCONFIG_H
+#define CHATSERVERCONFIG_H
 
 #include <ServerConfig.h>
 #include <Memory/Singleton.h>
@@ -127,4 +127,4 @@ private:
 	int32						_nMaxRoomsPerOwner;					// 1인당 생성 가능한 방 개수 상한(0 이하면 무제한)
 };
 
-#endif // ndef UC_CHATSERVERCONFIG_H
+#endif // ndef CHATSERVERCONFIG_H

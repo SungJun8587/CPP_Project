@@ -5,8 +5,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_CHATPACKETDISPATCHER_H
-#define UC_CHATPACKETDISPATCHER_H
+#ifndef CHATPACKETDISPATCHER_H
+#define CHATPACKETDISPATCHER_H
 
 #include <Network/PacketDispatcher.h>
 #include "../ChatCommon/Protocol/ChatPacket.h"
@@ -86,4 +86,4 @@ public:
 		static_cast<uint16>(EChatPacketType::EnumName), sizeof(PacketType), \
 		&ChatPacketTrampoline<&HandlerFunc>)
 
-#endif // ndef UC_CHATPACKETDISPATCHER_H
+#endif // ndef CHATPACKETDISPATCHER_H

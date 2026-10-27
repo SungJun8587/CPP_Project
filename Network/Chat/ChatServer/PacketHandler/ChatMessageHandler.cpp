@@ -54,7 +54,13 @@ namespace
 			// 검증할 수 있도록, 브로드캐스트 직전에 고유 ID를 부여하고
 			// 발신자/방 정보를 서버가 짧게 기억해둔다(영구 저장 아님 —
 			// ChatServerMain.h::kMaxTrackedMessages 참고).
-			outPacket.messageId = server->RegisterOutgoingMessage(session.GetPublicId(), session.GetRoomId());
+			// 파일 첨부 메시지면 발신자 소유 파일 경로도 함께 기억해, 메시지 삭제
+			// 성공 시 파일도 예약 삭제한다(파일 서버에는 HTTP 삭제 API가 없다).
+			const size_t messageLen = ::strnlen(outPacket.message, sizeof(outPacket.message));
+			const std::string messageText(outPacket.message, messageLen);
+
+			outPacket.messageId = server->RegisterOutgoingMessage(session.GetPublicId(), session.GetRoomId(),
+				server->ExtractOwnFileAttachmentPath(session.GetPublicId(), messageText));
 			server->BroadcastChatToRoom(session.GetRoomId(), session.GetPublicId(), &outPacket, outPacket.size);
 
 			// [추가] 방(로비 제외) 대화 기록을 Redis에 남긴다 — 나중에
@@ -64,8 +70,6 @@ namespace
 			// (strnlen)을 로비 메시지에서까지 매번 할 필요는 없어서 먼저 확인한다.
 			if( session.GetRoomId() != kLobbyRoomId )
 			{
-				const size_t messageLen = ::strnlen(outPacket.message, sizeof(outPacket.message));
-				const std::string messageText(outPacket.message, messageLen);
 				server->RecordRoomChatMessage(session.GetRoomId(), session.GetPublicId(), nickname, profileImageUrl, messageText, outPacket.messageId);
 			}
 		}
@@ -94,7 +98,8 @@ namespace
 			return; // 로그인 전 요청은 조용히 무시 — 다른 핸들러들과 동일한 정책
 
 		int32 roomId = 0;
-		const EDeleteMessageResult result = server->TryDeleteMessage(packet->messageId, session.GetPublicId(), roomId);
+		std::string fileRelativePath;
+		const EDeleteMessageResult result = server->TryDeleteMessage(packet->messageId, session.GetPublicId(), roomId, fileRelativePath);
 
 		DeleteChatMessageResPacket res{};
 		InitPacket(res, EChatPacketType::DeleteChatMessageRes);
@@ -108,6 +113,9 @@ namespace
 		// [추가] 대화 기록(Redis)에서도 이 메시지를 제거한다 — 로비면
 		// RemoveRoomChatMessage() 내부에서 즉시 반환하므로 안전하게 항상 호출.
 		server->RemoveRoomChatMessage(roomId, packet->messageId);
+
+		// 소유권이 검증된 삭제 — 첨부 파일이 있으면 파일 서버 예약 삭제 큐에 등록.
+		server->ScheduleFileDeletion(fileRelativePath);
 
 		DeleteChatMessageNotifyPacket notify{};
 		InitPacket(notify, EChatPacketType::DeleteChatMessageNotify);

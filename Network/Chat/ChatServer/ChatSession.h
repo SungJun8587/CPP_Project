@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_CHATSESSION_H
-#define UC_CHATSESSION_H
+#ifndef CHATSESSION_H
+#define CHATSESSION_H
 
 #include <Network/IOCP/IocpSession.h>
 
@@ -296,4 +296,4 @@ private:
 	std::atomic<bool>					_hasBlockedUsers{ false };	// 비어있는 흔한 경우 락 생략용 힌트
 };
 
-#endif // ndef UC_CHATSESSION_H
+#endif // ndef CHATSESSION_H
