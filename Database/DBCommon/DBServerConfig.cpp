@@ -6,6 +6,8 @@
 
 #include "pch.h"
 #include "DBServerConfig.h"
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
 
 //***************************************************************************
 // Construction/Destruction
@@ -20,33 +22,95 @@ CDBServerConfig::~CDBServerConfig()
 
 //***************************************************************************
 // @brief JSON 설정 파일로부터 서버 구성 정보를 읽어와 초기화합니다.
-// @param tszServerInfo JSON 설정 파일 경로
-// @return 성공 시 true, 실패 시 false
-// @details [수정] 베이스 필드와 이 클래스 고유 필드를 같은 jsonUtil로 한
-//          번에 다 읽는다(파일을 두 번 열지 않음).
+// @detail 키가 없으면 기존 값을 유지하고, 타입/범위 오류는 모두 모아 로그로 남긴다.
+//         ServerNode/DBNode/RedisNode는 각 항목의 필수 필드와 범위를 검사한 뒤 역직렬화한다.
+// @param tszServerInfo 설정 파일 경로 (UTF-8)
+// @return 파일 열기/문법/타입/범위 오류가 없으면 true
 //***************************************************************************
 bool CDBServerConfig::Init(const TCHAR* tszServerInfo)
 {
 	CRapidJSONUtil jsonUtil;
-	jsonUtil.LoadFromFile(tszServerInfo);
+	if( !jsonUtil.LoadFromFile(tszServerInfo) )
+	{
+		LOG_ERROR(_T("[CDBServerConfig] load failed. path=%s"), tszServerInfo);
+		return false;
+	}
+	if( !jsonUtil.IsObject() )
+	{
+		LOG_ERROR(_T("[CDBServerConfig] top-level value must be an object. path=%s"), tszServerInfo);
+		return false;
+	}
 
-	_tcsncpy_s(_tszServiceName, _countof(_tszServiceName), jsonUtil[_T("ServiceName")], _TRUNCATE);
-	_tcsncpy_s(_tszDisplayName, _countof(_tszDisplayName), jsonUtil[_T("DisplayName")], _TRUNCATE);
-	_tcsncpy_s(_tszServerName, _countof(_tszServerName), jsonUtil[_T("Name")], _TRUNCATE);
-	_nServerGroupId = jsonUtil[_T("GroupId")];
-	_nServerChannelId = jsonUtil[_T("ChannelId")];
+	CJSONConfigFieldReader reader(jsonUtil);
 
-	_tcsncpy_s(_tszIP, _countof(_tszIP), jsonUtil[_T("IP")], _TRUNCATE);
-	_nServerPort = jsonUtil[_T("Port")];
-	_nMaxSessionCount = jsonUtil[_T("MaxSessionCount")];
-	_nWorkerThreadCnt = jsonUtil[_T("WorkerThreadCnt")];
-	_nKeepAliveSec = jsonUtil[_T("KeepAliveSec")];
+	reader.Read(_T("ServiceName"), _tszServiceName);
+	reader.Read(_T("DisplayName"), _tszDisplayName);
+	reader.Read(_T("Name"), _tszServerName);
+	reader.Read(_T("GroupId"), _nServerGroupId);
+	reader.Read(_T("ChannelId"), _nServerChannelId);
 
-	_serverNodeVec = jsonUtil.Deserialize<CVector<CServerNode>>(_T("ServerNode"));
-	_dbNodeVec = jsonUtil.Deserialize<CVector<CDBNode>>(_T("DBNode"));
-	_redisNodeVec = jsonUtil.Deserialize<CVector<CRedisNode>>(_T("RedisNode"));
+	reader.Read(_T("IP"), _tszIP);
+	reader.Read(_T("Port"), _nServerPort, 1, 65535);
+	reader.Read(_T("MaxSessionCount"), _nMaxSessionCount, 1, INT32_MAX);
+	reader.Read(_T("WorkerThreadCnt"), _nWorkerThreadCnt, 0, 1024);
+	reader.Read(_T("KeepAliveSec"), _nKeepAliveSec, 0, INT32_MAX);
 
-	return true;
+	reader.ReadObjects(_T("ServerNode"), _serverNodeVec, {
+		{ _T("ID"),   EFieldType::Int,    0, INT16_MAX },
+		{ _T("Name"), EFieldType::String },
+		{ _T("IP"),   EFieldType::String },
+		{ _T("Port"), EFieldType::Int,    1, 65535 },
+		});
+	reader.ReadObjects(_T("DBNode"), _dbNodeVec, {
+		{ _T("ID"),        EFieldType::Int,    0, INT16_MAX },
+		{ _T("DBClass"),   EFieldType::Int,    0, 3 },
+		{ _T("DSNDriver"), EFieldType::String },
+		{ _T("IP"),        EFieldType::String },
+		{ _T("Port"),      EFieldType::Int,    1, 65535 },
+		{ _T("DBName"),    EFieldType::String },
+		{ _T("UID"),       EFieldType::String },
+		{ _T("PWD"),       EFieldType::String },
+		});
+	reader.ReadObjects(_T("RedisNode"), _redisNodeVec, {
+		{ _T("ID"),      EFieldType::Int,    0, INT16_MAX },
+		{ _T("IP"),      EFieldType::String },
+		{ _T("Port"),    EFieldType::Int,    1, 65535 },
+		{ _T("UID"),     EFieldType::String },
+		{ _T("PWD"),     EFieldType::String },
+		{ _T("DBIndex"), EFieldType::Int,    0, INT32_MAX },
+		});
+
+	return reader.Validate();
+}
+
+//***************************************************************************
+// @brief 현재 설정을 JSON 파일로 저장합니다.
+// @detail 임시 파일에 먼저 쓴 뒤 교체하므로 저장에 실패해도 기존 파일은 그대로 남는다.
+// @param tszServerInfo 저장할 파일 경로
+// @return 저장에 성공하면 true
+//***************************************************************************
+bool CDBServerConfig::Save(const TCHAR* tszServerInfo) const
+{
+	CRapidJSONUtil jsonUtil;
+	CJSONConfigFieldWriter writer(jsonUtil);
+
+	writer.Write(_T("ServiceName"), static_cast<const TCHAR*>(_tszServiceName));
+	writer.Write(_T("DisplayName"), static_cast<const TCHAR*>(_tszDisplayName));
+	writer.Write(_T("Name"), static_cast<const TCHAR*>(_tszServerName));
+	writer.Write(_T("GroupId"), _nServerGroupId);
+	writer.Write(_T("ChannelId"), _nServerChannelId);
+
+	writer.Write(_T("IP"), static_cast<const TCHAR*>(_tszIP));
+	writer.Write(_T("Port"), _nServerPort);
+	writer.Write(_T("MaxSessionCount"), _nMaxSessionCount);
+	writer.Write(_T("WorkerThreadCnt"), _nWorkerThreadCnt);
+	writer.Write(_T("KeepAliveSec"), _nKeepAliveSec);
+
+	writer.WriteObjects(_T("ServerNode"), _serverNodeVec);
+	writer.WriteObjects(_T("DBNode"), _dbNodeVec);
+	writer.WriteObjects(_T("RedisNode"), _redisNodeVec);
+
+	return writer.Save(tszServerInfo);
 }
 
 //***************************************************************************

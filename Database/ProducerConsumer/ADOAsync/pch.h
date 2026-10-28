@@ -64,6 +64,11 @@ using namespace std;
 
 #include <JSON/RapidJSONUtil.h>
 
+#include <ConfigFile/ConfigFieldSpec.h>
+#include <ConfigFile/ConfigFieldCommon.h>
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
+
 #include <ServerConfig.h>
 
 #include <DB/DBEnum.h>
@@ -76,7 +81,7 @@ using namespace std;
 #include <DB/ADO/AdoConnPool.h>
 #include <DB/ADO/AdoAsyncSrv.h>
 
-#include "DBServerConfig.h"
+#include "../../DBCommon/DBServerConfig.h"
 #include "DBServiceManager.h"
 #include "DBAsyncStruct.h"
 

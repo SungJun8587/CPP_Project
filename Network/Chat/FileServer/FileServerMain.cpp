@@ -24,14 +24,10 @@ CFileServerMain::~CFileServerMain()
 // @brief 파일 서버 구동. 채팅 서버(CChatServerMain::Start())와 동일한
 //        인프라 초기화 순서 — IOCP 코어/JobQueue -> Redis -> IOCP 서비스.
 //***************************************************************************
-bool CFileServerMain::Start(
-	const _tstring& bindIp, uint16 bindPort,
-	CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
-	int32 maxSessionCount, uint32 workerThreadCount,
-	_tstring storageDir, std::string publicBaseUrl, int64 maxUploadBytes)
+bool CFileServerMain::Start(const SFileServerOptions& options)
 {
-	_publicBaseUrl = std::move(publicBaseUrl);
-	_maxUploadBytes = maxUploadBytes;
+	_publicBaseUrl = options.publicBaseUrl;
+	_maxUploadBytes = options.maxUploadBytes;
 
 	// 1. IOCP 코어 + JobQueue(Redis 콜백을 안전한 스레드로 넘기는 용도)
 	_iocpCore = MakeShared<CIocpCore>();
@@ -39,18 +35,18 @@ bool CFileServerMain::Start(
 
 	// 2. Redis 초기화 — 채팅 서버가 발급한 업로드 토큰을 검증하는 용도.
 	_redisService = std::make_unique<CRedisService>(_iocpCore, _jobQueue);
-	if( !_redisService->Init(redisNodeVec, redisPoolSize) )
+	if( !_redisService->Init(options.redisNodes, options.redisPoolSize) )
 		return false;
 
 	// 3. 파일 저장소 초기화.
-	_fileStorage = std::make_unique<CLocalFileStorage>(storageDir);
+	_fileStorage = std::make_unique<CLocalFileStorage>(options.storageDir);
 
 	// 3-1. 업로드 임시 디렉터리 — 저장소와 같은 볼륨이어야 저장이 rename 한
 	// 번으로 끝난다. 이전 실행이 비정상 종료되며 남긴 임시 파일은 비운다.
 	// (".tmp"는 CLocalFileStorage가 owner 세그먼트로 받지 않으므로 다운로드로 노출되지 않는다.)
 	{
 		std::error_code ec;
-		const std::filesystem::path tempDir = std::filesystem::path(storageDir) / ".tmp";
+		const std::filesystem::path tempDir = std::filesystem::path(options.storageDir) / ".tmp";
 		std::filesystem::remove_all(tempDir, ec);
 		std::filesystem::create_directories(tempDir, ec);
 		if( ec )
@@ -74,21 +70,21 @@ bool CFileServerMain::Start(
 
 	EngineCoreRef engineCore = _iocpCore;
 	CNetServiceRef service = CNetworkFactory::CreateServerService(
-		engineCore, CNetAddress(bindIp, bindPort), factory, maxSessionCount, workerThreadCount);
+		engineCore, CNetAddress(options.bindIp, options.bindPort), factory, options.maxSessionCount, options.workerThreadCount);
 
 	_service = std::static_pointer_cast<CIocpServerService>(service);
 	if( _service == nullptr )
 		return false;
 
 	// 접속만 하고 아무것도 보내지 않거나 요청을 느리게 흘리는 연결이 세션을 영구히 차지하지 못하게 한다.
-	// - 유휴 타임아웃: 수신/송신 완료가 없는 상태가 이 시간 이상이면 종료(큰 파일을 올리거나 받는 중에는 I/O 완료가 계속 들어와 걸리지 않는다)
+	// - 유휴 타임아웃(options.idleTimeoutMs): 수신/송신 완료가 없는 상태가 이 시간 이상이면 종료(큰 파일을 올리거나 받는 중에는 I/O 완료가 계속 들어와 걸리지 않는다). 0이면 끔
 	// - keep-alive: FIN/RST 없이 사라진 피어 감지
 	// - 접속 수 상한: 설정의 MaxSessionCount를 실제 상한으로 적용
-	constexpr uint32 kIdleTimeoutMs = 60 * 1000;
 	CIocpSession::SocketOptions socketOptions;
 	socketOptions.keepAlive = true;
 	_service->SetSessionSocketOptions(socketOptions);
-	_service->SetIdleTimeout(kIdleTimeoutMs);
+	if( options.idleTimeoutMs > 0 )
+		_service->SetIdleTimeout(options.idleTimeoutMs);
 	_service->SetEnforceMaxSessionCount(true);
 
 	if( !_service->Start() )

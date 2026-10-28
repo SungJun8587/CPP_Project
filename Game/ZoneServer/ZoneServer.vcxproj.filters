@@ -94,6 +94,13 @@
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
+      <Filter>UtilCore\JSON</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\ServerConfig.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="ZoneServerConfig.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -263,6 +270,32 @@
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZoneBase.h">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
+      <Filter>UtilCore\JSON</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConfig.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConnectInfo.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="ZoneServerConfig.h" />
+    <ClInclude Include="ZoneServerOptions.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -298,6 +331,15 @@
     <Filter Include="GameCommon\ZoneCore">
       <UniqueIdentifier>{73f049dc-25fb-416e-8e3a-2e5b00754e7c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="UtilCore\ConfigFile">
+      <UniqueIdentifier>{041bf80d-7236-4d44-8109-af217803fd9e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\JSON">
+      <UniqueIdentifier>{ee775022-4f01-4222-96fe-0b10f03a5d99}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Queue">
+      <UniqueIdentifier>{c40d6216-69f7-4f39-bde3-d01829035c02}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
@@ -305,6 +347,9 @@
     </None>
     <None Include="..\..\..\Library\UtilCore\Memory\Singleton.inl">
       <Filter>UtilCore\Memory</Filter>
+    </None>
+    <None Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
+      <Filter>UtilCore\JSON</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -55,7 +55,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
       <Filter>UtilCore\Thread</Filter>
     </ClCompile>
-    <ClCompile Include="DBServerConfig.cpp" />
+    <ClCompile Include="..\..\DBCommon\DBServerConfig.cpp">
+      <Filter>DBCommon</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -84,6 +86,9 @@
     </Filter>
     <Filter Include="UtilCore\Containers\Queue">
       <UniqueIdentifier>{30bf1128-3c7f-4a19-990b-2155fe52a856}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DBCommon">
+      <UniqueIdentifier>{fb83507e-4eb3-4a55-95ac-3c1cc68a8430}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -195,9 +200,11 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="DBServiceManager.h" />
-    <ClInclude Include="DBServerConfig.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h">
       <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\DBCommon\DBServerConfig.h">
+      <Filter>DBCommon</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -41,19 +41,10 @@ namespace
 		}
 	}
 	//***************************************************************************
-	// @brief TCHAR 문자열을 std::string으로 변환함(UNICODE 빌드 대응).
-	//***************************************************************************
-	std::string TCharToString(const TCHAR* ptsz)
-	{
-		if( ptsz == nullptr ) return std::string();
-		return TStringToString(ptsz);
-	}
-
-	//***************************************************************************
 	// @brief CChatServerConfig의 싱글톤 포인터에 접근합니다.
 	// @return CChatServerConfig* 서버 설정 싱글톤 포인터
 	//***************************************************************************
-	#define CHAT_SERVER_CONFIG						CChatServerConfig::GetSingletonPtr()
+#define CHAT_SERVER_CONFIG						CChatServerConfig::GetSingletonPtr()
 }
 
 //***************************************************************************
@@ -131,20 +122,13 @@ int main()
 
 	// 7. 서버 시작
 	// 7-1. CChatServerMain::Start() 호출 — IOCP/Redis/DB/하트비트를 전부
-	//      이 한 번의 호출 안에서 순서대로 초기화한다. Redis/DB 풀 크기,
-	//      DB 워커 스레드 수, 하트비트 TTL/주기는 전부 CServerConfig의
-	//      JSON 스키마에 이미 있는 값을 그대로 쓴다(더 이상 데모용
-	//      상수로 고정할 필요 없음 — 서버 재시작 없이 설정 파일만
-	//      바꿔 튜닝 가능).
-	const bool started = server.Start(
-		CHAT_SERVER_CONFIG->GetServerIP(), CHAT_SERVER_CONFIG->GetServerPort(),
-		CHAT_SERVER_CONFIG->GetRedisNodeVec(), CHAT_SERVER_CONFIG->GetRedisPoolSize(),
-		CHAT_SERVER_CONFIG->GetDBNodeVec(), CHAT_SERVER_CONFIG->GetDbWorkerThreadCnt(),
-		TCharToString(CHAT_SERVER_CONFIG->GetServerName()),
-		std::to_string(CHAT_SERVER_CONFIG->GetServerGroupId()), std::to_string(CHAT_SERVER_CONFIG->GetServerChannelId()),
-		CHAT_SERVER_CONFIG->GetMaxSessionCount(), CHAT_SERVER_CONFIG->GetWorkerThreadCnt(),
-		CHAT_SERVER_CONFIG->GetHeartbeatTtlSec(), CHAT_SERVER_CONFIG->GetHeartbeatIntervalSec()
-	);
+	//      이 한 번의 호출 안에서 순서대로 초기화한다. 설정 파일 값은
+	//      SChatServerOptions로 옮겨 담아 넘긴다(Redis/DB 풀 크기, DB 워커
+	//      스레드 수, 하트비트 TTL/주기, 파일 서버 주소, 방 개수 상한 포함 —
+	//      서버 재시작 없이 설정 파일만 바꿔 튜닝 가능).
+	SChatServerOptions options;
+	CHAT_SERVER_CONFIG->ToOptions(options);
+	const bool started = server.Start(options);
 
 	// 7-2. 시작 실패 시 정리 후 종료
 	if( !started )
@@ -153,17 +137,6 @@ int main()
 		MainClose();
 		return -1;
 	}
-
-	// 7-3. 클라이언트에게 알려줄 파일 서버 주소 설정 — 프로필 이미지 업로드
-	// 토큰 발급(RequestUploadTokenReq) 응답에 그대로 실려 나간다. 설정
-	// 파일에 없으면 빈 문자열이 그대로 전달되고, 그 경우 클라이언트는
-	// 업로드 기능을 못 쓴다는 걸 응답(success=0)으로 알게 된다
-	// (ChatServerMain::RequestUploadToken() 참고).
-	server.SetFileServerUrl(TCharToString(CHAT_SERVER_CONFIG->GetFileServerUrl()));
-
-	// 7-4. 1인당 생성 가능한 방 개수 상한 설정 — CreateRoomReq 처리
-	// 시(CChatServerMain::RequestCreateRoom()) 그대로 쓰인다.
-	server.SetMaxRoomsPerOwner(CHAT_SERVER_CONFIG->GetMaxRoomsPerOwner());
 
 	std::cout << "ChatServer started. Press Ctrl+C to stop." << std::endl;
 

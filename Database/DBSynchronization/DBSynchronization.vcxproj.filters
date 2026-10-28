@@ -22,6 +22,12 @@
     <Filter Include="UtilCore\Excel">
       <UniqueIdentifier>{b54546b2-ee14-4f90-beaf-179d5f9ebf10}</UniqueIdentifier>
     </Filter>
+    <Filter Include="DBCommon">
+      <UniqueIdentifier>{4df55ef8-4f92-465d-ba7d-68f2798b4e34}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\ConfigFile">
+      <UniqueIdentifier>{9660490e-8839-469b-ba2b-38a5612b0ec5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\Library\UtilCore\BaseGlobal.cpp">
@@ -98,6 +104,9 @@
     </ClCompile>
     <ClCompile Include="..\..\..\Library\UtilCore\Util\DirectoryUtil.cpp">
       <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\DBCommon\DBServerConfig.cpp">
+      <Filter>DBCommon</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -219,6 +228,21 @@
     </ClInclude>
     <ClInclude Include="..\..\..\Library\UtilCore\Util\DirectoryUtil.h">
       <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\DBCommon\DBServerConfig.h">
+      <Filter>DBCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
+      <Filter>UtilCore\ConfigFile</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

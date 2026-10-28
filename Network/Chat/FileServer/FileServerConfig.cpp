@@ -7,6 +7,9 @@
 #include "pch.h"
 #include "FileServerConfig.h"
 
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
+
 //***************************************************************************
 // @brief CFileServerConfig 클래스의 생성자
 //***************************************************************************
@@ -26,41 +29,99 @@ CFileServerConfig::~CFileServerConfig()
 
 //***************************************************************************
 // @brief JSON 설정 파일로부터 파일 서버 구성 정보를 읽어와 초기화합니다.
+// @return 성공 시 true, 실패 시 false
 // @details ServiceName/DisplayName/GroupId/ChannelId/KeepAliveSec/
 //          ServerNode/DBNode는 파일 서버 개념에 없으므로 읽지 않는다 —
-//          그 필드들은 상속만 받고 기본값 그대로 남는다.
+//          그 필드들은 상속만 받고 기본값 그대로 남는다(파일에 있어도 경고하지 않음).
+//          파일에 없는 키는 기본값을 유지하고, 있는데 타입이 맞지 않거나 범위를
+//          벗어나면 모아서 로그로 남기고 false를 돌려준다.
 //***************************************************************************
 bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 {
-	CRapidJSONUtil jsonUtil;
-	jsonUtil.LoadFromFile(tszServerInfo);
-
-	_tcsncpy_s(_tszServerName, _countof(_tszServerName), jsonUtil[_T("Name")], _TRUNCATE);
-	_tcsncpy_s(_tszIP, _countof(_tszIP), jsonUtil[_T("IP")], _TRUNCATE);
-	_nServerPort = jsonUtil[_T("Port")];
-	_nMaxSessionCount = jsonUtil[_T("MaxSessionCount")];
-	_nWorkerThreadCnt = jsonUtil[_T("WorkerThreadCnt")];
-
-	_nRedisPoolSize = jsonUtil[_T("RedisPoolSize")];
-
-	_tcsncpy_s(_tszStorageDir, _countof(_tszStorageDir), jsonUtil[_T("StorageDir")], _TRUNCATE);
-	_tcsncpy_s(_tszPublicBaseUrl, _countof(_tszPublicBaseUrl), jsonUtil[_T("PublicBaseUrl")], _TRUNCATE);
-	// [수정] _nMaxUploadBytes가 int64로 넓어졌다 — jsonUtil[...]의 프록시가
-	// 템플릿 기반 변환 연산자를 제공한다는 가정 하에(다른 필드들과 동일한
-	// 패턴) int64로도 그대로 대입이 될 것으로 예상하지만, 실제
-	// CRapidJSONUtil 구현을 못 봐서 100% 확신은 못한다 — 컴파일 에러가
-	// 나면 이 줄만 명시적으로 int64로 받는 식으로 바꾸면 된다.
-	_nMaxUploadBytes = jsonUtil[_T("MaxUploadBytes")];
-
-	if( _nMaxUploadBytes <= 0 )
+	CRapidJSONUtil json;
+	if( !json.LoadFromFile(tszServerInfo) )
 	{
-		LOG_ERROR(_T("CFileServerConfig::Init: invalid MaxUploadBytes(%lld) — must be > 0"), static_cast<long long>(_nMaxUploadBytes));
+		LOG_ERROR(_T("[Config] load failed. path=%s"), tszServerInfo);
 		return false;
 	}
 
-	_redisNodeVec = jsonUtil.Deserialize<CVector<CRedisNode>>(_T("RedisNode"));
+	CJSONConfigFieldReader reader(json);
+	reader.Ignore(_T("ServiceName"));
+	reader.Ignore(_T("DisplayName"));
+	reader.Ignore(_T("GroupId"));
+	reader.Ignore(_T("ChannelId"));
 
-	return true;
+	reader.Read(_T("Name"), _tszServerName);
+	reader.Read(_T("IP"), _tszIP);
+	reader.Read(_T("Port"), _nServerPort, static_cast<uint16>(1), static_cast<uint16>(65535));
+	reader.Read(_T("MaxSessionCount"), _nMaxSessionCount, 1);
+	reader.Read(_T("WorkerThreadCnt"), _nWorkerThreadCnt, 0);		// 0이면 서비스가 자동 결정
+
+	reader.Read(_T("RedisPoolSize"), _nRedisPoolSize, 1);
+
+	reader.Read(_T("StorageDir"), _tszStorageDir);
+	reader.Read(_T("PublicBaseUrl"), _tszPublicBaseUrl);
+	reader.Read(_T("MaxUploadBytes"), _nMaxUploadBytes, static_cast<int64>(1));	// 바이트, 0 이하는 허용하지 않음
+
+	reader.ReadObjects(_T("RedisNode"), _redisNodeVec,
+		{
+			{ _T("ID"), EFieldType::Int, 1, 32767 },
+			{ _T("IP"), EFieldType::String },
+			{ _T("Port"), EFieldType::UInt, 1, 65535 },
+			{ _T("UID"), EFieldType::String },
+			{ _T("PWD"), EFieldType::String },
+			{ _T("DBIndex"), EFieldType::Int, 0 },
+		});
+
+	return reader.Validate();
+}
+
+//***************************************************************************
+// @brief 현재 설정 값을 JSON 파일로 저장합니다.
+// @param tszServerInfo 저장할 JSON 설정 파일 경로
+// @return 성공 시 true, 실패 시 false
+//***************************************************************************
+bool CFileServerConfig::Save(const TCHAR* tszServerInfo)
+{
+	// 기존 파일이 있으면 읽어 와서 모르는 키와 키 순서를 보존한다(없으면 빈 문서에서 시작).
+	CRapidJSONUtil json;
+	json.LoadFromFile(tszServerInfo);
+
+	CJSONConfigFieldWriter writer(json);
+
+	writer.Write(_T("Name"), _tszServerName);
+	writer.Write(_T("IP"), _tszIP);
+	writer.Write(_T("Port"), _nServerPort);
+	writer.Write(_T("MaxSessionCount"), _nMaxSessionCount);
+	writer.Write(_T("WorkerThreadCnt"), _nWorkerThreadCnt);
+
+	writer.Write(_T("RedisPoolSize"), _nRedisPoolSize);
+
+	writer.Write(_T("StorageDir"), _tszStorageDir);
+	writer.Write(_T("PublicBaseUrl"), _tszPublicBaseUrl);
+	writer.Write(_T("MaxUploadBytes"), _nMaxUploadBytes);
+
+	writer.WriteObjects(_T("RedisNode"), _redisNodeVec);
+
+	return writer.Save(tszServerInfo);
+}
+
+//***************************************************************************
+// @brief 로드된 설정 값을 CFileServerMain::Start()에 넘길 구동 옵션으로 옮겨 담습니다.
+//***************************************************************************
+void CFileServerConfig::ToOptions(SFileServerOptions& options) const
+{
+	options.bindIp = _tszIP;
+	options.bindPort = _nServerPort;
+	options.maxSessionCount = _nMaxSessionCount;
+	options.workerThreadCount = static_cast<uint32>(_nWorkerThreadCnt);
+
+	options.redisNodes = _redisNodeVec;
+	options.redisPoolSize = _nRedisPoolSize;
+
+	options.storageDir = _tszStorageDir;
+	options.publicBaseUrl = TStringToString(_tszPublicBaseUrl);
+	options.maxUploadBytes = _nMaxUploadBytes;
 }
 
 //***************************************************************************

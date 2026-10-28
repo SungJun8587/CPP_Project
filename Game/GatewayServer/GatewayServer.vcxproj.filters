@@ -76,6 +76,22 @@
     <ClCompile Include="..\..\..\Library\UtilCore\BaseGlobal.cpp">
       <Filter>UtilCore</Filter>
     </ClCompile>
+    <ClCompile Include="GatewayServerConfig.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
+      <Filter>UtilCore\JSON</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\ServerConfig.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -113,6 +129,12 @@
     </Filter>
     <Filter Include="UtilCore\Containers\Queue">
       <UniqueIdentifier>{d9f3cde5-4d66-4773-a330-1d1fb553b0e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\ConfigFile">
+      <UniqueIdentifier>{ab49fb39-13d7-4d37-bdca-435e6a8d151b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\JSON">
+      <UniqueIdentifier>{3874f607-8e1d-4645-92b7-607de6e06305}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -265,6 +287,38 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Thread\SyncValue.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="GatewayServerConfig.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
+      <Filter>UtilCore\JSON</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConnectInfo.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConfig.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="GatewayServerOptions.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\Library\UtilCore\Memory\Singleton.inl">
@@ -272,6 +326,9 @@
     </None>
     <None Include="..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
       <Filter>UtilCore\Containers\Map</Filter>
+    </None>
+    <None Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
+      <Filter>UtilCore\JSON</Filter>
     </None>
   </ItemGroup>
 </Project>

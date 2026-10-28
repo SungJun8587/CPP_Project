@@ -7,6 +7,9 @@
 #include "pch.h"
 #include "ChatServerConfig.h"
 
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
+
 //***************************************************************************
 // Construction/Destruction
 //***************************************************************************
@@ -29,43 +32,152 @@ CChatServerConfig::~CChatServerConfig()
 {
 }
 
+namespace
+{
+	// 포트 번호 허용 범위
+	constexpr uint16 kMinPort = 1;
+	constexpr uint16 kMaxPort = 65535;
+	// 노드 ID 허용 범위(Get*Node()가 ID - 1을 인덱스로 쓰므로 1부터)
+	constexpr int64 kMinNodeId = 1;
+	constexpr int64 kMaxNodeId = 32767;
+}
+
 //***************************************************************************
 // @brief JSON 설정 파일로부터 서버 구성 정보를 읽어와 초기화합니다.
 // @param tszServerInfo JSON 설정 파일 경로
 // @return 성공 시 true, 실패 시 false
-// @details [수정] 베이스 필드와 이 클래스 고유 필드를 같은 jsonUtil로 한
-//          번에 다 읽는다(파일을 두 번 열지 않음).
+// @details 베이스 필드와 이 클래스 고유 필드를 같은 문서에서 한 번에 읽는다(파일을
+//          두 번 열지 않음). 파일에 없는 키는 기본값을 유지하고, 있는데 타입이
+//          맞지 않거나 범위를 벗어나면 모아서 로그로 남기고 false를 돌려준다.
+//          읽지 않는 키는 경고만 남긴다.
 //***************************************************************************
 bool CChatServerConfig::Init(const TCHAR* tszServerInfo)
 {
-	CRapidJSONUtil jsonUtil;
-	jsonUtil.LoadFromFile(tszServerInfo);
+	CRapidJSONUtil json;
+	if( !json.LoadFromFile(tszServerInfo) )
+	{
+		LOG_ERROR(_T("[Config] load failed. path=%s"), tszServerInfo);
+		return false;
+	}
 
-	_tcsncpy_s(_tszServiceName, _countof(_tszServiceName), jsonUtil[_T("ServiceName")], _TRUNCATE);
-	_tcsncpy_s(_tszDisplayName, _countof(_tszDisplayName), jsonUtil[_T("DisplayName")], _TRUNCATE);
-	_tcsncpy_s(_tszServerName, _countof(_tszServerName), jsonUtil[_T("Name")], _TRUNCATE);
-	_nServerGroupId = jsonUtil[_T("GroupId")];
-	_nServerChannelId = jsonUtil[_T("ChannelId")];
+	CJSONConfigFieldReader reader(json);
+	reader.Ignore(_T("UseTestMode"));	// 현재 코드에서 읽지 않는 키(파일에는 남아 있음)
 
-	_tcsncpy_s(_tszIP, _countof(_tszIP), jsonUtil[_T("IP")], _TRUNCATE);
-	_nServerPort = jsonUtil[_T("Port")];
-	_nMaxSessionCount = jsonUtil[_T("MaxSessionCount")];
-	_nWorkerThreadCnt = jsonUtil[_T("WorkerThreadCnt")];
-	_nKeepAliveSec = jsonUtil[_T("KeepAliveSec")];
+	reader.Read(_T("ServiceName"), _tszServiceName);
+	reader.Read(_T("DisplayName"), _tszDisplayName);
+	reader.Read(_T("Name"), _tszServerName);
+	reader.Read(_T("GroupId"), _nServerGroupId);
+	reader.Read(_T("ChannelId"), _nServerChannelId);
 
-	_serverNodeVec = jsonUtil.Deserialize<CVector<CServerNode>>(_T("ServerNode"));
-	_dbNodeVec = jsonUtil.Deserialize<CVector<CDBNode>>(_T("DBNode"));
-	_redisNodeVec = jsonUtil.Deserialize<CVector<CRedisNode>>(_T("RedisNode"));
+	reader.Read(_T("IP"), _tszIP);
+	reader.Read(_T("Port"), _nServerPort, kMinPort, kMaxPort);
+	reader.Read(_T("KeepAliveSec"), _nKeepAliveSec, 0);
+	reader.Read(_T("MaxSessionCount"), _nMaxSessionCount, 1);
+	reader.Read(_T("WorkerThreadCnt"), _nWorkerThreadCnt, 0);		// 0이면 서비스가 자동 결정
+
+	reader.ReadObjects(_T("ServerNode"), _serverNodeVec,
+		{
+			{ _T("ID"), EFieldType::Int, kMinNodeId, kMaxNodeId },
+			{ _T("Name"), EFieldType::String },
+			{ _T("IP"), EFieldType::String },
+			{ _T("Port"), EFieldType::UInt, kMinPort, kMaxPort },
+		});
+	reader.ReadObjects(_T("DBNode"), _dbNodeVec,
+		{
+			{ _T("ID"), EFieldType::Int, kMinNodeId, kMaxNodeId },
+			{ _T("DBClass"), EFieldType::Int, 1, 3 },
+			{ _T("DSNDriver"), EFieldType::String },
+			{ _T("IP"), EFieldType::String },
+			{ _T("Port"), EFieldType::UInt, kMinPort, kMaxPort },
+			{ _T("DBName"), EFieldType::String },
+			{ _T("UID"), EFieldType::String },
+			{ _T("PWD"), EFieldType::String },
+		});
+	reader.ReadObjects(_T("RedisNode"), _redisNodeVec,
+		{
+			{ _T("ID"), EFieldType::Int, kMinNodeId, kMaxNodeId },
+			{ _T("IP"), EFieldType::String },
+			{ _T("Port"), EFieldType::UInt, kMinPort, kMaxPort },
+			{ _T("UID"), EFieldType::String },
+			{ _T("PWD"), EFieldType::String },
+			{ _T("DBIndex"), EFieldType::Int, 0 },
+		});
 
 	// 채팅 서버 고유 필드.
-	_nRedisPoolSize = jsonUtil[_T("RedisPoolSize")];
-	_nDbWorkerThreadCnt = jsonUtil[_T("DbWorkerThreadCnt")];
-	_nHeartbeatTtlSec = jsonUtil[_T("HeartbeatTtlSec")];
-	_nHeartbeatIntervalSec = jsonUtil[_T("HeartbeatIntervalSec")];
-	_tcsncpy_s(_tszFileServerUrl, _countof(_tszFileServerUrl), jsonUtil[_T("FileServerUrl")], _TRUNCATE);
-	_nMaxRoomsPerOwner = jsonUtil[_T("MaxRoomsPerOwner")];
+	reader.Read(_T("RedisPoolSize"), _nRedisPoolSize, 1);
+	reader.Read(_T("DbWorkerThreadCnt"), _nDbWorkerThreadCnt, 1);
+	reader.Read(_T("HeartbeatTtlSec"), _nHeartbeatTtlSec, 1);
+	reader.Read(_T("HeartbeatIntervalSec"), _nHeartbeatIntervalSec, 1);
+	reader.Read(_T("FileServerUrl"), _tszFileServerUrl);
+	reader.Read(_T("MaxRoomsPerOwner"), _nMaxRoomsPerOwner);		// 0 이하면 무제한
 
-	return true;
+	return reader.Validate();
+}
+
+//***************************************************************************
+// @brief 현재 설정 값을 JSON 파일로 저장합니다.
+// @param tszServerInfo 저장할 JSON 설정 파일 경로
+// @return 성공 시 true, 실패 시 false
+//***************************************************************************
+bool CChatServerConfig::Save(const TCHAR* tszServerInfo)
+{
+	// 기존 파일이 있으면 읽어 와서 모르는 키와 키 순서를 보존한다(없으면 빈 문서에서 시작).
+	CRapidJSONUtil json;
+	json.LoadFromFile(tszServerInfo);
+
+	CJSONConfigFieldWriter writer(json);
+
+	writer.Write(_T("ServiceName"), _tszServiceName);
+	writer.Write(_T("DisplayName"), _tszDisplayName);
+	writer.Write(_T("Name"), _tszServerName);
+	writer.Write(_T("GroupId"), _nServerGroupId);
+	writer.Write(_T("ChannelId"), _nServerChannelId);
+
+	writer.Write(_T("IP"), _tszIP);
+	writer.Write(_T("Port"), _nServerPort);
+	writer.Write(_T("KeepAliveSec"), _nKeepAliveSec);
+	writer.Write(_T("MaxSessionCount"), _nMaxSessionCount);
+	writer.Write(_T("WorkerThreadCnt"), _nWorkerThreadCnt);
+
+	writer.WriteObjects(_T("ServerNode"), _serverNodeVec);
+	writer.WriteObjects(_T("DBNode"), _dbNodeVec);
+	writer.WriteObjects(_T("RedisNode"), _redisNodeVec);
+
+	writer.Write(_T("RedisPoolSize"), _nRedisPoolSize);
+	writer.Write(_T("DbWorkerThreadCnt"), _nDbWorkerThreadCnt);
+	writer.Write(_T("HeartbeatTtlSec"), _nHeartbeatTtlSec);
+	writer.Write(_T("HeartbeatIntervalSec"), _nHeartbeatIntervalSec);
+	writer.Write(_T("FileServerUrl"), _tszFileServerUrl);
+	writer.Write(_T("MaxRoomsPerOwner"), _nMaxRoomsPerOwner);
+
+	return writer.Save(tszServerInfo);
+}
+
+//***************************************************************************
+// @brief 로드된 설정 값을 CChatServerMain::Start()에 넘길 구동 옵션으로 옮겨 담습니다.
+//***************************************************************************
+void CChatServerConfig::ToOptions(SChatServerOptions& options) const
+{
+	options.serverName = TStringToString(_tszServerName);
+	options.serverGroupId = std::to_string(_nServerGroupId);
+	options.serverChannelId = std::to_string(_nServerChannelId);
+
+	options.bindIp = _tszIP;
+	options.bindPort = _nServerPort;
+	options.maxSessionCount = _nMaxSessionCount;
+	options.workerThreadCount = static_cast<uint32>(_nWorkerThreadCnt);
+
+	options.redisNodes = _redisNodeVec;
+	options.redisPoolSize = _nRedisPoolSize;
+
+	options.dbNodes = _dbNodeVec;
+	options.dbWorkerThreadCount = _nDbWorkerThreadCnt;
+
+	options.heartbeatTtlSec = _nHeartbeatTtlSec;
+	options.heartbeatIntervalSec = _nHeartbeatIntervalSec;
+
+	options.fileServerUrl = TStringToString(_tszFileServerUrl);
+	options.maxRoomsPerOwner = _nMaxRoomsPerOwner;
 }
 
 //***************************************************************************

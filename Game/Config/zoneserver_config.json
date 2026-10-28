@@ -1,0 +1,24 @@
+{
+    "Name": "ZoneServer",
+    "WorkerThreadCnt": 1,
+    "ServerNode": [
+        {
+            "ID": 1,
+            "Name": "GatewayServer",
+            "IP": "127.0.0.1",
+            "Port": 7100
+        }
+    ],
+    "ZoneId": 1,
+    "ZoneKind": 1,
+    "Capacity": 500,
+    "TickIntervalMs": 50,
+    "MinX": 0.0,
+    "MinY": 0.0,
+    "MaxX": 1000.0,
+    "MaxY": 1000.0,
+    "CellSize": 50.0,
+    "SpawnX": 100.0,
+    "SpawnY": 100.0,
+    "PlayerSpeed": 6.0
+}

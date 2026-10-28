@@ -94,6 +94,7 @@
   <ItemGroup>
     <ClCompile Include="..\..\..\Library\UtilCore\BaseGlobal.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\BaseTLS.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Memory\Allocator.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Memory\Memory.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Memory\MemoryPool.cpp" />
@@ -111,12 +112,17 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Network\PacketDispatcher.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Network\RingBuffer.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Network\SocketUtils.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\ServerConfig.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Thread\ThreadManager.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\CommonUtil.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="GatewayClientSession.cpp" />
     <ClCompile Include="GatewayServer.cpp" />
+    <ClCompile Include="GatewayServerConfig.cpp" />
     <ClCompile Include="GatewayServerMain.cpp" />
     <ClCompile Include="GatewayZoneSession.cpp" />
     <ClCompile Include="pch.cpp">
@@ -131,9 +137,15 @@
     <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\BaseTLS.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Containers\Queue\DoubleBufferQueue.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Job\TimerHeap.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\Allocator.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\Containers.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\Memory.h" />
@@ -160,6 +172,8 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Network\RingBuffer.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Network\Session.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Network\SocketUtils.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConfig.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConnectInfo.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Thread\CacheAlignment.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
@@ -168,20 +182,25 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\CommonUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\FixedBufUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ScopeExit.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h" />
     <ClInclude Include="GatewayClientSession.h" />
+    <ClInclude Include="GatewayServerConfig.h" />
     <ClInclude Include="GatewayServerMain.h" />
+    <ClInclude Include="GatewayServerOptions.h" />
     <ClInclude Include="GatewayZoneSession.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ZoneRouter.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />
+    <None Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl" />
     <None Include="..\..\..\Library\UtilCore\Memory\Singleton.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

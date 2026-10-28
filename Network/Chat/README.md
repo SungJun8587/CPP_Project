@@ -97,6 +97,7 @@ ChatApp은 C++ IOCP 기반 채팅 서버와 C# WinForms 클라이언트로 구�
 ### 동시성 보호
 
 - 연결별 상태 초기화 — 세션 객체는 `AcceptEx` 슬롯마다 미리 만들어 두고, 새 연결이 완료될 때마다 송수신 큐·카운터 같은 연결별 상태를 명시적으로 리셋한다.
+- 방 브로드캐스트 — 방 멤버 세션 목록은 락 안에서 스냅샷만 떠 두고, 직렬화와 송신은 락 밖에서 한다. 방 채팅·멤버 조회·방 삭제가 같은 스냅샷 함수를 쓴다.
 - 원자적 카운터로 레이스 방지 — 연결 종료 통지가 여러 스레드에서 동시에 들어올 수 있는 지점은 `std::atomic`과 CAS 기반 가드로 한 번만 처리되도록 막는다.
 
 ## DB 스키마
@@ -142,7 +143,7 @@ MySQL의 `chat` 데이터베이스(utf8mb4, InnoDB)에 계정·방·친구·대�
 | `status` | TINYINT | 0=일반, 1=대표 프로필 이미지 |
 | `created_at` | DATETIME | 업로드·등록 시각 |
 
-대표 이미지는 별도 캐시 컬럼 없이 `status = 1`인 행으로만 판단한다(`user_public_id, status` 인덱스).
+대표 이미지는 별도 캐시 컬럼 없이 `status = 1`인 행으로만 판단한다(`user_public_id, status` 인덱스). 대표로 지정할 때는 같은 `image_ref`의 기존 행이 있으면 재사용하고 없으면 새 행을 만든 뒤, 한 번의 UPDATE로 그 행만 1로 올리고 나머지를 0으로 내린다. 갤러리 목록은 최신순(`created_at`, `image_id` 내림차순)이다.
 
 ### 방
 
@@ -376,6 +377,7 @@ UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구
 
 - 업로드 토큰: 클라이언트가 채팅 서버에 토큰을 요청하면, 채팅 서버가 무작위 32바이트(16진 64자)를 만들어 `SET UploadToken:{token} {계정 public_id} EX 60`으로 Redis에 넣는다. 응답에는 토큰과 파일 서버 주소(FileServerUrl)가 실린다. Redis가 에러를 응답하거나 명령을 큐에 넣지 못하면 토큰을 발급하지 않고 실패로 응답한다. 파일 서버는 업로드 요청이 올 때 이 키를 조회해 소비하고, 값으로 소유 계정을 알아낸다. TTL이 60초라 발급 후 곧바로 쓰지 않으면 만료된다.
 - 삭제 예약: 채팅 서버가 프로필 이미지를 교체하거나 지울 때, 또는 파일 첨부 채팅 메시지(`[FILE:이름:크기]URL`)를 소유자가 삭제할 때(첨부 파일 경로가 발신자 본인 `public_id` 하위일 때만), 지워진 URL이 자기 파일 서버 소유(`{FileServerUrl}/images/...`)이면 상대 경로만 `RPUSH FileServer:PendingDeletions`로 넣는다. 외부 URL은 대상에서 제외한다.
+- 이미지 URL 검증: 프로필 이미지·방 이미지를 URL로 지정할 때 채팅 서버는 URL이 비어 있거나 외부 주소면 그대로 받고, 자기 파일 서버 소유(`{FileServerUrl}/images/...`)이면 상대 경로가 위 형식 검증을 통과하고 요청자 본인 `public_id/` 하위일 때만 받는다. 아니면 `DbError`로 거절한다. 교체 시 이전 이미지가 삭제 예약되므로, 이 검사로 타인의 업로드 파일을 내 이미지로 지정한 뒤 바꿔서 삭제시키는 경로를 막는다.
 - 키·경로 규약: 업로드 토큰 키 접두사·TTL, 삭제 예약/실패 목록 키, 저장 파일 상대 경로 규칙(`{owner}/{16진 32자}.{확장자}`)과 그 검증 함수는 `Common/FileServerKeys.h` 한 곳에서 정의해 두 서버가 함께 쓴다. 채팅 서버는 예약 전에, 파일 서버는 저장·조회·삭제 때 같은 규칙으로 검증한다.
 - 주소 일치: 위 접두사 판별이 파일 서버가 만드는 공개 URL과 같은 형식이어야 하므로, 채팅 서버의 FileServerUrl과 파일 서버의 PublicBaseUrl은 같은 주소로 맞춘다.
 - 클라이언트 경로: 채팅 서버는 파일 바이트를 중계하지 않는다. 업로드와 다운로드는 클라이언트가 파일 서버로 직접 보낸다.
@@ -383,6 +385,8 @@ UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구
 ### 채팅 서버 설정 (chatserver_config_mysql.json)
 
 채팅 서버는 실행 폴더의 chatserver_config_mysql.json을 읽는다. 파일 서버와 맞물리는 항목은 FileServerUrl과 RedisNode다.
+
+두 서버의 설정 로더는 같은 규칙을 따른다. 항목마다 타입과 범위를 검사해(예: Port 1~65535, MaxSessionCount 1 이상, 노드 ID 1~32767) 어긋나면 기동에 실패하고, 파일에 없는 키는 기본값을 유지한다. 로드한 값은 `ToOptions()`가 구동 옵션 구조체(`SChatServerOptions`, `SFileServerOptions`)로 옮겨 담고, 서버는 `Start(옵션)` 한 번으로 시작한다. 설정 파일에 없는 옵션(유휴 타임아웃 등)은 구조체의 기본값을 쓴다. 채팅 서버의 유휴 타임아웃은 꺼져 있다.
 
 | 항목 | 설명 | 기본값 |
 | --- | --- | --- |
@@ -401,9 +405,11 @@ UtilCore의 Network/HTTP는 엔진(IOCP/RIO)에 의존하지 않는 HTTP/1.x 구
 
 ### 파일 서버 설정 (fileserver_config_mysql.json)
 
+파일 서버는 `Name`만 읽는다. `ServiceName`, `DisplayName`, `GroupId`, `ChannelId` 키가 파일에 있어도 무시한다. 송수신 완료가 60초 동안 없는 유휴 연결은 끊는다(대용량 전송 중에는 완료 통지가 계속 들어와 걸리지 않는다).
+
 | 항목 | 설명 | 기본값 |
 | --- | --- | --- |
-| Name / GroupId / ChannelId | 서버 이름과 그룹·채널 식별자 | FileServer / 1 / 0 |
+| Name | 서버 이름 | FileServer |
 | IP / Port | 수신 주소와 포트 | 0.0.0.0 / 8081 |
 | MaxSessionCount | 최대 동시 세션 수 | 500 |
 | WorkerThreadCnt | IOCP 워커 스레드 수 | 4 |

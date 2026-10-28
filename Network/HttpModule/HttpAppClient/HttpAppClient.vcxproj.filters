@@ -117,9 +117,6 @@
     <Filter Include="UtilCore\Containers\Map">
       <UniqueIdentifier>{53f6d9fc-50d6-4679-8632-96a36cb58daa}</UniqueIdentifier>
     </Filter>
-    <Filter Include="UtilCore\Containers\Stack">
-      <UniqueIdentifier>{8a76f4f8-bceb-49b0-8e3c-8fc2e7e70e53}</UniqueIdentifier>
-    </Filter>
     <Filter Include="UtilCore\Network\HTTP">
       <UniqueIdentifier>{8fc5d001-3a1f-4b19-8393-e9c846cd6fea}</UniqueIdentifier>
     </Filter>
@@ -198,13 +195,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h">
-      <Filter>UtilCore\Containers\Stack</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h">
-      <Filter>UtilCore\Thread</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h">
       <Filter>UtilCore\Thread</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h">
@@ -312,9 +303,6 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl">
-      <Filter>UtilCore\Thread</Filter>
-    </None>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
       <Filter>UtilCore\Containers\Map</Filter>
     </None>

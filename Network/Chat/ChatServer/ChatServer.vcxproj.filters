@@ -232,6 +232,12 @@
     <Filter Include="ChatCommon\Protocol">
       <UniqueIdentifier>{627becff-0bf5-4cbf-a83f-754a925922b5}</UniqueIdentifier>
     </Filter>
+    <Filter Include="UtilCore\ConfigFile">
+      <UniqueIdentifier>{d1c2f5a4-777e-4ab6-a086-ad5857201bb8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Queue">
+      <UniqueIdentifier>{e7f73dff-c37d-4055-8f1e-44f96b4efe86}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -481,6 +487,25 @@
     <ClInclude Include="..\ChatCommon\FileServerKeys.h">
       <Filter>ChatCommon</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\SpinLockQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatServerOptions.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

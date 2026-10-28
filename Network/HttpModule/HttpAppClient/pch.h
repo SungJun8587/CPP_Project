@@ -48,17 +48,12 @@ using namespace std;
 
 #include <Thread/CacheAlignment.h>
 #include <Thread/DeadLockProfiler.h>
-#include <Thread/SpinLock.h>
 #include <Thread/SRWLock.h>
 #include <Thread/PlatformLock.h>
 #include <Thread/ThreadManager.h>
 #include <Thread/SyncValue.h>
 
 #include <BaseGlobal.h>
-
-#include <Containers/Map/ClusterSpinUnorderedMap.h>
-
-#include <Containers/Stack/LockFreeSlotStack.h>
 
 #include <Network/NetworkCommon.h>
 

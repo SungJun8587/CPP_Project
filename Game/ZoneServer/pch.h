@@ -65,7 +65,12 @@ using namespace std;
 #include <BaseGlobal.h>
 #include <BaseTLS.h>
 
-#include <Containers/Map/ClusterSpinUnorderedMap.h>
+#include <JSON/RapidJSONUtil.h>
+
+#include <ConfigFile/ConfigFieldSpec.h>
+#include <ConfigFile/ConfigFieldCommon.h>
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
 
 #include <Network/NetworkCommon.h>
 
@@ -78,6 +83,8 @@ using namespace std;
 #include "BattleZone.h"
 #include "ZonePlayer.h"
 #include "ZoneLinkSession.h"
+#include "ZoneServerOptions.h"
+#include "ZoneServerConfig.h"
 #include "ZoneServerMain.h"
 
 #endif // ndef PCH_H

@@ -23,17 +23,13 @@ CChatServerMain::~CChatServerMain()
 //***************************************************************************
 // @brief 채팅 서버 구동.
 //***************************************************************************
-bool CChatServerMain::Start(
-	const _tstring& bindIp, uint16 bindPort,
-	CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
-	CVector<CDBNode> dbNodeVec, int32 dbMaxThreadCnt,
-	std::string serverName, std::string serverGroupId, std::string serverChannelId,
-	int32 maxSessionCount, uint32 workerThreadCount,
-	int32 heartbeatTtlSec, int32 heartbeatIntervalSec)
+bool CChatServerMain::Start(const SChatServerOptions& options)
 {
-	_serverName = std::move(serverName);
-	_serverGroupId = std::move(serverGroupId);
-	_serverChannelId = std::move(serverChannelId);
+	_serverName = options.serverName;
+	_serverGroupId = options.serverGroupId;
+	_serverChannelId = options.serverChannelId;
+	_fileServerUrl = options.fileServerUrl;
+	_maxRoomsPerOwner = options.maxRoomsPerOwner;
 
 	// 메시지 id를 (현재 시각 ms << 10)부터 발급한다 — 재시작 후에도 id가 단조 증가해
 	// Redis에 남아 있는 방 대화 기록(RoomChatOrder/RoomChatMsg)의 id와 겹치지 않는다.
@@ -46,7 +42,7 @@ bool CChatServerMain::Start(
 
 	// 2. Redis 초기화 — 세션/하트비트보다 먼저 준비되어야 로그인 즉시 기록 가능
 	_redisService = std::make_unique<CRedisService>(_iocpCore, _jobQueue);
-	if( !_redisService->Init(redisNodeVec, redisPoolSize) )
+	if( !_redisService->Init(options.redisNodes, options.redisPoolSize) )
 		return false;
 
 	// 2-1. 회원 DB(ODBC) 초기화. 회원가입/재접속 검증 핸들러(kDbCallIdent_Account)는
@@ -59,7 +55,7 @@ bool CChatServerMain::Start(
 	// [주의] StartService()는 인스턴스당 1회만 허용된다(재호출 시
 	// false 반환) — 이 함수가 여러 번 불리는 경로가 있다면 여기서
 	// 실패로 걸린다.
-	if( !MEMBER_DB_ASYNC.StartService(dbNodeVec, dbMaxThreadCnt) )
+	if( !MEMBER_DB_ASYNC.StartService(options.dbNodes, options.dbWorkerThreadCount) )
 		return false;
 
 	// DB(rooms 테이블)에 저장된 방 목록을 인메모리 레지스트리로 읽어들인다. 세션을 받기 전에
@@ -75,19 +71,21 @@ bool CChatServerMain::Start(
 
 	EngineCoreRef engineCore = _iocpCore;
 	CNetServiceRef service = CNetworkFactory::CreateServerService(
-		engineCore, CNetAddress(bindIp, bindPort), factory, maxSessionCount, workerThreadCount);
+		engineCore, CNetAddress(options.bindIp, options.bindPort), factory, options.maxSessionCount, options.workerThreadCount);
 
 	_service = std::static_pointer_cast<CIocpServerService>(service);
 	if( _service == nullptr )
 		return false;
 
 	// keep-alive: FIN/RST 없이 사라진 피어를 감지한다. 접속 수 상한: 설정의 MaxSessionCount를 실제 상한으로 적용한다.
-	// 유휴 타임아웃(SetIdleTimeout)은 켜지 않는다 — 채팅 클라이언트는 주기적으로 보내는 하트비트가 없어,
+	// 유휴 타임아웃(options.idleTimeoutMs)은 기본으로 꺼 둔다 — 채팅 클라이언트는 주기적으로 보내는 하트비트가 없어,
 	// 방에서 조용히 읽기만 하는 정상 사용자가 끊길 수 있다. 클라이언트 하트비트를 도입할 때 함께 정한다.
 	CIocpSession::SocketOptions socketOptions;
 	socketOptions.keepAlive = true;
 	_service->SetSessionSocketOptions(socketOptions);
 	_service->SetEnforceMaxSessionCount(true);
+	if( options.idleTimeoutMs > 0 )
+		_service->SetIdleTimeout(options.idleTimeoutMs);
 
 	if( !_service->Start() )
 	{
@@ -97,7 +95,7 @@ bool CChatServerMain::Start(
 
 	// 4. 서버 생존 하트비트 시작 — IOCP가 실제로 뜬 뒤에 시작(뜨기 전에 하트비트가
 	//    "살아있다"고 알리는 것은 의미가 없음)
-	_heartbeat = std::make_unique<CRedisServerHeartbeat>(_redisService.get(), _serverName, _serverGroupId, _serverChannelId, bindPort);
+	_heartbeat = std::make_unique<CRedisServerHeartbeat>(_redisService.get(), _serverName, _serverGroupId, _serverChannelId, options.bindPort);
 
 	// [추가] 세션 수(동접자수) 콜백 — Start() 전에 등록해야 최초 HSET 등록
 	// (RegisterInitial())부터 값이 반영된다. _service는 바로 위(3번)에서
@@ -109,7 +107,7 @@ bool CChatServerMain::Start(
 			return _service ? static_cast<int32>(_service->GetSessionManager().GetSessionCount()) : 0;
 		});
 
-	if( !_heartbeat->Start(heartbeatTtlSec, heartbeatIntervalSec) )
+	if( !_heartbeat->Start(options.heartbeatTtlSec, options.heartbeatIntervalSec) )
 	{
 		Stop();
 		return false;
@@ -117,7 +115,7 @@ bool CChatServerMain::Start(
 
 	// 로그인 키(User:{id})도 하트비트와 같은 TTL/주기로 갱신한다 — 서버가 비정상 종료하면
 	// 하트비트 키와 함께 로그인 키도 TTL 안에 사라진다.
-	StartMaintenance(heartbeatTtlSec, heartbeatIntervalSec);
+	StartMaintenance(options.heartbeatTtlSec, options.heartbeatIntervalSec);
 
 	return true;
 }

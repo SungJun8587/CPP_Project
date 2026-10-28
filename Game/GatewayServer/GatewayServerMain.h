@@ -14,33 +14,10 @@
 #include <thread>
 #include <unordered_map>
 
+#include "GatewayServerOptions.h"
+
 class CGatewayClientSession;
 class CGatewayZoneSession;
-
-//***************************************************************************
-// @brief Gateway 서버 설정값.
-// @details 존 서버용 포트(zonePort)는 내부망 전용이다. 현재 존 서버 인증이 없으므로
-//          기본 바인딩 주소를 로컬(127.0.0.1)로 두며, 다른 호스트의 존 서버를 받으려면
-//          내부망 인터페이스로만 바인딩하고 방화벽으로 막아야 한다.
-//***************************************************************************
-struct SGatewayOptions
-{
-	// ── 클라이언트 접속 ──────────────────────────────────
-	_tstring	clientBindIp = _T("0.0.0.0");
-	uint16		clientPort = 7000;
-	int32		maxClientSessions = 5000;
-	uint32		clientWorkerCount = 0;				// 0 = 자동
-
-	// ── 존 서버 접속 (내부망 전용) ───────────────────────
-	_tstring	zoneBindIp = _T("127.0.0.1");
-	uint16		zonePort = 7100;
-	int32		maxZoneSessions = 64;
-	uint32		zoneWorkerCount = 2;
-
-	// ── 존 서버 생존 감시 ────────────────────────────────
-	uint32		heartbeatIntervalMs = kDefaultHeartbeatIntervalMs;	// 존 서버에 지시하는 하트비트 주기
-	uint32		heartbeatTimeoutMs = kDefaultHeartbeatTimeoutMs;	// 이 시간 동안 하트비트가 없으면 연결을 끊음
-};
 
 //***************************************************************************
 // @class CGatewayServerMain

@@ -69,8 +69,10 @@ using namespace std;
 #include <JSON/RapidJSONUtil.h>
 #include <Crypto/CryptoUtil.h>
 
-#include <Containers/Map/ClusterSpinUnorderedMap.h>
-#include <Containers/Stack/LockFreeSlotStack.h>
+#include <ConfigFile/ConfigFieldSpec.h>
+#include <ConfigFile/ConfigFieldCommon.h>
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
 
 #include <Network/NetworkCommon.h>
 #include <Network/HTTP/HttpParseUtil.h>
@@ -95,6 +97,7 @@ using namespace std;
 #include "../ChatCommon/Protocol/ChatPacketUtil.h"
 #include "../ChatCommon/ImageRef.h"
 #include "../ChatCommon/FileServerKeys.h"
+#include "ChatServerOptions.h"
 #include "ChatServerConfig.h"
 #include "ChatPacketDispatcher.h"
 #include "DbServiceManager.h"

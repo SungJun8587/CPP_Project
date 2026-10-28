@@ -119,6 +119,7 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\StringUtil.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\XML\RapidXMLUtil.cpp" />
+    <ClCompile Include="..\DBCommon\DBServerConfig.cpp" />
     <ClCompile Include="DBSchemaToExcel.cpp" />
     <ClCompile Include="DBSchemaToXML.cpp" />
     <ClCompile Include="DBSchemaToSync.cpp" />
@@ -135,6 +136,10 @@
     <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\BaseTLS.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\DB\BaseODBC.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\DB\DBAsyncSrv.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\DB\DBBind.h" />
@@ -168,6 +173,7 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\StringUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\XML\RapidXMLUtil.h" />
+    <ClInclude Include="..\DBCommon\DBServerConfig.h" />
     <ClInclude Include="DBSchemaToExcel.h" />
     <ClInclude Include="DBSchemaToXML.h" />
     <ClInclude Include="DBSchemaToSync.h" />

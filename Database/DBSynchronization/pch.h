@@ -57,6 +57,11 @@ using namespace std;
 #include <JSON/RapidJSONUtil.h>
 #include <XML/RapidXMLUtil.h>
 
+#include <ConfigFile/ConfigFieldSpec.h>
+#include <ConfigFile/ConfigFieldCommon.h>
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
+
 #include <Excel/XlntUtil.h>
 
 #include <ServerConnectInfo.h>
@@ -70,6 +75,7 @@ using namespace std;
 #include <DB/DBQueryProcess.h>
 #include <DB/DBSchema.h>
 
+#include "../DBCommon/DBServerConfig.h"
 #include "DBSchemaToExcel.h"
 #include "DBSchemaToXML.h"
 #include "DBSchemaToSync.h"

@@ -132,7 +132,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Memory.h" />
@@ -161,7 +161,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\SocketUtils.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\PlatformLock.h" />
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\SyncValue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\ThreadManager.h" />
@@ -177,7 +176,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />
-    <None Include="..\..\..\..\Library\UtilCore\Thread\SpinLock.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

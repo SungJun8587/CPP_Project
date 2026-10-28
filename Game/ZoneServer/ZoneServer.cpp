@@ -1,14 +1,16 @@
-﻿
-//***************************************************************************
+﻿//***************************************************************************
 // ZoneServer.cpp : CZoneServerMain 구동 예시 (존 서버 프로세스 진입점)
 //
-// 실행 예: ZoneServer.exe --zone-id=1 --kind=1 --capacity=500 --gateway-ip=127.0.0.1 --gateway-port=7100
-//          (필드/던전마다 zone-id를 다르게 해서 프로세스를 여러 개 띄운다)
+// 설정: Config\zoneserver_config.json (CZoneServerConfig). 명령행 인자를 주면 같은 항목의 파일 값을 덮어쓴다.
+// 실행 예: ZoneServer.exe --config=Config\zoneserver_config.json --zone-id=2
+//          ZoneServer.exe --dump-config=Config\zoneserver_config.json   (기본값 템플릿 생성)
+//          (필드/던전마다 zone-id를 다르게 해서 프로세스를 여러 개 띄운다. 설정 파일을 공유하고 zone-id만 바꿔도 된다)
 //***************************************************************************
 
 #include "pch.h"
 #include "../GameCommon/ZoneCommon/ArgParser.h"
 #include "ZoneServerMain.h"
+#include "ZoneServerConfig.h"
 
 #include <atomic>
 #include <chrono>
@@ -60,26 +62,51 @@ int _tmain(int argc, TCHAR* argv[])
 
 	::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
-	// 설정 — 서버 설정 파일(JSON) 연동 전까지는 명령행 인자로 받는다.
+	// 설정 — 우선순위: 명령행 인자 > JSON 설정 파일 > SZoneServerOptions 기본값
 	const CArgParser args(argc, argv);
 
+	// --dump-config=경로 : 기본값으로 채운 설정 파일 템플릿을 저장하고 종료한다.
+	const _tstring dumpPath = args.GetString(_T("dump-config"), _T(""));
+	if( !dumpPath.empty() )
+	{
+		const bool saved = dumpPath != _T("1") && CZoneServerConfig().Save(dumpPath.c_str());
+		if( saved )
+			LOG_INFO(_T("Default config saved. path=%s"), dumpPath.c_str());
+		else
+			LOG_ERROR(_T("--dump-config needs a writable file path. value=%s"), dumpPath.c_str());
+		MainClose();
+		return saved ? 0 : -1;
+	}
+
+	CZoneServerConfig config;
+	if( !config.Init(args.GetString(_T("config"), _T("Config\\zoneserver_config.json")).c_str()) )
+	{
+		MainClose();
+		return -1;
+	}
+	config.PrintServerSettingInfo();
+
 	SZoneServerOptions options;
-	options.zoneId = args.GetUInt(_T("zone-id"), 1);
-	options.kind = static_cast<EZoneKind>(args.GetUInt(_T("kind"), static_cast<uint32>(EZoneKind::Field)));
-	options.capacity = args.GetUInt(_T("capacity"), 500);
-	options.serverName = TStringToString(args.GetString(_T("name"), _T("ZoneServer")).c_str());
-	options.gatewayIp = args.GetString(_T("gateway-ip"), _T("127.0.0.1"));
-	options.gatewayPort = static_cast<uint16>(args.GetUInt(_T("gateway-port"), 7100));
-	options.workerThreadCount = args.GetUInt(_T("workers"), 1);
-	options.tickIntervalMs = args.GetUInt(_T("tick-ms"), 50);
-	options.minX = args.GetFloat(_T("min-x"), 0.0f);
-	options.minY = args.GetFloat(_T("min-y"), 0.0f);
-	options.maxX = args.GetFloat(_T("max-x"), 1000.0f);
-	options.maxY = args.GetFloat(_T("max-y"), 1000.0f);
-	options.cellSize = args.GetFloat(_T("cell-size"), 50.0f);
-	options.spawnX = args.GetFloat(_T("spawn-x"), 100.0f);
-	options.spawnY = args.GetFloat(_T("spawn-y"), 100.0f);
-	options.playerSpeed = args.GetFloat(_T("player-speed"), 6.0f);
+	config.ToOptions(options);
+
+	options.zoneId = args.GetUInt(_T("zone-id"), options.zoneId);
+	options.kind = static_cast<EZoneKind>(args.GetUInt(_T("kind"), static_cast<uint32>(options.kind)));
+	options.capacity = args.GetUInt(_T("capacity"), options.capacity);
+	const _tstring nameArg = args.GetString(_T("name"), _T(""));
+	if( !nameArg.empty() )
+		options.serverName = TStringToString(nameArg.c_str());
+	options.gatewayIp = args.GetString(_T("gateway-ip"), options.gatewayIp.c_str());
+	options.gatewayPort = static_cast<uint16>(args.GetUInt(_T("gateway-port"), options.gatewayPort));
+	options.workerThreadCount = args.GetUInt(_T("workers"), options.workerThreadCount);
+	options.tickIntervalMs = args.GetUInt(_T("tick-ms"), options.tickIntervalMs);
+	options.minX = args.GetFloat(_T("min-x"), options.minX);
+	options.minY = args.GetFloat(_T("min-y"), options.minY);
+	options.maxX = args.GetFloat(_T("max-x"), options.maxX);
+	options.maxY = args.GetFloat(_T("max-y"), options.maxY);
+	options.cellSize = args.GetFloat(_T("cell-size"), options.cellSize);
+	options.spawnX = args.GetFloat(_T("spawn-x"), options.spawnX);
+	options.spawnY = args.GetFloat(_T("spawn-y"), options.spawnY);
+	options.playerSpeed = args.GetFloat(_T("player-speed"), options.playerSpeed);
 
 	CZoneServerMain server;
 	if( !server.Start(options) )

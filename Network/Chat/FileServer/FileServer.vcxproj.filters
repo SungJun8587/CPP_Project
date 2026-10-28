@@ -180,6 +180,12 @@
     <Filter Include="ChatCommon">
       <UniqueIdentifier>{44954418-2de3-4609-a81b-3d79361a16ed}</UniqueIdentifier>
     </Filter>
+    <Filter Include="UtilCore\ConfigFile">
+      <UniqueIdentifier>{9f1611ed-d77f-4aff-b99c-07702450ff79}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Queue">
+      <UniqueIdentifier>{15812fa9-3d15-4a22-828a-4ff5337f8171}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -413,6 +419,25 @@
     <ClInclude Include="..\ChatCommon\FileServerKeys.h">
       <Filter>ChatCommon</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\SpinLockQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="FileServerOptions.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl">

@@ -16,6 +16,7 @@
 #include "FileStorage.h"
 #include "LocalFileStorage.h"
 #include "FileServerRouter.h"
+#include "FileServerOptions.h"
 
 #include <memory>
 #include <string>
@@ -51,17 +52,13 @@ public:
 
 	//***************************************************************************
 	// @brief 파일 서버 구동.
-	// @param storageDir 업로드된 파일을 저장할 로컬 디스크 경로(하위 ".tmp"는
-	//        업로드 임시 파일용 — 같은 볼륨이라 저장 시 rename 한 번으로 끝난다).
-	// @param publicBaseUrl 클라이언트에게 돌려줄 URL의 기본 주소(예:
-	//        "http://192.168.0.10:8081") — 이 뒤에 "/images/{path}"를 붙인다.
-	// @param maxUploadBytes 업로드 가능한 최대 파일 크기(바이트).
+	// @param options 구동 옵션(FileServerOptions.h) — 바인드 주소, 세션/스레드 수,
+	//        유휴 타임아웃, Redis 노드, 저장 경로(하위 ".tmp"는 업로드 임시 파일용 —
+	//        같은 볼륨이라 저장 시 rename 한 번으로 끝난다), 공개 기본 URL
+	//        (이 뒤에 "/images/{path}"를 붙인다), 업로드 최대 크기.
+	// @return 모든 초기화 단계가 성공하면 true
 	//***************************************************************************
-	bool Start(
-		const _tstring& bindIp, uint16 bindPort,
-		CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
-		int32 maxSessionCount, uint32 workerThreadCount,
-		_tstring storageDir, std::string publicBaseUrl, int64 maxUploadBytes);
+	bool Start(const SFileServerOptions& options);
 
 	void Stop();
 

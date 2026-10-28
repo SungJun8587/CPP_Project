@@ -2,11 +2,15 @@
 //***************************************************************************
 // GatewayServer.cpp : CGatewayServerMain 구동 예시 (게이트웨이 프로세스 진입점)
 //
-// 실행 예: GatewayServer.exe --client-port=7000 --zone-ip=127.0.0.1 --zone-port=7100
+// 설정: Config\gatewayserver_config.json (CGatewayServerConfig). 명령행 인자를 주면 같은 항목의 파일 값을 덮어쓴다.
+// 실행 예: GatewayServer.exe --config=Config\gatewayserver_config.json --client-port=7001
+//          GatewayServer.exe --dump-config=Config\gatewayserver_config.json   (기본값 템플릿 생성)
 //***************************************************************************
 
 #include "pch.h"
+#include "../GameCommon/ZoneCommon/ArgParser.h"
 #include "GatewayServerMain.h"
+#include "GatewayServerConfig.h"
 
 #include <atomic>
 #include <chrono>
@@ -58,20 +62,43 @@ int _tmain(int argc, TCHAR* argv[])
 
 	::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
-	// 설정 — 서버 설정 파일(JSON) 연동 전까지는 명령행 인자로 받는다.
+	// 설정 — 우선순위: 명령행 인자 > JSON 설정 파일 > SGatewayOptions 기본값
 	const CArgParser args(argc, argv);
 
+	// --dump-config=경로 : 기본값으로 채운 설정 파일 템플릿을 저장하고 종료한다.
+	const _tstring dumpPath = args.GetString(_T("dump-config"), _T(""));
+	if( !dumpPath.empty() )
+	{
+		const bool saved = dumpPath != _T("1") && CGatewayServerConfig().Save(dumpPath.c_str());
+		if( saved )
+			LOG_INFO(_T("Default config saved. path=%s"), dumpPath.c_str());
+		else
+			LOG_ERROR(_T("--dump-config needs a writable file path. value=%s"), dumpPath.c_str());
+		MainClose();
+		return saved ? 0 : -1;
+	}
+
+	CGatewayServerConfig config;
+	if( !config.Init(args.GetString(_T("config"), _T("Config\\gatewayserver_config.json")).c_str()) )
+	{
+		MainClose();
+		return -1;
+	}
+	config.PrintServerSettingInfo();
+
 	SGatewayOptions options;
-	options.clientBindIp = args.GetString(_T("client-ip"), _T("0.0.0.0"));
-	options.clientPort = static_cast<uint16>(args.GetUInt(_T("client-port"), 7000));
-	options.maxClientSessions = static_cast<int32>(args.GetUInt(_T("max-clients"), 5000));
-	options.clientWorkerCount = args.GetUInt(_T("client-workers"), 0);
-	options.zoneBindIp = args.GetString(_T("zone-ip"), _T("127.0.0.1"));
-	options.zonePort = static_cast<uint16>(args.GetUInt(_T("zone-port"), 7100));
-	options.maxZoneSessions = static_cast<int32>(args.GetUInt(_T("max-zones"), 64));
-	options.zoneWorkerCount = args.GetUInt(_T("zone-workers"), 2);
-	options.heartbeatIntervalMs = args.GetUInt(_T("heartbeat-ms"), kDefaultHeartbeatIntervalMs);
-	options.heartbeatTimeoutMs = args.GetUInt(_T("heartbeat-timeout-ms"), kDefaultHeartbeatTimeoutMs);
+	config.ToOptions(options);
+
+	options.clientBindIp = args.GetString(_T("client-ip"), options.clientBindIp.c_str());
+	options.clientPort = static_cast<uint16>(args.GetUInt(_T("client-port"), options.clientPort));
+	options.maxClientSessions = static_cast<int32>(args.GetUInt(_T("max-clients"), options.maxClientSessions));
+	options.clientWorkerCount = args.GetUInt(_T("client-workers"), options.clientWorkerCount);
+	options.zoneBindIp = args.GetString(_T("zone-ip"), options.zoneBindIp.c_str());
+	options.zonePort = static_cast<uint16>(args.GetUInt(_T("zone-port"), options.zonePort));
+	options.maxZoneSessions = static_cast<int32>(args.GetUInt(_T("max-zones"), options.maxZoneSessions));
+	options.zoneWorkerCount = args.GetUInt(_T("zone-workers"), options.zoneWorkerCount);
+	options.heartbeatIntervalMs = args.GetUInt(_T("heartbeat-ms"), options.heartbeatIntervalMs);
+	options.heartbeatTimeoutMs = args.GetUInt(_T("heartbeat-timeout-ms"), options.heartbeatTimeoutMs);
 
 	CGatewayServerMain server;
 	if( !server.Start(options) )

@@ -42,6 +42,8 @@ using namespace std;
 #include <Util/Log.h>
 #include <Util/ScopeExit.h>
 #include <Util/FixedBufUtil.h>
+#include <Util/WinCharsetConv.h>
+#include <Util/EncodingConvert.h>
 
 #include <Memory/RawAllocator.h>
 #include <Memory/Allocator.h>
@@ -63,8 +65,14 @@ using namespace std;
 #include <BaseGlobal.h>
 #include <BaseTLS.h>
 
-#include <Containers/Map/ClusterSpinUnorderedMap.h>
 #include <Containers/Queue/DoubleBufferQueue.h>
+
+#include <JSON/RapidJSONUtil.h>
+
+#include <ConfigFile/ConfigFieldSpec.h>
+#include <ConfigFile/ConfigFieldCommon.h>
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
 
 #include <Network/NetworkCommon.h>
 
@@ -74,6 +82,8 @@ using namespace std;
 #include "ZoneRouter.h"
 #include "GatewayZoneSession.h"
 #include "GatewayClientSession.h"
+#include "GatewayServerOptions.h"
+#include "GatewayServerConfig.h"
 #include "GatewayServerMain.h"
 
 #endif // ndef PCH_H

@@ -5,6 +5,12 @@
 #include <iostream>
 #include "TestFunction.h"
 
+//***************************************************************************
+// @brief CDBServerConfig의 싱글톤 포인터에 접근합니다.
+// @return CDBServerConfig* 서버 설정 싱글톤 포인터
+//***************************************************************************
+#define DB_SERVER_CONFIG						CDBServerConfig::GetSingletonPtr()
+
 // 금지 문자 필터링 함수 (TCHAR 버전)
 std::basic_string<TCHAR> RemoveInvalidXmlChars(const std::basic_string<TCHAR>& input) {
 	std::basic_string<TCHAR> output;
@@ -19,6 +25,19 @@ std::basic_string<TCHAR> RemoveInvalidXmlChars(const std::basic_string<TCHAR>& i
 	return output;
 }
 
+//***************************************************************************
+// @brief 프로그램 종료 시 인프라 자원 및 동적 할당 객체를 정해진 순서대로 해제하는 함수
+// @details
+// ShutdownAll()은 Stop()/Join()에 더해 실제 파괴(reset)까지 수행하며,
+// 반드시 BaseGlobal::Destroy()보다 먼저 호출되어야 한다. 
+// 그래야 CAdoConnPool의 헬스체크/재연결 워커 스레드가 gpMemory/gpThreadManager가
+// 살아있는 동안 안전하게 정리된다(DbServiceManager.h의 [소멸 순서] 설명 참고).
+//***************************************************************************
+void MainClose()
+{
+	DB_SERVER_CONFIG->ReleaseInstance();
+	BaseGlobal::Destroy();
+}
 
 int main()
 {
@@ -35,10 +54,10 @@ int main()
 
 	_sntprintf_s(tszTempArgv, FULLPATH_STRLEN, _TRUNCATE, _T("config\\server_config.json"));
 
-	if( false == SERVER_CONFIG->Init(tszTempArgv) )
+	if( false == DB_SERVER_CONFIG->Init(tszTempArgv) )
 	{
 		LOG_ERROR(_T("SERVER_CONFIG->Init Fail."));
-		SERVER_CONFIG->ReleaseInstance();
+		MainClose();
 		return -1;
 	}
 
@@ -46,7 +65,7 @@ int main()
 	TCHAR tszDBMSName[DATABASE_BUFFER_SIZE];
 	TCHAR tszDBMSVersion[DATABASE_BUFFER_SIZE];
 
-	CVector<CDBNode> dbNodes = SERVER_CONFIG->GetDBNodeVec();
+	CVector<CDBNode> dbNodes = DB_SERVER_CONFIG->GetDBNodeVec();
 
 	//EDBClass dbClass = EDBClass::MSSQL;
 	EDBClass dbClass = EDBClass::MYSQL;
@@ -87,9 +106,7 @@ int main()
 	//TestRenameObject(dbProcess);
 	//TestORACLEIndexFragmentationCheck(dbProcess);
 
-	SERVER_CONFIG->ReleaseInstance();
-
-	BaseGlobal::Destroy();
+	MainClose();
 
 	system("pause");
 

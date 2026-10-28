@@ -42,19 +42,10 @@ namespace
 	}
 
 	//***************************************************************************
-	// @brief TCHAR 문자열을 std::string으로 변환함(UNICODE 빌드 대응).
-	//***************************************************************************
-	std::string TCharToString(const TCHAR* ptsz)
-	{
-		if( ptsz == nullptr ) return std::string();
-		return TStringToString(ptsz);
-	}
-
-	//***************************************************************************
 	// @brief CFileServerConfig의 싱글톤 포인터에 접근합니다.
 	// @return CFileServerConfig* 서버 설정 싱글톤 포인터
 	//***************************************************************************
-	#define FILE_SERVER_CONFIG						CFileServerConfig::GetSingletonPtr()
+#define FILE_SERVER_CONFIG						CFileServerConfig::GetSingletonPtr()
 }
 
 //***************************************************************************
@@ -120,14 +111,9 @@ int main()
 	FILE_SERVER_CONFIG->PrintServerSettingInfo();
 
 	// 7. 서버 시작
-	const bool started = server.Start(
-		FILE_SERVER_CONFIG->GetServerIP(), FILE_SERVER_CONFIG->GetServerPort(),
-		FILE_SERVER_CONFIG->GetRedisNodeVec(), FILE_SERVER_CONFIG->GetRedisPoolSize(),
-		FILE_SERVER_CONFIG->GetMaxSessionCount(), FILE_SERVER_CONFIG->GetWorkerThreadCnt(),
-		FILE_SERVER_CONFIG->GetStorageDir(),
-		TCharToString(FILE_SERVER_CONFIG->GetPublicBaseUrl()),
-		FILE_SERVER_CONFIG->GetMaxUploadBytes()
-	);
+	SFileServerOptions options;
+	FILE_SERVER_CONFIG->ToOptions(options);
+	const bool started = server.Start(options);
 
 	if( !started )
 	{

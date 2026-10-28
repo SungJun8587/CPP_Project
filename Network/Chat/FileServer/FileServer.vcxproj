@@ -153,7 +153,13 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\DelayedTaskQueue.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Queue\SpinLockQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\GlobalQueue.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Job\Job.h" />
@@ -225,6 +231,7 @@
     <ClInclude Include="FileDownloadHandler.h" />
     <ClInclude Include="FileServerConfig.h" />
     <ClInclude Include="FileServerMain.h" />
+    <ClInclude Include="FileServerOptions.h" />
     <ClInclude Include="FileServerRouter.h" />
     <ClInclude Include="FileServerSession.h" />
     <ClInclude Include="FileStorage.h" />

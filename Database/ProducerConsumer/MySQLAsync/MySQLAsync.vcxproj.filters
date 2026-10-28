@@ -28,6 +28,9 @@
     <Filter Include="UtilCore\Containers\Queue">
       <UniqueIdentifier>{6ccdff81-8b92-41ec-b479-462b04a64d43}</UniqueIdentifier>
     </Filter>
+    <Filter Include="DBCommon">
+      <UniqueIdentifier>{8a63f3b4-dd43-4019-b403-547080e03881}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
@@ -84,7 +87,9 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
       <Filter>UtilCore\Thread</Filter>
     </ClCompile>
-    <ClCompile Include="DBServerConfig.cpp" />
+    <ClCompile Include="..\..\DBCommon\DBServerConfig.cpp">
+      <Filter>DBCommon</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
@@ -195,9 +200,11 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="DBServiceManager.h" />
-    <ClInclude Include="DBServerConfig.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\DB\DBAsyncRegistry.h">
       <Filter>UtilCore\DB</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\DBCommon\DBServerConfig.h">
+      <Filter>DBCommon</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -9,15 +9,16 @@
 
 #include <ServerConfig.h>
 #include <Memory/Singleton.h>
+#include "FileServerOptions.h"
 
 //***************************************************************************
 // @brief 파일 서버 설정 정보 관리 클래스
 // @details JSON 기반의 설정(바인드 IP/포트, Redis 노드, 저장 경로, 공개 URL,
 //          업로드 크기 제한 등)을 로드하고 관리합니다.
-// @details [수정 — 리팩터링] CServerConfig는 이제 필드+게터만 제공하고
-//          (ServerConfig.h 상단 설명 참고), Init()/ToJSON()/FromJSON()/
-//          PrintServerSettingInfo()는 이 클래스가 직접 구현한다. 이
-//          클래스는 베이스 필드 중 ServerName/IP/Port/MaxSessionCount/
+// @details CServerConfig는 필드+게터만 제공하고(ServerConfig.h 상단 설명 참고),
+//          Init()/Save()/PrintServerSettingInfo()는 이 클래스가 직접 구현한다.
+//          읽기는 CJSONConfigFieldReader(타입/범위 검증), 쓰기는
+//          CJSONConfigFieldWriter를 쓴다. 이 클래스는 베이스 필드 중 ServerName/IP/Port/MaxSessionCount/
 //          WorkerThreadCnt/RedisNodeVec만 실제로 읽고 쓴다 — ServiceName/
 //          DisplayName/GroupId/ChannelId/KeepAliveSec/ServerNodeVec/
 //          DBNodeVec은 파일 서버 개념에 없는 값이라 아예 건드리지 않는다
@@ -30,6 +31,11 @@ public:
 	CFileServerConfig();
 	virtual ~CFileServerConfig();
 
+	//***************************************************************************
+	// @brief JSON 설정 파일로부터 파일 서버 구성 정보를 읽어와 초기화합니다.
+	// @param tszServerInfo JSON 설정 파일 경로
+	// @return 모든 필드가 타입/범위 검증을 통과하면 true, 파일을 못 읽거나 하나라도 위반하면 false
+	//***************************************************************************
 	bool Init(const TCHAR* tszServerInfo);
 
 	//***************************************************************************
@@ -64,37 +70,19 @@ public:
 	void PrintServerSettingInfo();
 
 	//***************************************************************************
-	// @brief 서버 설정 객체를 JSON 형태로 직렬화합니다.
+	// @brief 로드된 설정 값을 CFileServerMain::Start()에 넘길 구동 옵션으로 옮겨 담습니다.
+	// @details 설정 파일에 없는 항목(idleTimeoutMs)은 전달받은 options의 값을 그대로 둔다.
 	//***************************************************************************
-	void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
-	{
-		value.SetObject();
-		value.AddMember(_T("Name"), _tValue(_tszServerName, allocator), allocator);
-		value.AddMember(_T("IP"), _tValue(_tszIP, allocator), allocator);
-		value.AddMember(_T("Port"), _nServerPort, allocator);
-		value.AddMember(_T("MaxSessionCount"), _nMaxSessionCount, allocator);
-		value.AddMember(_T("WorkerThreadCnt"), _nWorkerThreadCnt, allocator);
-		value.AddMember(_T("RedisPoolSize"), _nRedisPoolSize, allocator);
-		value.AddMember(_T("StorageDir"), _tValue(_tszStorageDir, allocator), allocator);
-		value.AddMember(_T("PublicBaseUrl"), _tValue(_tszPublicBaseUrl, allocator), allocator);
-		value.AddMember(_T("MaxUploadBytes"), static_cast<int64>(_nMaxUploadBytes), allocator);
-	}
+	void ToOptions(SFileServerOptions& options) const;
 
 	//***************************************************************************
-	// @brief JSON 객체로부터 서버 설정 정보를 역직렬화합니다.
+	// @brief 현재 설정 값을 JSON 파일로 저장합니다.
+	// @param tszServerInfo 저장할 JSON 설정 파일 경로
+	// @return 성공 시 true, 실패 시 false(기존 파일은 그대로 남음)
+	// @details 기존 파일이 있으면 먼저 읽어 와서 이 클래스가 모르는 키와 키 순서를
+	//          보존한 채 알고 있는 필드의 값만 교체한다.
 	//***************************************************************************
-	void FromJSON(const _tValue& value)
-	{
-		_tcsncpy_s(_tszServerName, _countof(_tszServerName), value[_T("Name")].GetString(), _TRUNCATE);
-		_tcsncpy_s(_tszIP, _countof(_tszIP), value[_T("IP")].GetString(), _TRUNCATE);
-		_nServerPort = value[_T("Port")].GetInt();
-		_nMaxSessionCount = value[_T("MaxSessionCount")].GetInt();
-		_nWorkerThreadCnt = value[_T("WorkerThreadCnt")].GetInt();
-		_nRedisPoolSize = value[_T("RedisPoolSize")].GetInt();
-		_tcsncpy_s(_tszStorageDir, _countof(_tszStorageDir), value[_T("StorageDir")].GetString(), _TRUNCATE);
-		_tcsncpy_s(_tszPublicBaseUrl, _countof(_tszPublicBaseUrl), value[_T("PublicBaseUrl")].GetString(), _TRUNCATE);
-		_nMaxUploadBytes = value[_T("MaxUploadBytes")].GetInt64();
-	}
+	bool Save(const TCHAR* tszServerInfo);
 
 private:
 	int32					_nRedisPoolSize;						// Redis 커넥션 풀 크기

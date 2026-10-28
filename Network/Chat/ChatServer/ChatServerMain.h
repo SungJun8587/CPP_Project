@@ -17,6 +17,7 @@
 #include "DBRoomRequest.h"
 #include "DBFriendRequest.h"		// EFriendOp, SFriendOpResult
 #include "DBConvRequest.h"		// EConvOp, SConvOpResult
+#include "ChatServerOptions.h"
 
 //***************************************************************************
 // @brief 방 멤버 목록 조회(GetRoomMembers()) 결과 항목.
@@ -114,24 +115,11 @@ public:
 
 	//***************************************************************************
 	// @brief 채팅 서버를 구동합니다 (IOCP 서비스 시작 + Redis 초기화 + 하트비트 시작 + DB 초기화).
-	// @param bindIp/bindPort 클라이언트 접속을 받을 주소
-	// @param redisNodeVec Redis 노드 목록 — CRedisService::Init()에 그대로 전달(단일 서버면 노드 하나짜리 목록)
-	// @param redisPoolSize 노드별 Redis 커넥션 풀 크기
-	// @param dbNodeVec 회원 DB 접속 정보(ODBC) — MEMBER_DB_ASYNC.StartService()에 그대로 전달
-	// @param dbMaxThreadCnt DB 비동기 워커 스레드 수 (0=자동 — [가정] StartService 내부 정책)
-	// @param serverGroupId/serverChannelId 하트비트 등록에 쓰일 식별자 (예: "ChatServer", "1")
-	// @param maxSessionCount 최대 동시 접속 수
-	// @param workerThreadCount IOCP 워커 스레드 개수 (0=자동)
-	// @param heartbeatTtlSec/heartbeatIntervalSec 하트비트 TTL/갱신 주기
+	// @param options 구동 옵션(ChatServerOptions.h). 파일 서버 주소와 방 개수 상한도
+	//        여기서 받아 서비스가 세션을 받기 전에 적용한다.
 	// @return 모든 초기화 단계가 성공하면 true
 	//***************************************************************************
-	bool Start(
-		const _tstring& bindIp, uint16 bindPort,
-		CVector<CRedisNode> redisNodeVec, int32 redisPoolSize,
-		CVector<CDBNode> dbNodeVec, int32 dbMaxThreadCnt,
-		std::string serverName, std::string serverGroupId, std::string serverChannelId,
-		int32 maxSessionCount = 1000, uint32 workerThreadCount = 0,
-		int32 heartbeatTtlSec = 15, int32 heartbeatIntervalSec = 5);
+	bool Start(const SChatServerOptions& options);
 
 	//***************************************************************************
 	// @brief 채팅 서버를 정지합니다. 하트비트 → IOCP 서비스 순으로 정리합니다.
@@ -238,14 +226,6 @@ public:
 		std::shared_ptr<CChatSession> session,
 		const std::array<BYTE, kPublicIdBytes>& publicId,
 		std::function<void(bool success, const std::string& uploadToken, const std::string& fileServerUrl)> onComplete);
-
-	//***************************************************************************
-	// @brief 이 서버가 클라이언트에게 알려줄 파일 서버 주소를 설정합니다.
-	//        Start() 이후(또는 이전) 아무 때나 호출 가능 — RequestUploadToken()
-	//        응답에 그대로 실려 나간다. 설정 안 하면 빈 문자열이 나가고,
-	//        클라이언트는 그 경우 업로드 기능을 못 씀을 알 수 있다.
-	//***************************************************************************
-	void SetFileServerUrl(std::string fileServerUrl) { _fileServerUrl = std::move(fileServerUrl); }
 
 	//***************************************************************************
 	// @brief 로그인된 계정이 갖고 있는 프로필 이미지 전체 목록을 조회합니다.
@@ -666,13 +646,6 @@ public:
 	int32 GetMaxRoomsPerOwner() const { return _maxRoomsPerOwner; }
 
 	//***************************************************************************
-	// @brief [추가] 1인당 생성 가능한 방 개수 상한을 설정합니다(서버 설정
-	//        파일 로딩 시 한 번 호출 — SetFileServerUrl()과 동일한 패턴).
-	//        0 이하면 개수 제한을 적용하지 않는다(ST_CREATE_ROOM_REQ 참고).
-	//***************************************************************************
-	void SetMaxRoomsPerOwner(int32 maxRoomsPerOwner) { _maxRoomsPerOwner = maxRoomsPerOwner; }
-
-	//***************************************************************************
 	// @brief [추가] roomId가 실제로 존재하는 방인지(로비 포함) 확인합니다.
 	// @details ChatRoomHandler.cpp가 기존의 "1~kMaxRoomId 범위 검사"
 	//          대신 이 함수로 검증하도록 바뀔 예정(3단계) — 방이 이제
@@ -916,10 +889,10 @@ private:
 	// [설계 변경] 프로필 이미지 저장을 별도 파일 서버로 분리하면서, 이
 	// 서버는 더 이상 이미지 파일 자체를 갖고 있지 않는다 — IImageStorage/
 	// 업로드 세션 상태(SUploadSession 등)를 전부 제거했다. 대신 클라이언트가
-	// 파일 서버에 접속할 때 쓸 주소만 들고 있는다(SetFileServerUrl() 참고).
+	// 파일 서버에 접속할 때 쓸 주소만 들고 있는다(SChatServerOptions::fileServerUrl 참고).
 	std::string	_fileServerUrl;
 
-	// [추가] 1인당 생성 가능한 방 개수 상한 — SetMaxRoomsPerOwner() 참고.
+	// [추가] 1인당 생성 가능한 방 개수 상한 — SChatServerOptions::maxRoomsPerOwner 참고.
 	int32		_maxRoomsPerOwner = 0;
 
 	//***************************************************************************
