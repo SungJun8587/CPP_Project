@@ -10,6 +10,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <memory>
+#include <vector>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
@@ -75,6 +76,8 @@ private:
 	bool HandleZoneEnterRes(CGatewayZoneSession& session, const PacketHeader* header);
 	bool HandleZoneKick(CGatewayZoneSession& session, const PacketHeader* header);
 	bool HandleRelayToClient(CGatewayZoneSession& session, const PacketHeader* header);
+	bool HandleRelayToClients(CGatewayZoneSession& session, const PacketHeader* header);
+	void ResolveClients(const BYTE* packedIds, size_t count, std::vector<std::shared_ptr<CGatewayClientSession>>& out) const;
 
 	bool AuthenticateClient(CGatewayClientSession& client, uint64 charId);
 	uint32 DetachFromZone(CGatewayClientSession& client);

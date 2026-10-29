@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // FieldZoneBase.h : interface for the CFieldZoneBase class.
 //
 //***************************************************************************
@@ -33,6 +34,24 @@ enum class MoveResult : uint8
 	OutOfBounds,		// 목적지가 존 영역 밖
 	PositionMismatch,	// 클라이언트 보고 위치가 서버 위치와 허용 오차 이상 차이
 	Throttled,			// 요청 간격이 minMoveIntervalMs보다 짧아 무시됨 (보정 통지 없음)
+	Dead,				// 사망한 엔티티는 리스폰하기 전까지 이동할 수 없음
+};
+
+//***************************************************************************
+// @brief 기본 공격 요청 처리 결과.
+//***************************************************************************
+enum class AttackResult : uint8
+{
+	Ok,					// 공격 성공 (피해 적용됨)
+	EntityNotFound,		// 존에 없는 공격자
+	TargetNotFound,		// 존에 없는 대상 (퇴장했거나 다른 존, 존재하지 않는 ID)
+	AttackerDead,		// 공격자가 사망 상태
+	TargetDead,			// 대상이 이미 사망 상태
+	TargetInvulnerable,	// 대상이 무적 상태 (리스폰 직후 보호 등)
+	InvalidTarget,		// 공격할 수 없는 대상 (자기 자신, PvP 금지, 같은 편 등)
+	OutOfRange,			// 사거리 밖
+	Cooldown,			// 공격 쿨다운 중 (거부 통지 없음)
+	Throttled,			// 같은 틱에 이미 공격 요청을 접수함 (거부 통지 없음)
 };
 
 //***************************************************************************
@@ -48,6 +67,10 @@ enum class MoveResult : uint8
 //                       허용 오차 = posToleranceBase + speed * maxLatencyMs / 1000
 // - minMoveIntervalMs : 엔티티별 이동 요청 최소 간격(존 논리 시간 기준). 이보다 짧은 요청은 무시한다.
 //                       요청 한 건이 주변 전원에게 브로드캐스트되므로 증폭 공격을 막는 장치다. 0이면 제한 없음
+// - respawnDelayMs    : 플레이어 사망 후 자동 리스폰까지의 시간(ms). kNoRespawn이면 자동 리스폰 안 함
+// - allowPvp          : 플레이어끼리 공격 가능 여부
+// - minDamage         : 최소 피해량(1 이상). 방어력이 공격력 이상이어도 이 값만큼은 들어간다
+// - respawnInvulnMs   : 리스폰 직후 무적 시간(ms). 스폰 캠핑 방지. 본인이 공격하면 즉시 해제된다. 0이면 없음
 //***************************************************************************
 struct FieldZoneConfig
 {
@@ -62,6 +85,10 @@ struct FieldZoneConfig
 	float posToleranceBase = 1.0f;		// 위치 허용 오차 기본값
 	uint32 maxLatencyMs = 300;			// 허용 오차에 반영할 최대 지연(ms)
 	uint32 minMoveIntervalMs = 50;		// 이동 요청 최소 간격(ms)
+	uint32 respawnDelayMs = 5000;		// 플레이어 자동 리스폰 지연(ms)
+	bool allowPvp = true;				// 플레이어 간 공격 허용
+	int32 minDamage = 1;				// 최소 피해량
+	uint32 respawnInvulnMs = 3000;		// 리스폰 직후 무적 시간(ms)
 };
 
 //***************************************************************************
@@ -96,6 +123,20 @@ public:
 	MoveResult RequestMove(CZoneEntity& entity, const Vec2& clientPos, const Vec2& dest);
 	bool StopMove(uint64 id);
 	bool Teleport(uint64 id, const Vec2& pos);
+
+	// ── 전투 (존 스레드 전용) ─────────────────────────────
+	AttackResult RequestAttack(uint64 attackerId, uint64 targetId);
+	AttackResult RequestAttack(CZoneEntity& attacker, uint64 targetId);
+	bool DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 amount);
+	bool Respawn(uint64 id);
+	bool IsInvulnerable(const CZoneEntity& entity) const;
+
+	// ── 설정 검증 ─────────────────────────────────────────
+	float GetGuaranteedViewRange() const;
+	bool IsAttackRangeSupported(float attackRange, float maxMoveSpeed) const;
+
+	// 자동 리스폰을 하지 않는 지연값
+	static constexpr uint32 kNoRespawn = 0xFFFFFFFFu;
 
 	// ── 외부 스레드용 ─────────────────────────────────────
 	bool PostMove(uint64 id, const Vec2& clientPos, const Vec2& dest);
@@ -144,11 +185,26 @@ protected:
 	virtual void HandleTeleported(CZoneEntity& entity);
 	virtual void HandleMoveRejected(CZoneEntity& entity, MoveResult reason);
 
+	// 전투 이벤트 훅의 타입 소거 버전. 호출 중에는 엔티티 추가/제거/이동 호출이 허용되지 않는다.
+	// source/killer는 공격자가 없는 피해(DoT, 환경)이거나 이미 퇴장했으면 nullptr이다.
+	virtual void HandleDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage);
+	virtual void HandleDied(CZoneEntity& victim, CZoneEntity* killer);
+	virtual void HandleRespawned(CZoneEntity& entity);
+	virtual void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason);
+
+	// 전투 정책. 파생 클래스가 재정의한다.
+	virtual bool CanAttack(const CZoneEntity& attacker, const CZoneEntity& target) const;
+	virtual uint32 GetRespawnDelayMs(const CZoneEntity& victim) const;
+	virtual int32 CalcDamage(const CZoneEntity& attacker, const CZoneEntity& victim) const;
+
 private:
 	bool IsInBounds(const Vec2& pos) const;
 	void UpdateMovement(uint32 dtMs);
 	void BeginMoving(CZoneEntity* entity);
 	void EndMoving(CZoneEntity* entity);
+	bool MoveTo(CZoneEntity* entity, const Vec2& pos, bool notify);
+	void Kill(CZoneEntity& victim, CZoneEntity* killer);
+	void ScheduleRespawn(CZoneEntity& victim);
 
 	FieldZoneConfig _fieldConfig;												// 필드 존 설정
 	bool _valid;																// AOI 초기화 성공 여부

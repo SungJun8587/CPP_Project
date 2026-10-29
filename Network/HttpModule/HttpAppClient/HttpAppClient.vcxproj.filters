@@ -150,9 +150,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h">
-      <Filter>UtilCore\Network\IOCP</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClInclude>
@@ -300,6 +297,12 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\UrlParser.h">
       <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryCommon.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpDefine.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

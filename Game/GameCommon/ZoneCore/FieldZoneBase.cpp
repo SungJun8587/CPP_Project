@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // FieldZoneBase.cpp : implementation of the CFieldZoneBase class.
 //
 //***************************************************************************
@@ -19,6 +20,9 @@ CFieldZoneBase::CFieldZoneBase(const FieldZoneConfig& config)
 	, _valid(false)
 	, _updatingMovement(false)
 {
+	if( _fieldConfig.minDamage < 1 )
+		_fieldConfig.minDamage = 1;
+
 	_valid = _aoi.Init(config.minX, config.minY, config.maxX, config.maxY, config.cellSize, config.viewCells, config.aoiHysteresis);
 	assert(_valid && "CFieldZoneBase: invalid AOI configuration");
 
@@ -63,7 +67,13 @@ CZoneEntity* CFieldZoneBase::AddEntity(std::unique_ptr<CZoneEntity> entity)
 	raw->_dest = raw->_pos;
 	raw->_moving = false;
 	raw->_inZone = true;
-	raw->_hasMoveReq = false;
+	raw->_moveGate.Reset();
+	raw->_attackGate.Reset();
+	raw->_invulnerableUntilMs = 0;
+	raw->_dead = false;
+	raw->_hp = raw->_stats.maxHp;
+	raw->_nextAttackMs = GetNowMs();
+	raw->_respawnTimerId = 0;
 
 	_entities.emplace(id, std::move(entity));
 	_aoi.Add(raw);
@@ -89,6 +99,12 @@ bool CFieldZoneBase::RemoveEntity(uint64 id)
 
 	if( entity->_moving )
 		EndMoving(entity);
+
+	if( entity->_respawnTimerId != 0 )
+	{
+		CancelTimer(entity->_respawnTimerId);
+		entity->_respawnTimerId = 0;
+	}
 
 	_aoi.Remove(entity);
 	_entities.erase(it);
@@ -142,13 +158,15 @@ MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPo
 	assert(IsZoneThread() || !IsRunning());
 	assert(entity._inZone);
 
-	const uint64 nowMs = GetNowMs();
-	if( _fieldConfig.minMoveIntervalMs != 0 && entity._hasMoveReq &&
-		nowMs - entity._lastMoveReqMs < _fieldConfig.minMoveIntervalMs )
+	// 스로틀을 먼저 적용한다. 죽은 클라이언트가 이동 요청을 쏟아내도 보정 통지가 요청 수만큼 나가지 않게 한다.
+	if( !entity._moveGate.TryPass(GetNowMs(), _fieldConfig.minMoveIntervalMs) )
 		return MoveResult::Throttled;
 
-	entity._hasMoveReq = true;
-	entity._lastMoveReqMs = nowMs;
+	if( entity._dead )
+	{
+		HandleMoveRejected(entity, MoveResult::Dead);
+		return MoveResult::Dead;
+	}
 
 	if( entity._speed <= 0.0f )
 	{
@@ -222,10 +240,26 @@ bool CFieldZoneBase::StopMove(uint64 id)
 bool CFieldZoneBase::Teleport(uint64 id, const Vec2& pos)
 {
 	assert(IsZoneThread() || !IsRunning());
-	assert(!_updatingMovement && "CFieldZoneBase::Teleport called during movement update");
 
 	CZoneEntity* entity = FindEntity(id);
-	if( entity == nullptr || !IsInBounds(pos) )
+	if( entity == nullptr )
+		return false;
+
+	return MoveTo(entity, pos, true);
+}
+
+//***************************************************************************
+// @brief 엔티티를 지정 위치로 즉시 옮기는 내부 구현입니다. 이동 중이면 중단하고 AOI를 갱신합니다.
+// @param entity 대상 엔티티
+// @param pos    이동할 좌표
+// @param notify true면 이동 중단/순간이동 훅을 호출한다. 리스폰은 별도 훅으로 알리므로 false를 쓴다
+// @return 성공 시 true, 영역 밖이면 false
+//***************************************************************************
+bool CFieldZoneBase::MoveTo(CZoneEntity* entity, const Vec2& pos, bool notify)
+{
+	assert(!_updatingMovement && "CFieldZoneBase::MoveTo called during movement update");
+
+	if( !IsInBounds(pos) )
 		return false;
 
 	const bool wasMoving = entity->_moving;
@@ -236,10 +270,13 @@ bool CFieldZoneBase::Teleport(uint64 id, const Vec2& pos)
 	entity->_dest = pos;
 	_aoi.Update(entity);
 
-	if( wasMoving )
-		HandleMoveStopped(*entity, false);
+	if( notify )
+	{
+		if( wasMoving )
+			HandleMoveStopped(*entity, false);
 
-	HandleTeleported(*entity);
+		HandleTeleported(*entity);
+	}
 	return true;
 }
 
@@ -307,6 +344,356 @@ void CFieldZoneBase::HandleTeleported(CZoneEntity& entity)
 void CFieldZoneBase::HandleMoveRejected(CZoneEntity& entity, MoveResult reason)
 {
 	(void)entity;
+	(void)reason;
+}
+
+//***************************************************************************
+// @brief ID로 공격자를 찾아 기본 공격을 처리합니다. 자세한 규칙은 엔티티 버전을 참고하세요.
+// @param attackerId 공격자 엔티티 ID
+// @param targetId   대상 엔티티 ID
+// @return 처리 결과
+//***************************************************************************
+AttackResult CFieldZoneBase::RequestAttack(uint64 attackerId, uint64 targetId)
+{
+	assert(IsZoneThread() || !IsRunning());
+
+	CZoneEntity* attacker = FindEntity(attackerId);
+	if( attacker == nullptr )
+		return AttackResult::EntityNotFound;
+
+	return RequestAttack(*attacker, targetId);
+}
+
+//***************************************************************************
+// @brief 클라이언트의 기본 공격 요청을 서버 권위로 검증하고 피해를 적용합니다.
+//        검증 순서(앞 단계가 싸고 클라이언트가 위조하기 쉬운 값부터 거른다):
+//        1) 같은 틱의 중복 요청은 조용히 무시한다(Throttled) - 요청 폭주 방지
+//        2) 공격자 생존 -> 3) 쿨다운 -> 4) 대상 조회 -> 5) 사거리 -> 6) 대상 생존 -> 7) 공격 가능 대상(CanAttack) -> 8) 무적
+//        사거리 검사를 대상 상태 검사보다 앞에 둬서, 멀리 있는 엔티티의 존재/생사 여부가 응답으로 새지 않게 한다.
+//        (대상이 없는 경우와 사거리 밖은 클라이언트에 같은 사유로 통지된다.)
+//        쿨다운은 틱 한 개만큼 여유를 둬서 틱 경계 지터로 정상 요청이 거절되지 않게 하며, 다음 공격 시각을
+//        max(다음 시각, 지금) + 간격으로 갱신해 여유분이 누적(드리프트)되지 않게 한다.
+//        사거리는 이동 중인 양쪽의 지연 보정(속도*maxLatencyMs)과 위치 허용 오차를 더해 판정한다.
+//        피해량은 CalcDamage()가 정하고 적용은 DealDamage()가 맡는다.
+//        거부된 요청(Cooldown/Throttled 제외)은 HandleAttackRejected()로 알리고, 쿨다운은 소모하지 않는다.
+//        공격에 성공하면 공격자 본인의 무적은 해제된다(무적 상태로 일방 공격하는 것을 막는다).
+//        존 스레드에서만 호출해야 하며, attacker는 이 존에 속해야 한다.
+// @param attacker 공격자 (이 존에 등록된 엔티티)
+// @param targetId 대상 엔티티 ID
+// @return 처리 결과
+//***************************************************************************
+AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetId)
+{
+	assert(IsZoneThread() || !IsRunning());
+	assert(attacker._inZone);
+	assert(!_updatingMovement && "CFieldZoneBase::RequestAttack called during movement update");
+
+	const uint64 nowMs = GetNowMs();
+	if( !attacker._attackGate.TryPass(nowMs, 1) )
+		return AttackResult::Throttled;
+
+	if( attacker._dead )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::AttackerDead);
+		return AttackResult::AttackerDead;
+	}
+
+	if( nowMs + _fieldConfig.zone.tickIntervalMs < attacker._nextAttackMs )
+		return AttackResult::Cooldown;
+
+	CZoneEntity* target = FindEntity(targetId);
+	if( target == nullptr )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::TargetNotFound);
+		return AttackResult::TargetNotFound;
+	}
+
+	float moveSpeed = 0.0f;
+	if( attacker._moving )
+		moveSpeed += attacker._speed;
+	if( target->_moving )
+		moveSpeed += target->_speed;
+
+	const float reach = attacker._stats.attackRange + _fieldConfig.posToleranceBase
+		+ moveSpeed * static_cast<float>(_fieldConfig.maxLatencyMs) * 0.001f;
+
+	// NaN 좌표가 들어와도 거부되도록 "사거리 이내"를 긍정형으로 검사한다.
+	if( !(DistanceSq(attacker._pos, target->_pos) <= reach * reach) )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::OutOfRange);
+		return AttackResult::OutOfRange;
+	}
+
+	if( target->_dead )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::TargetDead);
+		return AttackResult::TargetDead;
+	}
+
+	if( !CanAttack(attacker, *target) )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::InvalidTarget);
+		return AttackResult::InvalidTarget;
+	}
+
+	if( IsInvulnerable(*target) )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::TargetInvulnerable);
+		return AttackResult::TargetInvulnerable;
+	}
+
+	attacker._nextAttackMs = (attacker._nextAttackMs > nowMs ? attacker._nextAttackMs : nowMs) + attacker._stats.attackIntervalMs;
+	attacker._invulnerableUntilMs = 0;
+
+	DealDamage(*target, &attacker, CalcDamage(attacker, *target));
+	return AttackResult::Ok;
+}
+
+//***************************************************************************
+// @brief 기본 공격의 피해량 공식입니다. max(minDamage, 공격력 - 방어력)이며 64비트로 계산해 오버플로를 막습니다.
+//        재정의하여 관통/치명타/속성 보정 등을 추가합니다.
+// @param attacker 공격자
+// @param victim   피해자
+// @return 피해량 (minDamage 이상)
+//***************************************************************************
+int32 CFieldZoneBase::CalcDamage(const CZoneEntity& attacker, const CZoneEntity& victim) const
+{
+	int64 damage = static_cast<int64>(attacker._stats.attack) - static_cast<int64>(victim._stats.defense);
+	if( damage < _fieldConfig.minDamage )
+		damage = _fieldConfig.minDamage;
+	if( damage > INT32_MAX )
+		damage = INT32_MAX;
+
+	return static_cast<int32>(damage);
+}
+
+//***************************************************************************
+// @brief 체력 차감, 피해 훅, 사망 처리를 하는 공용 피해 적용 경로입니다. 기본 공격, 스킬, DoT, 환경 피해가 모두 이 함수를 지납니다.
+//        죽었거나 무적인 대상, 0 이하의 피해는 무시합니다. 체력은 0 아래로 내려가지 않습니다.
+//        이동 갱신 중에는 호출할 수 없고 존 스레드에서만 호출해야 합니다.
+// @param victim 피해자 (이 존에 등록된 엔티티)
+// @param source 피해를 준 엔티티. 공격자가 없거나 이미 퇴장했으면 nullptr (DoT는 틱마다 FindEntity로 다시 조회해 넘긴다)
+// @param amount 피해량
+// @return 피해를 적용했으면 true
+//***************************************************************************
+bool CFieldZoneBase::DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 amount)
+{
+	assert(IsZoneThread() || !IsRunning());
+	assert(victim._inZone);
+	assert(!_updatingMovement && "CFieldZoneBase::DealDamage called during movement update");
+
+	if( amount <= 0 || victim._dead || IsInvulnerable(victim) )
+		return false;
+
+	victim._hp = amount >= victim._hp ? 0 : victim._hp - amount;
+
+	HandleDamaged(source, victim, amount);
+
+	if( victim._hp == 0 )
+		Kill(victim, source);
+
+	return true;
+}
+
+//***************************************************************************
+// @brief 엔티티가 무적 상태인지 확인합니다.
+// @param entity 확인할 엔티티
+// @return 무적이면 true
+//***************************************************************************
+bool CFieldZoneBase::IsInvulnerable(const CZoneEntity& entity) const
+{
+	return GetNowMs() < entity._invulnerableUntilMs;
+}
+
+//***************************************************************************
+// @brief AOI가 모든 방향에서 보장하는 최소 시야 거리를 반환합니다. (viewCells - 2 * aoiHysteresis) * cellSize
+// @return 최소 보장 시야 거리 (units)
+//***************************************************************************
+float CFieldZoneBase::GetGuaranteedViewRange() const
+{
+	return (static_cast<float>(_fieldConfig.viewCells) - 2.0f * _fieldConfig.aoiHysteresis) * _fieldConfig.cellSize;
+}
+
+//***************************************************************************
+// @brief 기본 공격 사거리가 AOI 시야 안에 들어오는지 확인합니다.
+//        RequestAttack()의 실제 판정 거리의 최대치(사거리 + 위치 허용 오차 + 양쪽이 모두 최고 속도로 이동 중일 때의
+//        지연 보정 2 * 속도 * maxLatencyMs)가 최소 보장 시야 이하여야 합니다.
+//        시야보다 긴 판정 거리는 보이지 않는 대상을 공격하게 하고 피해 통지가 시야 밖으로 나가므로 구동 시 거부해야 합니다.
+// @param attackRange  확인할 사거리
+// @param maxMoveSpeed 이 사거리를 쓰는 엔티티와 그 대상이 가질 수 있는 최대 이동 속도 (units/sec)
+// @return 지원하면 true
+//***************************************************************************
+bool CFieldZoneBase::IsAttackRangeSupported(float attackRange, float maxMoveSpeed) const
+{
+	const float worstReach = attackRange + _fieldConfig.posToleranceBase
+		+ 2.0f * maxMoveSpeed * static_cast<float>(_fieldConfig.maxLatencyMs) * 0.001f;
+
+	return worstReach <= GetGuaranteedViewRange();
+}
+
+//***************************************************************************
+// @brief 엔티티를 사망 처리합니다. 이동 중이면 멈추고, 사망 훅 호출 후 자동 리스폰을 예약합니다.
+// @param victim 사망하는 엔티티
+// @param killer 마지막 일격을 가한 엔티티 (없으면 nullptr)
+//***************************************************************************
+void CFieldZoneBase::Kill(CZoneEntity& victim, CZoneEntity* killer)
+{
+	victim._dead = true;
+	victim._hp = 0;
+
+	if( victim._moving )
+	{
+		victim._dest = victim._pos;
+		EndMoving(&victim);
+		HandleMoveStopped(victim, false);
+	}
+
+	HandleDied(victim, killer);
+	ScheduleRespawn(victim);
+}
+
+//***************************************************************************
+// @brief 정책(GetRespawnDelayMs)에 따라 자동 리스폰 타이머를 예약합니다.
+//        타이머는 엔티티 제거 시 취소되므로, 같은 ID로 재입장한 엔티티를 잘못 되살리지 않는다.
+// @param victim 사망한 엔티티
+//***************************************************************************
+void CFieldZoneBase::ScheduleRespawn(CZoneEntity& victim)
+{
+	const uint32 delayMs = GetRespawnDelayMs(victim);
+	if( delayMs == kNoRespawn )
+		return;
+
+	const uint64 id = victim.GetId();
+	victim._respawnTimerId = ScheduleTimer(delayMs, [id](CZone& zone)
+		{
+			CFieldZoneBase& self = static_cast<CFieldZoneBase&>(zone);
+			CZoneEntity* entity = self.FindEntity(id);
+			if( entity == nullptr || !entity->_dead )
+				return;
+
+			entity->_respawnTimerId = 0;
+			self.Respawn(id);
+		});
+
+	// 타이머를 걸 수 없으면 영구 사망 상태로 남지 않도록 즉시 부활시킨다.
+	if( victim._respawnTimerId == 0 )
+	{
+		LOG_ERROR(_T("[CFieldZoneBase] respawn timer failed; respawning immediately. zoneId=%u, entityId=%llu"),
+			_fieldConfig.zone.zoneId, static_cast<unsigned long long>(id));
+		Respawn(id);
+	}
+}
+
+//***************************************************************************
+// @brief 사망한 엔티티를 부활시킵니다. 체력을 가득 채우고 리스폰 위치로 옮깁니다.
+//        예약된 자동 리스폰이 있으면 취소합니다. 존 스레드에서만 호출해야 합니다.
+// @param id 엔티티 ID
+// @return 부활했으면 true, 엔티티가 없거나 살아 있으면 false
+//***************************************************************************
+bool CFieldZoneBase::Respawn(uint64 id)
+{
+	assert(IsZoneThread() || !IsRunning());
+
+	CZoneEntity* entity = FindEntity(id);
+	if( entity == nullptr || !entity->_dead )
+		return false;
+
+	if( entity->_respawnTimerId != 0 )
+	{
+		CancelTimer(entity->_respawnTimerId);
+		entity->_respawnTimerId = 0;
+	}
+
+	entity->_dead = false;
+	entity->_hp = entity->_stats.maxHp;
+	entity->_nextAttackMs = GetNowMs();
+	entity->_invulnerableUntilMs = _fieldConfig.respawnInvulnMs != 0 ? GetNowMs() + _fieldConfig.respawnInvulnMs : 0;
+
+	// 리스폰 위치가 영역 밖이면(설정 오류) 제자리에서 부활한다.
+	MoveTo(entity, entity->_spawnPos, false);
+
+	HandleRespawned(*entity);
+	return true;
+}
+
+//***************************************************************************
+// @brief 공격 가능한 대상인지 판정하는 기본 정책입니다.
+//        자기 자신은 불가, 전투 참여 종류(플레이어/몬스터)끼리만 가능하며,
+//        플레이어끼리는 allowPvp일 때만, 몬스터끼리는 불가합니다. 재정의하여 파티/길드 등을 추가합니다.
+// @param attacker 공격자
+// @param target   대상
+// @return 공격 가능하면 true
+//***************************************************************************
+bool CFieldZoneBase::CanAttack(const CZoneEntity& attacker, const CZoneEntity& target) const
+{
+	if( &attacker == &target || !attacker.IsCombatant() || !target.IsCombatant() )
+		return false;
+
+	const bool attackerIsPlayer = attacker.GetType() == EntityType::Player;
+	const bool targetIsPlayer = target.GetType() == EntityType::Player;
+
+	if( attackerIsPlayer && targetIsPlayer )
+		return _fieldConfig.allowPvp;
+
+	return attackerIsPlayer || targetIsPlayer;
+}
+
+//***************************************************************************
+// @brief 사망 후 자동 리스폰까지의 지연을 반환하는 기본 정책입니다. 플레이어만 설정값으로 부활합니다.
+//        몬스터 등 그 외는 kNoRespawn(리스폰 스폰 시스템이 별도로 관리)입니다.
+// @param victim 사망한 엔티티
+// @return 지연(ms) 또는 kNoRespawn
+//***************************************************************************
+uint32 CFieldZoneBase::GetRespawnDelayMs(const CZoneEntity& victim) const
+{
+	return victim.GetType() == EntityType::Player ? _fieldConfig.respawnDelayMs : kNoRespawn;
+}
+
+//***************************************************************************
+// @brief 피해가 적용된 직후 호출됩니다. 재정의하여 주변에 피해 패킷을 브로드캐스트합니다.
+//        피해자의 현재 체력은 victim.GetHp()입니다. 치명타라면 이어서 HandleDied()가 호출됩니다.
+// @param attacker 공격자 (공격자가 없는 피해면 nullptr)
+// @param victim   피해자
+// @param damage   적용된 피해량
+//***************************************************************************
+void CFieldZoneBase::HandleDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage)
+{
+	(void)attacker;
+	(void)victim;
+	(void)damage;
+}
+
+//***************************************************************************
+// @brief 엔티티가 사망했을 때 호출됩니다. 이미 이동은 중단된 상태입니다.
+// @param victim 사망한 엔티티
+// @param killer 처치한 엔티티 (없으면 nullptr)
+//***************************************************************************
+void CFieldZoneBase::HandleDied(CZoneEntity& victim, CZoneEntity* killer)
+{
+	(void)victim;
+	(void)killer;
+}
+
+//***************************************************************************
+// @brief 엔티티가 부활하여 리스폰 위치에 배치된 직후 호출됩니다.
+// @param entity 부활한 엔티티
+//***************************************************************************
+void CFieldZoneBase::HandleRespawned(CZoneEntity& entity)
+{
+	(void)entity;
+}
+
+//***************************************************************************
+// @brief 공격 요청이 거부되었을 때 호출됩니다. (Cooldown/Throttled는 호출되지 않음)
+//        재정의하여 요청한 클라이언트에 거부 사유를 보냅니다.
+// @param attacker 공격 요청 엔티티
+// @param targetId 요청이 지목한 대상 ID
+// @param reason   거부 사유
+//***************************************************************************
+void CFieldZoneBase::HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason)
+{
+	(void)attacker;
+	(void)targetId;
 	(void)reason;
 }
 

@@ -1,10 +1,13 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // ZoneEntity.cpp : implementation of the CZoneEntity class.
 //
 //***************************************************************************
 
 #include "pch.h"
 #include "ZoneEntity.h"
+
+#include <cmath>
 
 //***************************************************************************
 // @brief 엔티티를 생성합니다.
@@ -17,9 +20,12 @@ CZoneEntity::CZoneEntity(uint64 id, EntityType type)
 	, _speed(0.0f)
 	, _moving(false)
 	, _inZone(false)
+	, _hp(_stats.maxHp)
+	, _dead(false)
+	, _nextAttackMs(0)
+	, _invulnerableUntilMs(0)
+	, _respawnTimerId(0)
 	, _movingIdx(kInvalidIndex)
-	, _lastMoveReqMs(0)
-	, _hasMoveReq(false)
 {
 }
 
@@ -42,6 +48,33 @@ void CZoneEntity::SetSpawnPos(const Vec2& pos)
 
 	_pos = pos;
 	_dest = pos;
+	_spawnPos = pos;
+}
+
+//***************************************************************************
+// @brief 전투 능력치를 설정하고 체력을 가득 채웁니다. 존에 등록(AddEntity)되기 전에만 유효합니다.
+// @details 잘못된 값은 보정한다: maxHp/attackIntervalMs는 1 이상, attack/defense는 0 이상,
+//          attackRange는 0 이상의 유한한 값(NaN/Inf는 0).
+// @param stats 전투 능력치
+//***************************************************************************
+void CZoneEntity::SetCombatStats(const SCombatStats& stats)
+{
+	if( _inZone )
+		return;
+
+	_stats = stats;
+	if( _stats.maxHp < 1 )
+		_stats.maxHp = 1;
+	if( _stats.attack < 0 )
+		_stats.attack = 0;
+	if( _stats.defense < 0 )
+		_stats.defense = 0;
+	if( !std::isfinite(_stats.attackRange) || _stats.attackRange < 0.0f )
+		_stats.attackRange = 0.0f;
+	if( _stats.attackIntervalMs < 1 )
+		_stats.attackIntervalMs = 1;
+
+	_hp = _stats.maxHp;
 }
 
 //***************************************************************************

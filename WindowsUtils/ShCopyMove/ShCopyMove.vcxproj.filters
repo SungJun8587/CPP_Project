@@ -119,5 +119,8 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryCommon.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

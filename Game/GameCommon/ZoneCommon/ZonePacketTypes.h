@@ -107,6 +107,20 @@ enum class ECorrectPosReason : uint8_t
 	OutOfBounds = 2,		// 목적지가 존 영역 밖
 	Immobile = 3,			// 이동할 수 없는 상태
 	Teleported = 4,			// 서버가 순간이동시킴
+	Dead = 5,				// 사망 상태에서는 이동할 수 없음
+};
+
+//***************************************************************************
+// @brief 공격 요청 거부 사유. ZcAttackRejectNotifyPacket::reason에 설정됩니다.
+// @details 쿨다운 중이거나 같은 틱의 중복 요청은 통지 없이 무시되므로 여기에 없다.
+//***************************************************************************
+enum class EAttackRejectReason : uint8_t
+{
+	OutOfRange = 1,			// 대상이 없거나 사거리 밖 (엔티티 존재 여부가 새지 않도록 구분하지 않는다)
+	AttackerDead = 2,		// 내가 사망 상태
+	TargetDead = 3,			// 대상이 이미 사망 상태
+	InvalidTarget = 4,		// 공격할 수 없는 대상 (자기 자신, PvP 금지 등)
+	TargetInvulnerable = 5,	// 대상이 무적 상태
 };
 
 //***************************************************************************
@@ -137,6 +151,7 @@ enum class EZoneServerPacketType : uint16_t
 	ZoneKickNotify = 1007,		// Zone -> Gateway, 존이 플레이어를 내보냄
 	ZoneRelayToZone = 1008,		// Gateway -> Zone, 클라이언트 패킷 중계
 	ZoneRelayToClient = 1009,	// Zone -> Gateway, 클라이언트로 보낼 패킷 중계
+	ZoneRelayToClients = 1010,	// Zone -> Gateway, 같은 패킷을 여러 클라이언트로 보낼 때의 멀티캐스트 중계
 };
 
 //***************************************************************************
@@ -150,6 +165,11 @@ enum class EZoneClientPacketType : uint16_t
 	ZcSpawnNotify = 2004,		// Zone -> Client, 시야에 엔티티가 들어옴
 	ZcDespawnNotify = 2005,		// Zone -> Client, 시야에서 엔티티가 벗어남
 	ZcCorrectPosNotify = 2006,	// Zone -> Client, 내 위치를 서버 값으로 보정
+	ZcAttackReq = 2007,			// Client -> Zone, 대상 지정 기본 공격 요청
+	ZcDamageNotify = 2008,		// Zone -> Client, 피해 발생(공격자/피해자/피해량/남은 체력)
+	ZcDeathNotify = 2009,		// Zone -> Client, 엔티티 사망
+	ZcRespawnNotify = 2010,		// Zone -> Client, 엔티티 부활(리스폰 위치/체력)
+	ZcAttackRejectNotify = 2011,// Zone -> Client, 내 공격 요청 거부 사유
 };
 
 #endif // ndef ZONEPACKETTYPES_H

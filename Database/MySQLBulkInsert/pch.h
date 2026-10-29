@@ -26,11 +26,7 @@ using namespace std;
 #include <BaseRedefineDataType.h>
 #include <BaseMacro.h>
 
-#include <Memory/RawAllocator.h>
-#include <Memory/MemoryPool.h>
-#include <Memory/Memory.h>
-#include <Memory/Allocator.h>
-#include <Memory/Containers.h>
+#include <Memory/MemoryCommon.h>
 
 #include <Util/Log.h>
 #include <Util/WinCharsetConv.h>

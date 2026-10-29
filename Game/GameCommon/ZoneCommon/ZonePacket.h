@@ -184,6 +184,17 @@ struct ZoneRelayToClientPacket : PacketHeader
 	uint64	clientSessionId;
 };
 
+//***************************************************************************
+// @brief 같은 패킷을 여러 클라이언트로 보내는 멀티캐스트 중계 (Zone -> Gateway).
+// @details 이 구조체 바로 뒤에 uint64 clientSessionId[recipientCount], 이어서 패킷 원문이 온다.
+//          AOI 브로드캐스트(이동/피해/사망 통지)에서 수신자마다 중계 패킷을 따로 만들던 것을 한 패킷으로 줄인다.
+//          전체 크기는 sizeof(이 구조체) + recipientCount * 8 + 원문 크기이며 Gateway가 이를 검증한다.
+//***************************************************************************
+struct ZoneRelayToClientsPacket : PacketHeader
+{
+	uint16	recipientCount;		// 수신자 수 (1 이상)
+};
+
 // ---------------------------------------------------------------------------
 // 클라이언트 <-> ZoneServer (Gateway가 중계)
 // ---------------------------------------------------------------------------
@@ -237,6 +248,9 @@ struct ZcSpawnNotifyPacket : PacketHeader
 	float	destY;
 	float	speed;
 	uint8	moving;			// 1이면 dest를 향해 이동 중
+	int32	hp;				// 현재 체력
+	int32	maxHp;			// 최대 체력
+	uint8	dead;			// 1이면 사망 상태(시체)
 };
 
 //***************************************************************************
@@ -255,6 +269,57 @@ struct ZcCorrectPosNotifyPacket : PacketHeader
 	uint8	reason;			// ECorrectPosReason
 	float	posX;
 	float	posY;
+};
+
+//***************************************************************************
+// @brief 기본 공격 요청 (Client -> Zone). 공격자는 세션으로 식별되므로 대상만 싣는다.
+//***************************************************************************
+struct ZcAttackReqPacket : PacketHeader
+{
+	uint64	targetId;		// 공격 대상 엔티티 ID (서버가 존재/생존/사거리/공격 가능 여부를 모두 검증)
+};
+
+//***************************************************************************
+// @brief 피해 알림 (Zone -> Client). 공격자·피해자 주변 전원에게 전송된다.
+//***************************************************************************
+struct ZcDamageNotifyPacket : PacketHeader
+{
+	uint64	attackerId;		// 공격자 ID, 공격자가 없는 피해(DoT/환경)면 0
+	uint64	targetId;
+	int32	damage;			// 적용된 피해량
+	int32	hp;				// 피해 적용 후 피해자 체력
+	int32	maxHp;
+};
+
+//***************************************************************************
+// @brief 사망 알림 (Zone -> Client). 피해자 주변 전원에게 전송된다.
+//***************************************************************************
+struct ZcDeathNotifyPacket : PacketHeader
+{
+	uint64	entityId;		// 사망한 엔티티
+	uint64	killerId;		// 처치한 엔티티, 없으면 0
+};
+
+//***************************************************************************
+// @brief 부활 알림 (Zone -> Client). 리스폰 위치 주변 전원에게 전송된다.
+//***************************************************************************
+struct ZcRespawnNotifyPacket : PacketHeader
+{
+	uint64	entityId;
+	float	posX;			// 리스폰 위치
+	float	posY;
+	int32	hp;
+	int32	maxHp;
+	uint32	invulnerableMs;	// 남은 무적 시간(ms), 0이면 없음
+};
+
+//***************************************************************************
+// @brief 공격 거부 알림 (Zone -> Client). 공격을 요청한 본인에게만 전송된다.
+//***************************************************************************
+struct ZcAttackRejectNotifyPacket : PacketHeader
+{
+	uint64	targetId;		// 요청에 실렸던 대상 ID
+	uint8	reason;			// EAttackRejectReason
 };
 
 #pragma pack(pop)
@@ -300,6 +365,54 @@ inline bool BuildRelayPacket(EZoneServerPacketType type, uint64 clientSessionId,
 	relay->clientSessionId = clientSessionId;
 
 	std::memcpy(outBuf + sizeof(TRelay), payload, payloadSize);
+	outSize = static_cast<uint16>(total);
+	return true;
+}
+
+//***************************************************************************
+// @brief 멀티캐스트 중계 패킷 한 개에 담을 수 있는 최대 수신자 수를 계산합니다.
+// @param payloadSize 중계할 패킷 원문 크기
+// @param capacity    패킷 전체 크기 상한(보통 kMaxServerPacketBytes)
+// @return 최대 수신자 수. 원문이 너무 커서 한 명도 못 담으면 0
+//***************************************************************************
+inline size_t MaxMulticastRecipients(size_t payloadSize, size_t capacity)
+{
+	const size_t fixedSize = sizeof(ZoneRelayToClientsPacket) + payloadSize;
+	if( fixedSize >= capacity || fixedSize > 0xFFFF )
+		return 0;
+
+	const size_t byCapacity = (capacity - fixedSize) / sizeof(uint64);
+	return byCapacity < 0xFFFF ? byCapacity : 0xFFFF;
+}
+
+//***************************************************************************
+// @brief 멀티캐스트 중계 패킷(고정 헤더 + 수신자 ID 배열 + 페이로드 원문)을 버퍼에 만듭니다.
+// @param sessionIds   수신자 클라이언트 세션 ID 배열
+// @param count        수신자 수 (1 이상, MaxMulticastRecipients 이하)
+// @param payload      중계할 패킷 원문(자체 PacketHeader 포함)
+// @param payloadSize  원문 크기
+// @param outBuf       결과를 만들 버퍼
+// @param outCapacity  버퍼 크기
+// @param outSize      [out] 만들어진 패킷 전체 크기
+// @return 성공 시 true, 인자가 잘못됐거나 크기가 버퍼/uint16 범위를 넘으면 false
+//***************************************************************************
+inline bool BuildMulticastRelayPacket(const uint64* sessionIds, size_t count,
+	const void* payload, size_t payloadSize, BYTE* outBuf, size_t outCapacity, uint16& outSize)
+{
+	if( sessionIds == nullptr || payload == nullptr || count == 0 || count > MaxMulticastRecipients(payloadSize, outCapacity) )
+		return false;
+
+	const size_t idsBytes = count * sizeof(uint64);
+	const size_t total = sizeof(ZoneRelayToClientsPacket) + idsBytes + payloadSize;
+
+	ZoneRelayToClientsPacket relay{};
+	InitZonePacket(relay, EZoneServerPacketType::ZoneRelayToClients);
+	relay.size = static_cast<uint16>(total);
+	relay.recipientCount = static_cast<uint16>(count);
+
+	std::memcpy(outBuf, &relay, sizeof(relay));
+	std::memcpy(outBuf + sizeof(relay), sessionIds, idsBytes);
+	std::memcpy(outBuf + sizeof(relay) + idsBytes, payload, payloadSize);
 	outSize = static_cast<uint16>(total);
 	return true;
 }

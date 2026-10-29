@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // FieldZone.h : interface for the CFieldZone<TEntity> class template.
 //
 //***************************************************************************
@@ -81,12 +82,20 @@ protected:
 	virtual void OnEntityMoveStopped(TEntity& entity, bool arrived) { (void)entity; (void)arrived; }
 	virtual void OnEntityTeleported(TEntity& entity) { (void)entity; }
 	virtual void OnMoveRejected(TEntity& entity, MoveResult reason) { (void)entity; (void)reason; }
+	virtual void OnEntityDamaged(TEntity* attacker, TEntity& victim, int32 damage) { (void)attacker; (void)victim; (void)damage; }
+	virtual void OnEntityDied(TEntity& victim, TEntity* killer) { (void)victim; (void)killer; }
+	virtual void OnEntityRespawned(TEntity& entity) { (void)entity; }
+	virtual void OnAttackRejected(TEntity& attacker, uint64 targetId, AttackResult reason) { (void)attacker; (void)targetId; (void)reason; }
 
 private:
 	void HandleMoveStarted(CZoneEntity& entity) final { OnEntityMoveStarted(static_cast<TEntity&>(entity)); }
 	void HandleMoveStopped(CZoneEntity& entity, bool arrived) final { OnEntityMoveStopped(static_cast<TEntity&>(entity), arrived); }
 	void HandleTeleported(CZoneEntity& entity) final { OnEntityTeleported(static_cast<TEntity&>(entity)); }
 	void HandleMoveRejected(CZoneEntity& entity, MoveResult reason) final { OnMoveRejected(static_cast<TEntity&>(entity), reason); }
+	void HandleDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage) final { OnEntityDamaged(static_cast<TEntity*>(attacker), static_cast<TEntity&>(victim), damage); }
+	void HandleDied(CZoneEntity& victim, CZoneEntity* killer) final { OnEntityDied(static_cast<TEntity&>(victim), static_cast<TEntity*>(killer)); }
+	void HandleRespawned(CZoneEntity& entity) final { OnEntityRespawned(static_cast<TEntity&>(entity)); }
+	void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) final { OnAttackRejected(static_cast<TEntity&>(attacker), targetId, reason); }
 };
 
 #endif // ndef FIELDZONE_H

@@ -201,9 +201,6 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\RawAllocator.h">
       <Filter>UtilCore\Memory</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCommon.h">
-      <Filter>UtilCore\Network\IOCP</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpCore.h">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClInclude>
@@ -438,6 +435,12 @@
       <Filter>UtilCore\Containers\Queue</Filter>
     </ClInclude>
     <ClInclude Include="FileServerOptions.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryCommon.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpDefine.h">
+      <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl">

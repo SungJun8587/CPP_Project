@@ -39,12 +39,7 @@ using namespace std;
 #include <Util/ScopeExit.h>
 #include <Util/FixedBufUtil.h>
 
-#include <Memory/RawAllocator.h>
-#include <Memory/Allocator.h>
-#include <Memory/MemoryPool.h>
-#include <Memory/Memory.h>
-#include <Memory/Containers.h>
-#include <Memory/ObjectPool.h>
+#include <Memory/MemoryCommon.h>
 
 #include <Thread/CacheAlignment.h>
 #include <Thread/DeadLockProfiler.h>

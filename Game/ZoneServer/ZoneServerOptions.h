@@ -40,6 +40,16 @@ struct SZoneServerOptions
 	float		spawnX = 100.0f;
 	float		spawnY = 100.0f;
 	float		playerSpeed = 6.0f;				// units/sec
+
+	// ── 전투 ─────────────────────────────────────────────
+	int32		playerMaxHp = 100;				// 플레이어 최대 체력
+	int32		playerAttack = 10;				// 플레이어 공격력
+	int32		playerDefense = 0;				// 플레이어 방어력
+	float		attackRange = 2.0f;				// 기본 공격 사거리 (units)
+	uint32		attackIntervalMs = 1000;		// 기본 공격 최소 간격 (ms)
+	uint32		respawnDelayMs = 5000;			// 사망 후 자동 리스폰까지의 시간 (ms)
+	bool		allowPvp = true;				// 플레이어끼리 공격 허용 여부
+	uint32		respawnInvulnMs = 3000;			// 리스폰 직후 무적 시간 (ms). 스폰 캠핑 방지, 본인이 공격하면 해제
 };
 
 #endif // ndef UC_ZONESERVEROPTIONS_H

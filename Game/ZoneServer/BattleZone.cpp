@@ -5,7 +5,9 @@
 //***************************************************************************
 
 #include "pch.h"
+#include "../GameCommon/ZoneCommon/ZonePacket.h"
 #include "BattleZone.h"
+#include "ZoneServerMain.h"
 
 #include <cmath>
 
@@ -15,14 +17,17 @@
 // @param server      클라이언트 패킷 중계 경로를 가진 존 서버
 // @param spawnPos    입장 시 스폰 위치
 // @param playerSpeed 플레이어 기본 이동 속도 (units/sec)
+// @param playerStats 플레이어 전투 능력치
 //***************************************************************************
-CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed)
+CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed, const SCombatStats& playerStats)
 	: CFieldZone<>(config)
 	, _server(server)
 	, _spawnPos(spawnPos)
 	, _playerSpeed(playerSpeed)
+	, _playerStats(playerStats)
 	, _playerCount(0)
 {
+	_recipients.reserve(256);
 }
 
 //***************************************************************************
@@ -65,6 +70,7 @@ void CBattleZone::HandleEnter(uint64 clientSessionId, uint64 charId)
 	std::unique_ptr<CZonePlayer> player = std::make_unique<CZonePlayer>(charId, clientSessionId, this);
 	player->SetSpawnPos(_spawnPos);
 	player->SetSpeed(_playerSpeed);
+	player->SetCombatStats(_playerStats);
 
 	CZoneEntity* added = AddEntity(std::move(player));
 	if( added == nullptr )
@@ -136,6 +142,16 @@ void CBattleZone::HandleClientPacket(uint64 clientSessionId, const PacketHeader*
 		break;
 	}
 
+	case EZoneClientPacketType::ZcAttackReq:
+	{
+		if( header->size < sizeof(ZcAttackReqPacket) )
+			return;
+
+		const ZcAttackReqPacket* req = static_cast<const ZcAttackReqPacket*>(header);
+		RequestAttack(*it->second, req->targetId);
+		break;
+	}
+
 	default:
 		break;
 	}
@@ -158,6 +174,9 @@ void CBattleZone::SendSpawn(CZonePlayer& to, CZoneEntity& about)
 	notify.destY = about.GetDest().y;
 	notify.speed = about.GetSpeed();
 	notify.moving = about.IsMoving() ? 1 : 0;
+	notify.hp = about.GetHp();
+	notify.maxHp = about.GetCombatStats().maxHp;
+	notify.dead = about.IsAlive() ? 0 : 1;
 
 	SendToEntity(to, &notify, notify.size);
 }
@@ -248,12 +267,91 @@ void CBattleZone::OnMoveRejected(CZoneEntity& entity, MoveResult reason)
 	{
 	case MoveResult::OutOfBounds:		correct.reason = static_cast<uint8>(ECorrectPosReason::OutOfBounds); break;
 	case MoveResult::Immobile:			correct.reason = static_cast<uint8>(ECorrectPosReason::Immobile); break;
+	case MoveResult::Dead:				correct.reason = static_cast<uint8>(ECorrectPosReason::Dead); break;
 	default:							correct.reason = static_cast<uint8>(ECorrectPosReason::PositionMismatch); break;
 	}
 
 	correct.posX = entity.GetPos().x;
 	correct.posY = entity.GetPos().y;
 	SendToEntity(entity, &correct, correct.size);
+}
+
+//***************************************************************************
+// @brief 피해가 적용되면 피해자 주변 전원과 공격자에게 피해 정보를 알린다.
+// @param attacker 공격자 (공격자가 없는 피해면 nullptr)
+// @param victim   피해자
+// @param damage   적용된 피해량
+//***************************************************************************
+void CBattleZone::OnEntityDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage)
+{
+	ZcDamageNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcDamageNotify);
+	notify.attackerId = attacker != nullptr ? attacker->GetId() : 0;
+	notify.targetId = victim.GetId();
+	notify.damage = damage;
+	notify.hp = victim.GetHp();
+	notify.maxHp = victim.GetCombatStats().maxHp;
+
+	BroadcastCombat(victim, attacker, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 엔티티가 사망하면 피해자 주변 전원과 처치자에게 알린다.
+// @param victim 사망한 엔티티
+// @param killer 처치한 엔티티 (없으면 nullptr)
+//***************************************************************************
+void CBattleZone::OnEntityDied(CZoneEntity& victim, CZoneEntity* killer)
+{
+	ZcDeathNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcDeathNotify);
+	notify.entityId = victim.GetId();
+	notify.killerId = killer != nullptr ? killer->GetId() : 0;
+
+	BroadcastCombat(victim, killer, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 엔티티가 부활하면 리스폰 위치 주변 전원과 본인에게 알린다.
+//        이전 위치의 관찰자에게는 AOI 이탈 통지(디스폰)가, 새 위치의 관찰자에게는 진입 통지(스폰)가 따로 나간다.
+// @param entity 부활한 엔티티
+//***************************************************************************
+void CBattleZone::OnEntityRespawned(CZoneEntity& entity)
+{
+	ZcRespawnNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcRespawnNotify);
+	notify.entityId = entity.GetId();
+	notify.posX = entity.GetPos().x;
+	notify.posY = entity.GetPos().y;
+	notify.hp = entity.GetHp();
+	notify.maxHp = entity.GetCombatStats().maxHp;
+	notify.invulnerableMs = IsInvulnerable(entity) ? static_cast<uint32>(entity.GetInvulnerableUntilMs() - GetNowMs()) : 0;
+
+	BroadcastAround(entity, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 공격 요청이 거부되면 요청한 클라이언트에게만 사유를 알린다.
+// @param attacker 공격 요청 엔티티
+// @param targetId 요청이 지목한 대상 ID
+// @param reason   거부 사유
+//***************************************************************************
+void CBattleZone::OnAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason)
+{
+	ZcAttackRejectNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcAttackRejectNotify);
+	notify.targetId = targetId;
+
+	switch( reason )
+	{
+	case AttackResult::TargetNotFound:	// 대상 없음과 사거리 밖은 구분하지 않는다(엔티티 존재 여부 비노출)
+	case AttackResult::OutOfRange:		notify.reason = static_cast<uint8>(EAttackRejectReason::OutOfRange); break;
+	case AttackResult::AttackerDead:	notify.reason = static_cast<uint8>(EAttackRejectReason::AttackerDead); break;
+	case AttackResult::TargetDead:		notify.reason = static_cast<uint8>(EAttackRejectReason::TargetDead); break;
+	case AttackResult::TargetInvulnerable:	notify.reason = static_cast<uint8>(EAttackRejectReason::TargetInvulnerable); break;
+	default:							notify.reason = static_cast<uint8>(EAttackRejectReason::InvalidTarget); break;
+	}
+
+	SendToEntity(attacker, &notify, notify.size);
 }
 
 //***************************************************************************
@@ -272,17 +370,69 @@ void CBattleZone::SendToEntity(CZoneEntity& target, const void* data, uint16 siz
 
 //***************************************************************************
 // @brief 엔티티 본인과 시야(AOI) 안의 플레이어 전원에게 같은 패킷을 보낸다.
-//        현재는 수신자마다 중계 패킷을 따로 만든다(수신자 목록을 한 패킷에 담는 멀티캐스트 중계는 이후 최적화 대상).
+//        수신자 세션 ID를 모아 멀티캐스트 중계 패킷 하나로 Gateway에 보낸다.
 // @param entity 기준 엔티티
 // @param data   패킷 데이터
 // @param size   패킷 크기
 //***************************************************************************
 void CBattleZone::BroadcastAround(CZoneEntity& entity, const void* data, uint16 size)
 {
-	SendToEntity(entity, data, size);
+	_recipients.clear();
 
-	ForEachInAoi(entity, [this, data, size](CZoneEntity& other)
+	AddRecipient(entity);
+	ForEachInAoi(entity, [this](CZoneEntity& other)
 		{
-			SendToEntity(other, data, size);
+			AddRecipient(other);
 		});
+
+	FlushRecipients(data, size);
+}
+
+//***************************************************************************
+// @brief 피해자 본인과 시야 안 플레이어 전원에게 보내고, 전투 상대(공격자/처치자)가 그 시야에 없었으면 따로 보낸다.
+//        사거리가 시야보다 길거나 AOI 히스테리시스로 서로 보이지 않아도 공격자가 결과를 받도록 보장한다.
+// @param victim 기준 엔티티(피해자)
+// @param other  전투 상대 (없으면 nullptr)
+// @param data   패킷 데이터
+// @param size   패킷 크기
+//***************************************************************************
+void CBattleZone::BroadcastCombat(CZoneEntity& victim, CZoneEntity* other, const void* data, uint16 size)
+{
+	_recipients.clear();
+
+	AddRecipient(victim);
+
+	bool otherVisited = (other == nullptr);
+	ForEachInAoi(victim, [this, other, &otherVisited](CZoneEntity& neighbor)
+		{
+			if( &neighbor == other )
+				otherVisited = true;
+
+			AddRecipient(neighbor);
+		});
+
+	if( !otherVisited )
+		AddRecipient(*other);
+
+	FlushRecipients(data, size);
+}
+
+//***************************************************************************
+// @brief 엔티티가 플레이어면 수신자 목록에 세션 ID를 추가한다. 플레이어가 아니면 무시한다.
+// @param target 수신 후보 엔티티
+//***************************************************************************
+void CBattleZone::AddRecipient(CZoneEntity& target)
+{
+	if( target.GetType() == EntityType::Player )
+		_recipients.push_back(static_cast<CZonePlayer&>(target).GetClientSessionId());
+}
+
+//***************************************************************************
+// @brief 모인 수신자 전원에게 같은 패킷을 멀티캐스트 중계로 한 번에 보낸다.
+// @param data 패킷 데이터
+// @param size 패킷 크기
+//***************************************************************************
+void CBattleZone::FlushRecipients(const void* data, uint16 size)
+{
+	_server->SendToClients(_recipients.data(), _recipients.size(), data, size);
 }

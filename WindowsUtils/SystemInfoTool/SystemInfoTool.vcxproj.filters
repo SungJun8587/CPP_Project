@@ -45,7 +45,7 @@
     <ClCompile Include="..\..\..\Library\UtilCore\System\WmiHardwareInfo.cpp">
       <Filter>UtilCore\System</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\Library\UtilCore\System\DeviceInfo.cpp">
+    <ClCompile Include="..\..\..\Library\UtilCore\System\PciInfo.cpp">
       <Filter>UtilCore\System</Filter>
     </ClCompile>
   </ItemGroup>
@@ -96,7 +96,7 @@
     <ClInclude Include="..\..\..\Library\UtilCore\System\WmiHardwareInfo.h">
       <Filter>UtilCore\System</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\Library\UtilCore\System\DeviceInfo.h">
+    <ClInclude Include="..\..\..\Library\UtilCore\System\PciInfo.h">
       <Filter>UtilCore\System</Filter>
     </ClInclude>
   </ItemGroup>
@@ -105,6 +105,12 @@
       <Filter>UtilCore\System\Asm</Filter>
     </MASM>
     <MASM Include="..\..\..\Library\UtilCore\System\Asm\CpuInfo86.asm">
+      <Filter>UtilCore\System\Asm</Filter>
+    </MASM>
+    <MASM Include="..\..\..\Library\UtilCore\System\Asm\PciInfo64.asm">
+      <Filter>UtilCore\System\Asm</Filter>
+    </MASM>
+    <MASM Include="..\..\..\Library\UtilCore\System\Asm\PciInfo86.asm">
       <Filter>UtilCore\System\Asm</Filter>
     </MASM>
   </ItemGroup>

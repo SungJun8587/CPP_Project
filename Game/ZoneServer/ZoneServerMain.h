@@ -59,6 +59,7 @@ public:
 	// ── 전송 (어느 스레드에서나 호출 가능) ────────────────
 	bool SendToGateway(const void* data, uint16 size);
 	bool SendToClient(uint64 clientSessionId, const void* payload, uint16 payloadSize);
+	bool SendToClients(const uint64* clientSessionIds, size_t count, const void* payload, uint16 payloadSize);
 
 	//***************************************************************************
 	// @brief Gateway가 존 등록을 거부했는지 반환합니다. true면 프로세스를 종료해야 합니다.

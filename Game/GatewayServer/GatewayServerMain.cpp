@@ -6,6 +6,8 @@
 
 #include "pch.h"
 #include "GatewayServerMain.h"
+#include "GatewayClientSession.h"
+#include "GatewayZoneSession.h"
 
 #include <chrono>
 #include <cstring>
@@ -213,6 +215,7 @@ bool CGatewayServerMain::OnZonePacket(CGatewayZoneSession& session, const Packet
 	case EZoneServerPacketType::ZoneEnterRes:		return HandleZoneEnterRes(session, header);
 	case EZoneServerPacketType::ZoneKickNotify:		return HandleZoneKick(session, header);
 	case EZoneServerPacketType::ZoneRelayToClient:	return HandleRelayToClient(session, header);
+	case EZoneServerPacketType::ZoneRelayToClients:	return HandleRelayToClients(session, header);
 	default:
 		LOG_ERROR(_T("[CGatewayServerMain] unknown zone packet type: %u"), static_cast<unsigned>(header->type));
 		return false;
@@ -583,6 +586,75 @@ bool CGatewayServerMain::HandleRelayToClient(CGatewayZoneSession& session, const
 		client->Send(payload, static_cast<uint16>(payloadSize));
 
 	return true;
+}
+
+//***************************************************************************
+// @brief 존 서버가 보낸 멀티캐스트 패킷을 수신자 클라이언트들에게 전달합니다.
+//        수신자마다 "지금 이 존에 있는지" 검사하므로 존을 옮겼거나 끊긴 클라이언트는 조용히 건너뛴다.
+// @param session 중계를 요청한 존 서버 세션
+// @param header  ZoneRelayToClientsPacket + 수신자 세션 ID 배열 + 클라이언트 패킷 원문
+// @return 프로토콜 위반(크기 불일치, 수신자 0명 등)이면 false
+//***************************************************************************
+bool CGatewayServerMain::HandleRelayToClients(CGatewayZoneSession& session, const PacketHeader* header)
+{
+	if( header->size < sizeof(ZoneRelayToClientsPacket) )
+		return false;
+
+	const ZoneRelayToClientsPacket* relay = static_cast<const ZoneRelayToClientsPacket*>(header);
+	const size_t count = relay->recipientCount;
+	const size_t headBytes = sizeof(ZoneRelayToClientsPacket) + count * sizeof(uint64);
+
+	if( count == 0 || static_cast<size_t>(header->size) < headBytes + sizeof(PacketHeader) )
+		return false;
+
+	const BYTE* base = reinterpret_cast<const BYTE*>(relay);
+	const BYTE* ids = base + sizeof(ZoneRelayToClientsPacket);
+	const BYTE* payload = base + headBytes;
+	const size_t payloadSize = static_cast<size_t>(header->size) - headBytes;
+
+	// 원문 헤더의 size가 실제 페이로드 크기와 맞아야 한다.
+	const PacketHeader* inner = reinterpret_cast<const PacketHeader*>(payload);
+	if( inner->size != payloadSize )
+		return false;
+
+	// 수신자 조회는 읽기 락을 한 번만 잡고 모아서 하고, 전송은 락 밖에서 한다.
+	thread_local std::vector<std::shared_ptr<CGatewayClientSession>> recipients;
+	recipients.clear();
+	ResolveClients(ids, count, recipients);
+
+	const uint32 zoneId = session.GetZoneId();
+	for( const std::shared_ptr<CGatewayClientSession>& client : recipients )
+	{
+		if( client->GetZoneId() == zoneId )
+			client->Send(payload, static_cast<uint16>(payloadSize));
+	}
+
+	recipients.clear();		// 세션 수명을 이 호출 밖으로 끌고 가지 않는다
+	return true;
+}
+
+//***************************************************************************
+// @brief 패킹된 세션 ID 배열(uint64, 정렬 보장 없음)에서 살아 있는 클라이언트 세션을 한 번의 읽기 락으로 모읍니다.
+// @param packedIds 세션 ID 배열 시작 주소
+// @param count     ID 개수
+// @param out       [out] 찾은 세션 (없거나 이미 사라진 ID는 건너뜀)
+//***************************************************************************
+void CGatewayServerMain::ResolveClients(const BYTE* packedIds, size_t count, std::vector<std::shared_ptr<CGatewayClientSession>>& out) const
+{
+	PRReadLockGuard guard(_clientLock, __FUNCTION__);
+
+	for( size_t i = 0; i < count; ++i )
+	{
+		uint64 clientSessionId = 0;
+		std::memcpy(&clientSessionId, packedIds + i * sizeof(uint64), sizeof(clientSessionId));	// 정렬 보장이 없으므로 복사해서 읽는다
+
+		auto it = _clients.find(clientSessionId);
+		if( it == _clients.end() )
+			continue;
+
+		if( std::shared_ptr<CGatewayClientSession> client = it->second.lock() )
+			out.push_back(std::move(client));
+	}
 }
 
 //***************************************************************************

@@ -41,11 +41,7 @@ using namespace std;
 #include <Util/ConsoleUtil.h>
 #include <Util/Log.h>
 
-#include <Memory/RawAllocator.h>
-#include <Memory/MemoryPool.h>
-#include <Memory/Memory.h>
-#include <Memory/Allocator.h>
-#include <Memory/Containers.h>
+#include <Memory/MemoryCommon.h>
 #include <Memory/Singleton.h>
 
 #include <Util/WinCharsetConv.h>

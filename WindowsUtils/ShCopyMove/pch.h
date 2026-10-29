@@ -24,12 +24,7 @@
 #include <BaseMacro.h>
 #include <BaseTLS.h>
 
-#include <Memory/RawAllocator.h>
-#include <Memory/Allocator.h>
-#include <Memory/MemoryPool.h>
-#include <Memory/Memory.h>
-#include <Memory/ObjectPool.h>
-#include <Memory/Containers.h>
+#include <Memory/MemoryCommon.h>
 
 #include <Util/ConsoleUtil.h>
 #include <Util/Log.h>

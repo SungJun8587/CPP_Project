@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include "ZoneServerMain.h"
+#include "ZoneLinkSession.h"
 
 #include <algorithm>
 #include <array>
@@ -49,15 +50,34 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 	zoneConfig.maxX = _options.maxX;
 	zoneConfig.maxY = _options.maxY;
 	zoneConfig.cellSize = _options.cellSize;
+	zoneConfig.respawnDelayMs = _options.respawnDelayMs;
+	zoneConfig.allowPvp = _options.allowPvp;
+	zoneConfig.respawnInvulnMs = _options.respawnInvulnMs;
+
+	SCombatStats playerStats;
+	playerStats.maxHp = _options.playerMaxHp;
+	playerStats.attack = _options.playerAttack;
+	playerStats.defense = _options.playerDefense;
+	playerStats.attackRange = _options.attackRange;
+	playerStats.attackIntervalMs = _options.attackIntervalMs;
 
 	Vec2 spawnPos;
 	spawnPos.x = _options.spawnX;
 	spawnPos.y = _options.spawnY;
 
-	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, _options.playerSpeed);
+	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, _options.playerSpeed, playerStats);
 	if( !_zone->IsValid() )
 	{
 		LOG_ERROR(_T("[CZoneServerMain] invalid zone configuration. zoneId=%u"), _options.zoneId);
+		_zone.reset();
+		return false;
+	}
+
+	// 사거리가 AOI 시야보다 길면 보이지 않는 대상을 공격할 수 있고 피해 통지도 시야 밖으로 나간다.
+	if( !_zone->IsAttackRangeSupported(_options.attackRange, _options.playerSpeed) )
+	{
+		LOG_ERROR(_T("[CZoneServerMain] attack reach (range + tolerance + latency allowance) exceeds the guaranteed AOI view range. zoneId=%u, attackRange=%.1f, playerSpeed=%.1f, viewRange=%.1f"),
+			_options.zoneId, _options.attackRange, _options.playerSpeed, _zone->GetGuaranteedViewRange());
 		_zone.reset();
 		return false;
 	}
@@ -232,6 +252,45 @@ bool CZoneServerMain::SendToClient(uint64 clientSessionId, const void* payload, 
 		return false;
 
 	return SendToGateway(buffer, totalSize);
+}
+
+//***************************************************************************
+// @brief 같은 패킷을 여러 클라이언트로 보냅니다. 수신자가 한 명이면 일반 중계를, 여러 명이면 멀티캐스트 중계를 쓰며,
+//        한 패킷에 담을 수 없을 만큼 많으면 나눠서 보낸다. 수신자마다 중계 패킷을 만들던 것보다 Zone->Gateway 구간의
+//        복사량과 송신 횟수가 크게 줄어든다.
+// @param clientSessionIds 받을 클라이언트의 Gateway 세션 ID 배열 (중복 없음)
+// @param count            수신자 수
+// @param payload          클라이언트에게 전달할 패킷 원문(자체 PacketHeader 포함)
+// @param payloadSize      원문 크기
+// @return 모든 조각을 송신 큐에 넣었으면 true (수신자가 없으면 true)
+//***************************************************************************
+bool CZoneServerMain::SendToClients(const uint64* clientSessionIds, size_t count, const void* payload, uint16 payloadSize)
+{
+	if( count == 0 )
+		return true;
+
+	if( count == 1 )
+		return SendToClient(clientSessionIds[0], payload, payloadSize);
+
+	const size_t perPacket = MaxMulticastRecipients(payloadSize, kMaxServerPacketBytes);
+	if( perPacket == 0 )
+		return false;
+
+	thread_local BYTE buffer[kMaxServerPacketBytes];
+
+	bool allSent = true;
+	for( size_t offset = 0; offset < count; )
+	{
+		const size_t n = (count - offset) < perPacket ? (count - offset) : perPacket;
+
+		uint16 totalSize = 0;
+		if( !BuildMulticastRelayPacket(clientSessionIds + offset, n, payload, payloadSize, buffer, sizeof(buffer), totalSize) )
+			return false;
+
+		allSent &= SendToGateway(buffer, totalSize);
+		offset += n;
+	}
+	return allSent;
 }
 
 //***************************************************************************

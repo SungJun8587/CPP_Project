@@ -244,6 +244,9 @@
     <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
       <Filter>UtilCore\ConfigFile</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryCommon.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\Library\UtilCore\DB\BaseODBC.inl">

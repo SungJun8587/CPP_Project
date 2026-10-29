@@ -12,6 +12,7 @@
 
 #include <atomic>
 #include <unordered_map>
+#include <vector>
 
 class CZoneServerMain;
 
@@ -27,7 +28,7 @@ class CZoneServerMain;
 class CBattleZone : public CFieldZone<>
 {
 public:
-	CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed);
+	CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed, const SCombatStats& playerStats);
 	virtual ~CBattleZone();
 
 	// ── 존 스레드 전용 ───────────────────────────────────
@@ -49,14 +50,23 @@ protected:
 	virtual void OnEntityMoveStopped(CZoneEntity& entity, bool arrived) override;
 	virtual void OnEntityTeleported(CZoneEntity& entity) override;
 	virtual void OnMoveRejected(CZoneEntity& entity, MoveResult reason) override;
+	virtual void OnEntityDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage) override;
+	virtual void OnEntityDied(CZoneEntity& victim, CZoneEntity* killer) override;
+	virtual void OnEntityRespawned(CZoneEntity& entity) override;
+	virtual void OnAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) override;
 
 private:
 	void SendToEntity(CZoneEntity& target, const void* data, uint16 size);
+	void AddRecipient(CZoneEntity& target);
+	void FlushRecipients(const void* data, uint16 size);
 	void BroadcastAround(CZoneEntity& entity, const void* data, uint16 size);
+	void BroadcastCombat(CZoneEntity& victim, CZoneEntity* other, const void* data, uint16 size);
 
 	CZoneServerMain* _server;		// 패킷 중계 경로를 가진 존 서버
 	Vec2				_spawnPos;		// 입장 시 스폰 위치
 	float				_playerSpeed;	// 플레이어 기본 이동 속도 (units/sec)
+	std::vector<uint64>	_recipients;	// 브로드캐스트 수신자 세션 ID 모음 (존 스레드 전용, 재사용으로 힙 할당 방지)
+	SCombatStats		_playerStats;	// 플레이어 전투 능력치 (서버 설정값. 클라이언트 값은 신뢰하지 않음)
 
 	std::unordered_map<uint64, CZoneEntity*>	_sessionToEntity;	// 클라이언트 세션 ID -> 플레이어 엔티티 (존 스레드 전용, 패킷마다 해시 조회 1회로 끝내기 위함)
 	std::atomic<uint32>						_playerCount;	// 플레이어 수 (존 스레드가 갱신, 하트비트 스레드가 읽음)

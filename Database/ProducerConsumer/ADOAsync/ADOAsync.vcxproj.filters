@@ -206,6 +206,9 @@
     <ClInclude Include="..\..\DBCommon\DBServerConfig.h">
       <Filter>DBCommon</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\MemoryCommon.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">

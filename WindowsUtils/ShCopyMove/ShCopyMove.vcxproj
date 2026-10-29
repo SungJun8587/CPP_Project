@@ -122,6 +122,7 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\Allocator.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\Containers.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\Memory.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryCommon.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryPool.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Memory\RawAllocator.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Thread\ThreadManager.h" />

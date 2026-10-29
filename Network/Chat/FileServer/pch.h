@@ -48,12 +48,7 @@ using namespace std;
 #include <Util/FileStream.h>
 #include <Util/ScopeExit.h>
 
-#include <Memory/RawAllocator.h>
-#include <Memory/Allocator.h>
-#include <Memory/MemoryPool.h>
-#include <Memory/Memory.h>
-#include <Memory/Containers.h>
-#include <Memory/ObjectPool.h>
+#include <Memory/MemoryCommon.h>
 #include <Memory/Singleton.h>
 
 #include <Thread/CacheAlignment.h>

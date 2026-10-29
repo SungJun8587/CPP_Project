@@ -35,11 +35,7 @@ using namespace std;
 #include <iconv.h>
 #include <xlnt/xlnt.hpp>
 
-#include <Memory/RawAllocator.h>
-#include <Memory/MemoryPool.h>
-#include <Memory/Memory.h>
-#include <Memory/Allocator.h>
-#include <Memory/Containers.h>
+#include <Memory/MemoryCommon.h>
 #include <Memory/Singleton.h>
 
 #include <Util/IconvUtil.h>

@@ -22,6 +22,8 @@
 // 존 시뮬레이션 값은 이 클래스 고유 필드다.
 //     ZoneId / ZoneKind / Capacity / TickIntervalMs
 //     MinX / MinY / MaxX / MaxY / CellSize / SpawnX / SpawnY / PlayerSpeed
+//     PlayerMaxHp / PlayerAttack / PlayerDefense / AttackRange / AttackIntervalMs / RespawnDelayMs / RespawnInvulnMs / AllowPvp
+// AttackRange는 (사거리 + 위치 허용 오차 + 이동 지연 보정)이 AOI 최소 보장 시야 이내여야 하며, CZoneServerMain::Start()가 구동 시 검사한다.
 // 이 서버는 리스너가 없으므로 베이스의 IP/Port/MaxSessionCount는 읽지 않는다.
 // 키가 없으면 SZoneServerOptions의 기본값을 유지한다.
 // Save()는 기존 파일이 있으면 먼저 읽어 와서 이 클래스가 모르는 키와 키 순서를 보존한 채
@@ -55,6 +57,14 @@ private:
 	float		_fSpawnX;
 	float		_fSpawnY;
 	float		_fPlayerSpeed;
+	int32		_nPlayerMaxHp;
+	int32		_nPlayerAttack;
+	int32		_nPlayerDefense;
+	float		_fAttackRange;
+	uint32		_nAttackIntervalMs;
+	uint32		_nRespawnDelayMs;
+	uint32		_nRespawnInvulnMs;
+	bool		_bAllowPvp;
 };
 
 #endif // ndef ZONESERVERCONFIG_H
