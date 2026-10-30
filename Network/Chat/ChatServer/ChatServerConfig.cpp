@@ -21,6 +21,7 @@ CChatServerConfig::CChatServerConfig()
 	: _nRedisPoolSize(0), _nDbWorkerThreadCnt(0)
 	, _nHeartbeatTtlSec(0), _nHeartbeatIntervalSec(0)
 	, _nMaxRoomsPerOwner(0)
+	, _nEnableRelay(1)
 {
 	memset(_tszFileServerUrl, 0, sizeof(_tszFileServerUrl));
 }
@@ -110,6 +111,7 @@ bool CChatServerConfig::Init(const TCHAR* tszServerInfo)
 	reader.Read(_T("HeartbeatIntervalSec"), _nHeartbeatIntervalSec, 1);
 	reader.Read(_T("FileServerUrl"), _tszFileServerUrl);
 	reader.Read(_T("MaxRoomsPerOwner"), _nMaxRoomsPerOwner);		// 0 이하면 무제한
+	reader.Read(_T("EnableRelay"), _nEnableRelay, 0, 1);			// 1이면 다른 채널의 접속자에게도 알림/대화를 전달
 
 	return reader.Validate();
 }
@@ -149,6 +151,7 @@ bool CChatServerConfig::Save(const TCHAR* tszServerInfo)
 	writer.Write(_T("HeartbeatIntervalSec"), _nHeartbeatIntervalSec);
 	writer.Write(_T("FileServerUrl"), _tszFileServerUrl);
 	writer.Write(_T("MaxRoomsPerOwner"), _nMaxRoomsPerOwner);
+	writer.Write(_T("EnableRelay"), _nEnableRelay);
 
 	return writer.Save(tszServerInfo);
 }
@@ -178,6 +181,7 @@ void CChatServerConfig::ToOptions(SChatServerOptions& options) const
 
 	options.fileServerUrl = TStringToString(_tszFileServerUrl);
 	options.maxRoomsPerOwner = _nMaxRoomsPerOwner;
+	options.enableRelay = (_nEnableRelay != 0);
 }
 
 //***************************************************************************
@@ -203,6 +207,7 @@ void CChatServerConfig::PrintServerSettingInfo()
 	LOG_INFO(_T("HeartbeatIntervalSec : %d"), _nHeartbeatIntervalSec);
 	LOG_INFO(_T("FileServerUrl : %s"), _tszFileServerUrl);
 	LOG_INFO(_T("MaxRoomsPerOwner : %d"), _nMaxRoomsPerOwner);
+	LOG_INFO(_T("EnableRelay : %d"), _nEnableRelay);
 
 	LOG_INFO(_T("--------------- Connect ServerNode size : %d ---------------"), static_cast<int>(_serverNodeVec.size()));
 	for( uint32 i = 0; i < _serverNodeVec.size(); i++ )

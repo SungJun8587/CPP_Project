@@ -49,6 +49,10 @@ struct SChatServerOptions
 
 	// ── 방 ───────────────────────────────────────────────
 	int32				maxRoomsPerOwner = 0;				// 1인당 생성 가능한 방 개수. 0 이하 = 무제한
+
+	// ── 채널 간 전달 ─────────────────────────────────────
+	bool				enableRelay = true;					// 다른 채널(인스턴스)에 접속한 사용자에게도 친구 알림/대화 푸시를 전달한다.
+	// 채널들이 같은 Redis를 써야 동작한다(수신자 조회와 Pub/Sub). 서버가 한 대이거나 채널마다 Redis를 따로 두면 꺼 둔다
 };
 
 #endif // ndef CHATSERVEROPTIONS_H

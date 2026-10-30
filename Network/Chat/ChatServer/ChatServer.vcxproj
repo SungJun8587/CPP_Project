@@ -124,8 +124,11 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisRetry.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisScript.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisService.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisSubscriber.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\ServerConfig.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Thread\SRWLock.cpp" />
@@ -142,6 +145,7 @@
     <ClCompile Include="ChatServerMainChat.cpp" />
     <ClCompile Include="ChatServerMainConv.cpp" />
     <ClCompile Include="ChatServerMainFriend.cpp" />
+    <ClCompile Include="ChatServerMainRelay.cpp" />
     <ClCompile Include="ChatServerMainRoom.cpp" />
     <ClCompile Include="ChatSession.cpp" />
     <ClCompile Include="DBHandler\AccountDBHandler.cpp" />
@@ -221,12 +225,17 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommandBuilder.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisCommon.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisConnectionPool.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisDefine.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisHelper.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisParser.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisProtocol.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisResultSet.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisRetry.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisScript.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisServerHeartbeat.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisService.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisSubscriber.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConfig.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\ServerConnectInfo.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h" />
@@ -242,6 +251,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="..\ChatCommon\ChatServerKeys.h" />
     <ClInclude Include="..\ChatCommon\FileServerKeys.h" />
     <ClInclude Include="..\ChatCommon\ImageRef.h" />
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacket.h" />
@@ -249,7 +259,9 @@
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacketUtil.h" />
     <ClInclude Include="ChatHandlerUtil.h" />
     <ClInclude Include="ChatPacketDispatcher.h" />
+    <ClInclude Include="ChatRelayFrame.h" />
     <ClInclude Include="ChatServerConfig.h" />
+    <ClInclude Include="ChatServerKeys.h" />
     <ClInclude Include="ChatServerMain.h" />
     <ClInclude Include="ChatServerOptions.h" />
     <ClInclude Include="ChatSession.h" />

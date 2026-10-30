@@ -19,13 +19,15 @@
 #include <unordered_set>
 
 //***************************************************************************
-// @brief 로그인 완료된 세션을 친구 알림/조회용 레지스트리에 등록하고, 접속 중인 친구에게 접속을 알립니다.
+// @brief 로그인 완료된 세션을 친구 알림/조회용 레지스트리에 등록하고 차단 목록을 올립니다.
+// @return 이 계정의 첫 세션이면 true — 접속 알림(NotifyFriendPresence)은 Redis 로그인 키가 기록된 뒤에 보내도록
+//         호출부가 OnUserLogin(publicId, true)에 맡긴다.
 // @details 같은 계정이 중복 접속하면 가장 마지막 세션이 레지스트리를 차지한다.
 //***************************************************************************
-void CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session)
+bool CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session)
 {
 	if( session == nullptr )
-		return;
+		return false;
 
 	const std::array<BYTE, kPublicIdBytes> publicId = session->GetPublicId();
 	bool firstSession = false;
@@ -37,9 +39,6 @@ void CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session
 		firstSession = sessions.empty();
 		sessions.push_back(session);
 	}
-
-	if( firstSession )
-		NotifyFriendPresence(publicId, true);	// 계정의 첫 세션일 때만 알린다
 
 	// 이 계정이 차단한 사용자 목록을 세션에 올려둔다 — 채팅 수신 필터(BroadcastChatToRoom)가 쓴다.
 	// 로드가 끝나기 전의 극히 짧은 구간에는 필터가 비어 있어 차단한 사용자의 메시지가 한두 개 전달될 수 있다.
@@ -56,6 +55,8 @@ void CChatServerMain::OnFriendLogin(const std::shared_ptr<CChatSession>& session
 				blocked.insert(PublicIdToHex(entry.publicId));
 			s->SetBlockedUsers(std::move(blocked));
 		});
+
+	return firstSession;
 }
 
 //***************************************************************************
@@ -155,21 +156,17 @@ std::vector<std::shared_ptr<CChatSession>> CChatServerMain::FindOnlineSessions(c
 // @brief 친구 목록을 조회해 접속 중인 친구에게 FriendStatusNotify를 보냅니다.
 // @details 세션 수명과 무관하게 publicId만으로 동작한다(로그아웃 시점에는 세션이 사라지는 중).
 //***************************************************************************
-void CChatServerMain::NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online)
+void CChatServerMain::NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online, bool localOnly)
 {
 	GetFriendIds(publicId,
-		[this, publicId, online](const FriendIdList& friendIds)
+		[this, publicId, online, localOnly](const FriendIdList& friendIds)
 		{
 			FriendStatusNotifyPacket notify{};
 			InitPacket(notify, EChatPacketType::FriendStatusNotify);
 			CopyPublicId(notify.publicId, publicId);
 			notify.online = online ? 1 : 0;
 
-			for( const auto& friendSession : FindOnlineSessions(friendIds) )
-			{
-				if( friendSession != nullptr )
-					SendPacket(friendSession, notify);
-			}
+			DeliverToUsers(friendIds, &notify, sizeof(notify), nullptr, nullptr, !localOnly);	// 다른 채널의 친구에게도 전달
 		});
 }
 
@@ -332,11 +329,7 @@ void CChatServerMain::NotifyFriendProfileChanged(const std::shared_ptr<CChatSess
 	GetFriendIds(publicId,
 		[this, notify](const FriendIdList& friendIds)
 		{
-			for( const auto& friendSession : FindOnlineSessions(friendIds) )
-			{
-				if( friendSession != nullptr )
-					SendPacket(friendSession, notify);
-			}
+			DeliverToUsers(friendIds, &notify, sizeof(notify));	// 다른 채널의 친구에게도 전달
 		});
 }
 

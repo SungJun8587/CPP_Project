@@ -89,6 +89,9 @@ namespace FileServerKeys
 
 	inline constexpr const char* kPendingDeletionsKey = "FileServer:PendingDeletions";
 	inline constexpr const char* kFailedDeletionsKey = "FileServer:FailedDeletions";
+	// 소비자가 꺼내 처리하는 중인 항목. 꺼내는 것과 여기 넣는 것이 한 스크립트로 원자적이라, 응답이 유실되거나
+	// 처리 도중 종료돼도 항목이 사라지지 않고 다음 기동 때 PendingDeletions 앞으로 되돌려진다.
+	inline constexpr const char* kProcessingDeletionsKey = "FileServer:ProcessingDeletions";
 }
 
 #endif // ndef FILESERVERKEYS_H

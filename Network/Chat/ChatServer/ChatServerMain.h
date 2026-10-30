@@ -54,6 +54,7 @@ struct SRoomMemberHistoryInfo
 #include <atomic>
 #include <thread>
 #include <condition_variable>
+#include <chrono>
 
 class CChatSession;
 
@@ -74,7 +75,7 @@ class CChatSession;
 //     4. CChatSession으로부터 로그인/로그아웃/브로드캐스트 요청을 위임받아 처리
 //
 // [설계 변경 — uid/public_id 분리] users.nickname이 더 이상 PRIMARY KEY가
-// 아니다(create_chat_db.sql 참고). 이 클래스의 Redis 키(BuildUserKey())/
+// 아니다(create_chat_db.sql 참고). 이 클래스의 Redis 키(ChatServerKeys::BuildUserKey())/
 // 로그인·로그아웃 기록은 이제 nickname이 아니라 public_id(계정의 안정
 // 식별자, 닉네임 변경과 무관하게 고정)를 기준으로 한다 — 그래서 예전에
 // 있던 OnUserNicknameChanged()(닉네임 변경 시 Redis 키를 RENAME하던 함수)가
@@ -133,7 +134,9 @@ public:
 
 public:
 	// CChatSession/핸들러에서 호출하는 콜백들
-	void OnUserLogin(const std::array<BYTE, kPublicIdBytes>& publicId);
+	// @param notifyPresence true면 Redis 로그인 키 기록이 끝난 뒤 친구들에게 접속을 알린다. 다른 채널의 친구가 이 키로
+	//        수신자를 찾으므로, 기록보다 알림이 앞서면 서로 동시에 접속한 두 사용자가 상대의 알림을 놓칠 수 있다.
+	void OnUserLogin(const std::array<BYTE, kPublicIdBytes>& publicId, bool notifyPresence = false);
 	void OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publicId);
 
 	//***************************************************************************
@@ -328,6 +331,10 @@ public:
 	//        애초에 어느 것도 없으므로 아무 일도 안 한다.
 	//***************************************************************************
 	void ClearRoomRedisData(int32 roomId);
+
+	// 결과를 쓰지 않는 멱등 Redis 쓰기(ZREM/HDEL/DEL/SADD)를 보내되, 연결 오류면 짧게 몇 번 재시도한다.
+	// 멱등이 아닌 명령(RPUSH 등)이나 재시도 사이에 의미가 바뀔 수 있는 명령(로그인 키 DEL)에는 쓰지 않는다.
+	void SendIdempotentRedisWrite(const CVector<std::string>& args);
 
 	//***************************************************************************
 	// @brief [추가] 방의 최근 대화 기록(최대 1000개)을 오래된 순서로
@@ -664,8 +671,9 @@ public:
 	void BroadcastChatToRoom(int32 roomId, const std::array<BYTE, kPublicIdBytes>& senderPublicId,
 		const void* data, uint16 size);
 
-	// @brief 로그인 완료 시 접속 세션 레지스트리 등록 + 친구에게 접속 알림 + 차단 목록 로드.
-	void OnFriendLogin(const std::shared_ptr<CChatSession>& session);
+	// @brief 로그인 완료 시 접속 세션 레지스트리 등록 + 차단 목록 로드.
+	// @return 이 계정의 첫 세션이면 true. 친구에게 접속을 알리는 일은 호출부가 OnUserLogin(…, true)로 넘긴다.
+	bool OnFriendLogin(const std::shared_ptr<CChatSession>& session);
 
 	// @brief 세션 종료 시 레지스트리 해제 + (같은 계정의 다른 세션이 없으면) 친구에게 접속 종료 알림.
 	// @return 같은 계정의 다른 세션이 아직 접속 중이면 true(계정은 여전히 온라인).
@@ -713,8 +721,42 @@ public:
 		std::function<void(ST_CONV_REQ* req)> fill,
 		std::function<void(const SConvOpResult& result)> onComplete);
 
+	//***************************************************************************
+	// [추가 — 채널 간 전달] 구현은 ChatServerMainRelay.cpp
+	//   수신자가 다른 채널(인스턴스)에 접속해 있으면 Redis Pub/Sub 토픽(Chat:{group}:{channel})으로 넘긴다.
+	//   로컬 세션은 Redis를 거치지 않는다. 전달 보장이 없는 "알림 경로"이며, 대화 내용은 항상 DB가 원본이다.
+	//***************************************************************************
+
+	// @brief ids 중 이 프로세스에 접속 중인 세션에는 바로 보내고, 나머지는 다른 채널로 전달합니다.
+	// @param skip nullptr이 아니면 이 id는 건너뜀(예: 행위자 본인)
+	// @param sender 발신자(차단 필터용). 로컬/원격 수신자 모두에게 같은 차단 규칙을 적용한다. nullptr이면 필터 없음.
+	// @param allowRelay false면 로컬 세션에만 보낸다(다른 채널에서 받은 알림을 다시 퍼뜨리지 않기 위함).
+	void DeliverToUsers(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids, const void* data, uint16 size,
+		const std::array<BYTE, kPublicIdBytes>* skip = nullptr, const std::array<BYTE, kPublicIdBytes>* sender = nullptr,
+		bool allowRelay = true);
+
+	// @brief 이 프로세스에서 세션을 못 찾은 수신자들에게 다른 채널을 통해 전달합니다(비동기, 로컬 전달은 호출부가 먼저 끝낸 상태).
+	void RelayToRemote(const std::vector<std::array<BYTE, kPublicIdBytes>>& remoteIds, const void* data, uint16 size,
+		const std::array<BYTE, kPublicIdBytes>* sender = nullptr);
+
+	// @brief ids 각각이 어느 채널에든 접속 중인지 비동기로 알려줍니다(로컬 세션 우선, 없으면 Redis 조회).
+	// @param onReady ids와 같은 순서의 접속 여부. 조회할 대상이 없으면 호출한 스레드에서 바로, 아니면 JobQueue 스레드에서 호출된다.
+	void ResolveOnline(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids,
+		std::function<void(const std::vector<bool>& online)> onReady);
+
 private:
-	void NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online);
+	bool StartRelay(bool enableRelay);
+	void StopRelay();
+	void OnRelayMessage(const std::string& payload);
+	void RefreshRelayPeers();
+	void BroadcastShutdownPresence();
+	void LookupChannels(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids,
+		std::function<void(const std::vector<std::string>& channels)> onReady);
+	std::vector<std::array<BYTE, kPublicIdBytes>> FilterOfflineCached(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids);
+	void MarkOffline(const std::array<BYTE, kPublicIdBytes>& id);
+
+	// @param localOnly true면 이 프로세스에 접속한 친구에게만 알린다(다른 채널에서 받은 종료 통지를 다시 퍼뜨리지 않기 위함).
+	void NotifyFriendPresence(const std::array<BYTE, kPublicIdBytes>& publicId, bool online, bool localOnly = false);
 	std::string BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const;
 
 	// 유지보수 스레드 — 짧은 틱(kMaintenanceTickMs)마다 (1) 모인 방 인원수 알림을 한 번에 보내고,
@@ -738,21 +780,6 @@ public:
 
 private:
 	static constexpr int32 kMaintenanceTickMs = 200;
-
-	//***************************************************************************
-	// @brief [추가] 방에 입장한 적이 있는 전체 유저 집합을 담는 Redis Set 키.
-	// @details "RoomMembers:{roomId}" — 원소는 publicId를 16진 문자열로 바꾼
-	//          값(BuildUserKey()와 동일한 인코딩). SADD는 이미 들어있는
-	//          원소를 다시 넣어도 집합 크기가 늘지 않으므로(자동 중복 제거),
-	//          같은 사람이 여러 번 입장해도 SCARD 값은 "서로 다른 유저 수"를
-	//          정확히 유지한다 — RequestRecordRoomJoin()이 입장마다 SADD를
-	//          걸고, RequestListRooms()가 방 목록에 표시할 totalMemberCount를
-	//          이 값(SCARD)으로 채운다. DB의 room_members 테이블(입장
-	//          시각까지 정확히 필요한 "전체 참여 이력" 페이징 목록 —
-	//          RequestRoomMemberHistoryPage() 용도)과는 별개로, 오직 "방
-	//          목록에 보여줄 숫자 하나"만을 위한 빠른 카운터다.
-	//***************************************************************************
-	std::string BuildRoomMembersKey(int32 roomId) const;
 
 	//***************************************************************************
 	// @brief roomId의 인원수가 바뀌었음을 표시합니다(알림 자체는 유지보수 스레드가 모아서 보낸다).
@@ -839,6 +866,21 @@ private:
 
 	// 유지보수 스레드와 그 입력들.
 	int32						_loginKeyTtlSec = 0;		// 0이면 로그인 키 TTL 없음(갱신 생략)
+
+	// 채널 간 전달 계층. _relayEnabled는 StartRelay()가 구독에 성공한 뒤 켜고 StopRelay()가 끈다(여러 스레드가 읽음).
+	std::atomic<bool>			_relayEnabled{ false };
+	std::string					_ownChannelKey;				// 이 채널의 "group:channel" (로그인 키 필드 값과 같은 형식)
+	std::string					_relayTopic;				// 이 채널이 구독하는 토픽: Chat:{group}:{channel}
+
+	// 다른 채널의 구독자 존재 여부. 유지보수 스레드가 1초마다 갱신하며, false면 조회/발행을 건너뛴다.
+	// 첫 확인 전에는 true(있을 수 있다고 보고 동작). _relayPeerTopics는 종료 일괄 통지용 토픽 목록(_relayPeerMutex로 보호).
+	std::atomic<bool>			_relayHasPeers{ true };
+	std::mutex					_relayPeerMutex;
+	std::vector<std::string>	_relayPeerTopics;
+
+	// 최근 "접속 중이 아님"으로 확인된 수신자(publicId 16진 -> 기억 만료 시각). _offlineCacheMutex로 보호.
+	std::mutex					_offlineCacheMutex;
+	std::unordered_map<std::string, std::chrono::steady_clock::time_point>	_offlineCache;
 	std::thread					_maintenanceThread;
 	std::mutex					_maintenanceMutex;			// _maintenanceStop/_dirtyRoomCounts/_delayedTasks 보호
 	std::condition_variable		_maintenanceCv;
@@ -884,6 +926,8 @@ private:
 	mutable std::mutex							_messageOwnerMutex;
 	std::unordered_map<int64, SMessageOwnerRecord>	_messageOwners;
 	std::deque<int64>							_messageOwnerOrder;	// 삽입 순서 — 오래된 것부터 제거하기 위함
+	static constexpr int32 kRelayPeerRefreshMs = 1000;	// 다른 채널의 구독자 확인 주기(유지보수 스레드)
+	static constexpr int64 kMessageIdStride = 16;	// 발급 간격 — 하위 4비트는 채널 번호 자리(채널 간 id 중복 방지)
 	std::atomic<int64>							_nextMessageId{ 1 };	// Start()가 (현재 시각 ms << 10)으로 시드 — 재시작해도 Redis에 남은 기록의 id와 겹치지 않는다
 
 	// [설계 변경] 프로필 이미지 저장을 별도 파일 서버로 분리하면서, 이

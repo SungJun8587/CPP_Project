@@ -116,8 +116,9 @@ namespace
 							// 차단 목록 로드를 최대한 일찍 시작하도록 로비 배정보다 먼저 호출한다.
 							// 같은 계정의 이전 세션 종료(OnFriendLogout)와 겹쳐도 로그인 기록이 지워지지 않도록
 							// 레지스트리 등록을 Redis 로그인 기록(OnUserLogin)보다 먼저 한다.
-							srv->OnFriendLogin(session);
-							srv->OnUserLogin(completedPublicId);
+							// 접속 알림은 로그인 키 기록이 끝난 뒤에 나가도록 첫 세션 여부를 OnUserLogin에 넘긴다.
+							const bool firstSession = srv->OnFriendLogin(session);
+							srv->OnUserLogin(completedPublicId, firstSession);
 
 							// [추가] 로그인에 성공하면 곧바로 로비에 배정한다 —
 							// "로그인은 됐는데 아직 어디에도 속하지 않은" 어중간한
@@ -160,7 +161,7 @@ namespace
 		const ChangeNicknameReqPacket* packet = reinterpret_cast<const ChangeNicknameReqPacket*>(header);
 
 		// newNickname이 NUL로 안 끝났을 가능성을 방어(경계값)하기 위해 별도
-		// 버퍼에 복사 후 문자열화. 형식 검증은 ChangeNicknameDBHandler.cpp가
+		// 버퍼에 복사 후 문자열화. 형식 검증은 AccountDBHandler.cpp가
 		// DB 워커 스레드에서 다시 한번 하므로 여기선 "완전히 빈 문자열"만
 		// 걸러 DB 요청 자체를 만들 이유가 없는 케이스의 워커 부하를 아낀다.
 		char safeBuf[sizeof(packet->newNickname) + 1] = {};

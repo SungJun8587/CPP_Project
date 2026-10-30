@@ -16,6 +16,7 @@
     "HeartbeatIntervalSec": 5,
     "FileServerUrl": "http://127.0.0.1:8081",
     "MaxRoomsPerOwner": 3,
+    "EnableRelay": 1,
     "DBNode": [
         {
             "ID": 2,
@@ -39,6 +40,3 @@
         }    
     ]
 }
-
-
-

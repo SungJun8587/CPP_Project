@@ -7,10 +7,32 @@
 #include "pch.h"
 #include "FileServerMain.h"
 
+#include <Redis/RedisScript.h>
+
 #include <algorithm>
 #include <cstring>
 #include <chrono>
 #include <filesystem>
+
+namespace
+{
+	// 예약 삭제 큐에서 항목을 꺼내는 동시에 처리 중 목록에 넣는다(LPOP만 쓰면 응답이 유실되거나 처리 전에
+	// 종료될 때 항목이 사라진다). KEYS[1]=대기 목록, KEYS[2]=처리 중 목록.
+	const CRedisScript kPopScript(
+		"local v = redis.call('LPOP', KEYS[1])\n"
+		"if v then redis.call('RPUSH', KEYS[2], v) end\n"
+		"return v");
+
+	// 기동 시 이전 실행이 처리 중이던 항목을 순서를 유지한 채 대기 목록 앞으로 되돌린다.
+	const CRedisScript kRequeueScript(
+		"local n = 0\n"
+		"while true do\n"
+		"  local v = redis.call('RPOPLPUSH', KEYS[2], KEYS[1])\n"
+		"  if not v then break end\n"
+		"  n = n + 1\n"
+		"end\n"
+		"return n");
+}
 
 //***************************************************************************
 // @brief 소멸자 — 아직 실행 중이면 Stop()으로 정리합니다.
@@ -153,6 +175,17 @@ void CFileServerMain::HandleRequest(std::shared_ptr<CFileServerSession> session,
 //***************************************************************************
 void CFileServerMain::StartPendingDeletionThread()
 {
+	// 이전 실행이 처리 중이던 항목을 되돌린다. 파일 삭제는 멱등하므로 이미 처리됐던 항목이 다시 올라와도 무해하다.
+	if( _redisService != nullptr )
+	{
+		kRequeueScript.Run(*_redisService, { FileServerKeys::kPendingDeletionsKey, FileServerKeys::kProcessingDeletionsKey }, CVector<std::string>(),
+			[](const RedisValue& res)
+			{
+				if( res.eType == ERedisType::Integer && res.i64Val > 0 )
+					LOG_INFO(_T("CFileServerMain: 이전 실행이 처리 중이던 삭제 예약 %lld건을 대기열로 되돌림"), static_cast<long long>(res.i64Val));
+			});
+	}
+
 	_pollThread = std::thread([this]() { PendingDeletionLoop(); });
 }
 
@@ -176,7 +209,7 @@ void CFileServerMain::PendingDeletionLoop()
 }
 
 //***************************************************************************
-// @brief 큐에서 하나를 꺼냅니다(LPOP).
+// @brief 큐에서 하나를 꺼냅니다(꺼내면서 처리 중 목록에 넣음 — ProcessDeletion()이 끝나면 지운다).
 // @details Redis 콜백은 CJobQueue 스레드에서 실행되므로, 결과를 공유 상태에
 //          담아 이 스레드가 기다린다. 타임아웃으로 먼저 빠져나와도 콜백이
 //          공유 상태(shared_ptr)만 건드리므로 안전하다.
@@ -196,14 +229,10 @@ bool CFileServerMain::PopPendingDeletion(std::string& outRelativePath)
 	};
 	auto state = std::make_shared<SPopState>();
 
-	CVector<std::string> args;
-	args.push_back("LPOP");
-	args.push_back(FileServerKeys::kPendingDeletionsKey);
-
-	// SendCommand()는 풀이 없거나 대기 큐가 가득 차면 false — 콜백이 오지 않는다.
-	if( !_redisService->SendCommand(args, [state](const RedisValue& res)
+	// Run()은 풀이 없거나 대기 큐가 가득 차면 false — 콜백이 오지 않는다.
+	if( !kPopScript.Run(*_redisService, { FileServerKeys::kPendingDeletionsKey, FileServerKeys::kProcessingDeletionsKey }, CVector<std::string>(), [state](const RedisValue& res)
 		{
-			// LPOP 결과는 문자열 하나(성공) 또는 nil(큐가 비어있음).
+			// 결과는 문자열 하나(꺼냄) 또는 nil(큐가 비어있음).
 			CRedisResultSet resultSet(res);
 			std::string value;
 			const bool got = !resultSet.IsEmpty() && resultSet.GetData(value) && !value.empty();
@@ -235,20 +264,25 @@ bool CFileServerMain::PopPendingDeletion(std::string& outRelativePath)
 //***************************************************************************
 void CFileServerMain::ProcessDeletion(const std::string& relativePath)
 {
-	if( _fileStorage != nullptr && _fileStorage->DeleteFile(relativePath) )
+	const bool bDeleted = (_fileStorage != nullptr && _fileStorage->DeleteFile(relativePath));
+
+	if( bDeleted )
 	{
 		LOG_INFO(_T("CFileServerMain: 예약된 삭제 처리 완료 (%hs)"), relativePath.c_str());
-		return;
+	}
+	else
+	{
+		LOG_ERROR(_T("CFileServerMain: 파일 삭제 실패 — 실패 목록으로 이동 (%hs)"), relativePath.c_str());
+
+		if( _redisService != nullptr )
+		{
+			_redisService->SendCommand(Redis::MakeArgs({ "RPUSH", FileServerKeys::kFailedDeletionsKey, relativePath }), [](const RedisValue& /*res*/) {});
+		}
 	}
 
-	LOG_ERROR(_T("CFileServerMain: 파일 삭제 실패 — 실패 목록으로 이동 (%hs)"), relativePath.c_str());
-
-	if( _redisService == nullptr )
-		return;
-
-	CVector<std::string> failArgs;
-	failArgs.push_back("RPUSH");
-	failArgs.push_back(FileServerKeys::kFailedDeletionsKey);
-	failArgs.push_back(relativePath);
-	_redisService->SendCommand(failArgs, [](const RedisValue& /*res*/) {});
+	// 처리가 끝났으니 처리 중 목록에서 지운다. 이 명령이 유실돼도 항목은 다음 기동 때 되돌려져 다시 처리될 뿐이다.
+	if( _redisService != nullptr )
+	{
+		_redisService->SendCommand(Redis::MakeArgs({ "LREM", FileServerKeys::kProcessingDeletionsKey, "1", relativePath }), [](const RedisValue& /*res*/) {});
+	}
 }

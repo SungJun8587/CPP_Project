@@ -136,6 +136,15 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\Util\DateTimeUtil.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisRetry.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisScript.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisSubscriber.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -440,6 +449,24 @@
     </ClInclude>
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpDefine.h">
       <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisDefine.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisHelper.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisRetry.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisScript.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisSubscriber.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ChatCommon\ChatServerKeys.h">
+      <Filter>ChatCommon</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

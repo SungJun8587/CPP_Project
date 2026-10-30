@@ -177,7 +177,7 @@ struct SRoomListEntry
 	//        핸들러(RoomDBHandler.cpp의 HandleListPage)는 이 값을 채우지 않고
 	//        기본값(0)인 채로 둔다 — 호출부인 CChatServerMain::
 	//        RequestListRooms()가 DB 결과를 받은 뒤 Redis Set
-	//        (RoomMembers:{roomId})의 SCARD로 채운다(BuildRoomMembersKey()
+	//        (RoomMembers:{roomId})의 SCARD로 채운다(ChatServerKeys::BuildRoomMembersKey()
 	//        참고). 지금 접속해 있는 인원수(서버 메모리 기준)는 이
 	//        구조체가 아니라 CChatServerMain::GetRoomUserCount()가 별도로
 	//        채운다 — 방 목록 화면에서 "현재 접속자수/전체 참여 인원수"를

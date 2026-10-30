@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// ChatServerMain.cpp: implementation of the CChatServerMain class — core.
+// ChatServerMain.cpp : implementation of the CChatServerMain class — core.
 //
 //***************************************************************************
 
@@ -10,6 +10,7 @@
 #include "DbServiceManager.h"
 
 #include <chrono>
+#include <cstdlib>
 #include <algorithm>
 
 //***************************************************************************
@@ -33,8 +34,13 @@ bool CChatServerMain::Start(const SChatServerOptions& options)
 
 	// 메시지 id를 (현재 시각 ms << 10)부터 발급한다 — 재시작 후에도 id가 단조 증가해
 	// Redis에 남아 있는 방 대화 기록(RoomChatOrder/RoomChatMsg)의 id와 겹치지 않는다.
-	_nextMessageId.store(
-		std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << 10);
+	// 채널(인스턴스)이 여러 대여도 같은 id가 나오지 않도록 하위 4비트를 채널 번호(ChannelId % 16)로 고정하고
+	// 16씩 증가시킨다(RegisterOutgoingMessage 참고). 채널 번호가 16 차이 나는 두 서버는 같은 id를 낼 수 있다.
+	{
+		const int64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+		const int64 channelSlot = static_cast<int64>(std::atoi(_serverChannelId.c_str())) & (kMessageIdStride - 1);
+		_nextMessageId.store(((nowMs << 10) & ~(kMessageIdStride - 1)) | channelSlot);
+	}
 
 	// 1. IOCP 코어 + JobQueue(Redis/DB 콜백 디스패치용) 준비
 	_iocpCore = MakeShared<CIocpCore>();
@@ -43,6 +49,10 @@ bool CChatServerMain::Start(const SChatServerOptions& options)
 	// 2. Redis 초기화 — 세션/하트비트보다 먼저 준비되어야 로그인 즉시 기록 가능
 	_redisService = std::make_unique<CRedisService>(_iocpCore, _jobQueue);
 	if( !_redisService->Init(options.redisNodes, options.redisPoolSize) )
+		return false;
+
+	// 2-0. 채널 간 전달 계층 — 다른 채널 사용자에게 가는 알림/대화를 받을 토픽 구독. 세션을 받기 전에 준비해 둔다.
+	if( !StartRelay(options.enableRelay) )
 		return false;
 
 	// 2-1. 회원 DB(ODBC) 초기화. 회원가입/재접속 검증 핸들러(kDbCallIdent_Account)는
@@ -129,6 +139,7 @@ bool CChatServerMain::Start(const SChatServerOptions& options)
 void CChatServerMain::Stop()
 {
 	StopMaintenance();
+	StopRelay();
 
 	if( _heartbeat )
 	{
@@ -160,7 +171,7 @@ void CChatServerMain::Stop()
 //***************************************************************************
 std::string CChatServerMain::BuildUserKey(const std::array<BYTE, kPublicIdBytes>& publicId) const
 {
-	return "User:" + PublicIdToHex(publicId);
+	return ChatServerKeys::BuildUserKey(PublicIdToHex(publicId));
 }
 
 //***************************************************************************
@@ -168,28 +179,37 @@ std::string CChatServerMain::BuildUserKey(const std::array<BYTE, kPublicIdBytes>
 // @details 로그인 키에는 TTL(하트비트 TTL과 동일)이 걸리고, 접속 중인 동안에는
 //          RefreshLoginKeys()가 하트비트 주기로 갱신한다. 정상적으로는 OnUserLogout()의
 //          DEL로 지워지고, 서버가 비정상 종료해 DEL이 실행되지 못하면 TTL로 저절로 사라진다.
-//          HSET과 EXPIRE는 하나의 EVAL로 보내 키가 TTL 없이 남는 순간이 없게 한다.
+//          HSET과 EXPIRE는 하나의 스크립트(EVALSHA)로 보내 키가 TTL 없이 남는 순간이 없게 한다.
 //***************************************************************************
-void CChatServerMain::OnUserLogin(const std::array<BYTE, kPublicIdBytes>& publicId)
+void CChatServerMain::OnUserLogin(const std::array<BYTE, kPublicIdBytes>& publicId, bool notifyPresence)
 {
 	if( _redisService == nullptr )
+	{
+		if( notifyPresence )
+			NotifyFriendPresence(publicId, true);
 		return;
+	}
 
-	static const std::string kLoginScript =
-		"redis.call('HSET', KEYS[1], 'serverGroupId', ARGV[1], 'serverChannelId', ARGV[2], 'status', 'online')\n"
+	static const CRedisScript kLoginScript(
+		std::string("redis.call('HSET', KEYS[1], '") + ChatServerKeys::kUserFieldGroupId + "', ARGV[1], '" + ChatServerKeys::kUserFieldChannelId + "', ARGV[2], 'status', 'online')\n"
 		"if tonumber(ARGV[3]) > 0 then redis.call('EXPIRE', KEYS[1], ARGV[3]) end\n"
-		"return 1";
+		"return 1");
 
-	CVector<std::string> args;
-	args.push_back("EVAL");
-	args.push_back(kLoginScript);
-	args.push_back("1");
-	args.push_back(BuildUserKey(publicId));
-	args.push_back(_serverGroupId);
-	args.push_back(_serverChannelId);
-	args.push_back(std::to_string(_loginKeyTtlSec));
+	// 접속 알림은 기록이 끝난 뒤에 보낸다 — 응답 전에 이 계정이 이미 끊겼다면(OnFriendLogout이 종료를 알렸으므로) 보내지 않는다.
+	RedisCallback onWritten;
+	if( notifyPresence )
+	{
+		onWritten = [this, publicId](const RedisValue& /*res*/)
+			{
+				if( IsUserOnline(publicId) )
+					NotifyFriendPresence(publicId, true);
+			};
+	}
 
-	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+	const bool accepted = kLoginScript.Run(*_redisService, { BuildUserKey(publicId) },
+		{ _serverGroupId, _serverChannelId, std::to_string(_loginKeyTtlSec) }, onWritten);
+	if( !accepted && notifyPresence )
+		NotifyFriendPresence(publicId, true);	// 기록 요청이 접수되지 않아도 친구 알림은 보낸다(키는 다음 갱신 때 만들어진다)
 }
 
 //***************************************************************************
@@ -233,6 +253,7 @@ void CChatServerMain::MaintenanceLoop(int32 loginKeyIntervalSec)
 {
 	using Clock = std::chrono::steady_clock;
 	auto nextLoginKeyRefresh = Clock::now() + std::chrono::seconds((std::max)(1, loginKeyIntervalSec));
+	auto nextPeerRefresh = Clock::now() + std::chrono::milliseconds(kRelayPeerRefreshMs);
 
 	std::unique_lock<std::mutex> lock(_maintenanceMutex);
 	while( !_maintenanceStop )
@@ -243,6 +264,11 @@ void CChatServerMain::MaintenanceLoop(int32 loginKeyIntervalSec)
 		lock.unlock();
 		FlushRoomUserCounts();
 		RunDueDelayedTasks();
+		if( _relayEnabled && Clock::now() >= nextPeerRefresh )
+		{
+			RefreshRelayPeers();	// 다른 채널의 구독자가 있는지 확인(없으면 전달 경로의 Redis 조회를 건너뛴다)
+			nextPeerRefresh = Clock::now() + std::chrono::milliseconds(kRelayPeerRefreshMs);
+		}
 		if( _loginKeyTtlSec > 0 && Clock::now() >= nextLoginKeyRefresh )
 		{
 			RefreshLoginKeys();
@@ -303,7 +329,7 @@ void CChatServerMain::RunDueDelayedTasks()
 //***************************************************************************
 // @brief 접속 중인 모든 계정의 로그인 키 TTL을 갱신합니다.
 // @details 한 번에 최대 kBatch명씩 EVAL 하나로 처리한다. 키가 없으면(Redis 재시작 등) 다시 만든다.
-//          스크립트의 "User:" 접두사는 BuildUserKey()와 같아야 한다.
+//          스크립트의 접두사는 ChatServerKeys::kUserPrefix에서 가져온다(BuildUserKey()와 같은 값).
 //***************************************************************************
 void CChatServerMain::RefreshLoginKeys()
 {
@@ -321,32 +347,31 @@ void CChatServerMain::RefreshLoginKeys()
 		}
 	}
 
-	static const std::string kRefreshScript =
-		"for i = 4, #ARGV do\n"
-		"  local key = 'User:' .. ARGV[i]\n"
+	// 키 이름을 스크립트 안에서 조립하므로 KEYS를 선언하지 않는다 — Redis Cluster에서는 쓸 수 없다(단일 노드 전제).
+	static const CRedisScript kRefreshScript(
+		std::string("for i = 4, #ARGV do\n"
+			"  local key = '") + ChatServerKeys::kUserPrefix + "' .. ARGV[i]\n"
 		"  if redis.call('EXPIRE', key, ARGV[3]) == 0 then\n"
-		"    redis.call('HSET', key, 'serverGroupId', ARGV[1], 'serverChannelId', ARGV[2], 'status', 'online')\n"
+		"    redis.call('HSET', key, '" + ChatServerKeys::kUserFieldGroupId + "', ARGV[1], '" + ChatServerKeys::kUserFieldChannelId + "', ARGV[2], 'status', 'online')\n"
 		"    redis.call('EXPIRE', key, ARGV[3])\n"
 		"  end\n"
 		"end\n"
-		"return 1";
+		"return 1");
 
-	constexpr size_t kBatch = 200;
+	constexpr size_t kBatch = ChatServerKeys::kUserKeyBatch;
 	for( size_t begin = 0; begin < ids.size(); begin += kBatch )
 	{
 		const size_t end = (std::min)(begin + kBatch, ids.size());
 
-		CVector<std::string> args;
-		args.push_back("EVAL");
-		args.push_back(kRefreshScript);
-		args.push_back("0");
-		args.push_back(_serverGroupId);
-		args.push_back(_serverChannelId);
-		args.push_back(std::to_string(_loginKeyTtlSec));
+		CVector<std::string> argv;
+		argv.reserve(3 + (end - begin));
+		argv.push_back(_serverGroupId);
+		argv.push_back(_serverChannelId);
+		argv.push_back(std::to_string(_loginKeyTtlSec));
 		for( size_t i = begin; i < end; ++i )
-			args.push_back(ids[i]);
+			argv.push_back(ids[i]);
 
-		_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+		kRefreshScript.Run(*_redisService, CVector<std::string>(), argv);
 	}
 }
 
@@ -360,11 +385,15 @@ void CChatServerMain::OnUserLogout(const std::array<BYTE, kPublicIdBytes>& publi
 	if( _redisService == nullptr )
 		return;
 
-	CVector<std::string> args;
-	args.push_back("DEL");
-	args.push_back(BuildUserKey(publicId));
+	// 이 채널이 기록한 키만 지운다 — 같은 계정이 다른 채널로 다시 접속해 키를 덮어썼다면 그 키를 지우면 안 된다
+	// (지우면 다른 채널의 친구들이 이 사용자를 오프라인으로 보게 된다).
+	static const CRedisScript kLogoutScript(
+		std::string("if redis.call('HGET', KEYS[1], '") + ChatServerKeys::kUserFieldGroupId + "') == ARGV[1] and redis.call('HGET', KEYS[1], '" + ChatServerKeys::kUserFieldChannelId + "') == ARGV[2] then\n"
+		"  return redis.call('DEL', KEYS[1])\n"
+		"end\n"
+		"return 0");
 
-	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+	kLogoutScript.Run(*_redisService, { BuildUserKey(publicId) }, { _serverGroupId, _serverChannelId });
 }
 
 //***************************************************************************
@@ -420,12 +449,7 @@ void CChatServerMain::ScheduleFileDeletion(const std::string& relativePath)
 	if( relativePath.empty() || _redisService == nullptr )
 		return;
 
-	CVector<std::string> args;
-	args.push_back("RPUSH");
-	args.push_back(FileServerKeys::kPendingDeletionsKey);
-	args.push_back(relativePath);
-
-	_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+	_redisService->SendCommand(Redis::MakeArgs({ "RPUSH", FileServerKeys::kPendingDeletionsKey, relativePath }), [](const RedisValue& /*res*/) {});
 }
 
 //***************************************************************************

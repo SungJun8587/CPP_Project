@@ -81,27 +81,24 @@ inline bool BeginActorOp(CChatSession& session, CChatServerMain*& server, SActor
 
 //***************************************************************************
 // @brief target이 접속 중이면 그 세션에 data를 전송한다(오프라인이면 아무것도 하지 않는다).
+// @details 이 프로세스에 없으면 다른 채널에 접속 중인지 확인해 전달한다(DeliverToUsers 참고).
 //***************************************************************************
 inline void SendToOnline(CChatServerMain* server, const PublicId& target, const void* data, uint16 size)
 {
 	if( auto s = server->FindOnlineSession(target) )
 		s->Send(data, size);
+	else
+		server->RelayToRemote({ target }, data, size);
 }
 
 //***************************************************************************
-// @brief ids 중 접속 중인 모든 세션에 data를 전송한다(온라인 맵 락 1회).
+// @brief ids 중 접속 중인 모든 세션에 data를 전송한다(온라인 맵 락 1회). 이 프로세스에 없는 대상은 다른 채널로 전달한다.
 // @param skip nullptr이 아니면 이 id는 건너뛴다(예: 행위자 본인 제외).
 //***************************************************************************
 inline void SendToOnlineMany(CChatServerMain* server, const std::vector<PublicId>& ids,
 	const void* data, uint16 size, const PublicId* skip = nullptr)
 {
-	const auto sessions = server->FindOnlineSessions(ids);
-	for( size_t i = 0; i < ids.size(); ++i )
-	{
-		if( sessions[i] == nullptr || (skip != nullptr && ids[i] == *skip) )
-			continue;
-		sessions[i]->Send(data, size);
-	}
+	server->DeliverToUsers(ids, data, size, skip);
 }
 
 //***************************************************************************

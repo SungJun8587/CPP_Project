@@ -490,7 +490,7 @@ void CChatServerMain::RequestListRooms(
 	// (입장 이력이 있는 전체 유저 수)를 Redis Set(RoomMembers:{roomId})의
 	// SCARD로 채운다 — DB 쪽 COUNT 서브쿼리 대신 Redis 쪽 카운터로
 	// 옮긴 것. 페이지 하나에 최대 kMaxRoomPageSize(50)개 방이 있을 수
-	// 있으므로, 그 방들의 SCARD를 EVAL 한 번으로 묶어 왕복 한 번에 받는다.
+	// 있으므로, 그 방들의 SCARD를 스크립트 한 번(EVALSHA)으로 묶어 왕복 한 번에 받는다.
 	auto finalizeAndDispatch = [this, jobQueue, onComplete](ELoginResult result, int32 totalCount, int32 resultPage,
 		std::shared_ptr<std::vector<SRoomListEntry>> displayRooms)
 		{
@@ -527,22 +527,20 @@ void CChatServerMain::RequestListRooms(
 				return;
 			}
 
-			// 페이지의 모든 방 인원수를 EVAL 한 번으로 가져온다(방마다 SCARD를 따로 보내지 않는다).
+			// 페이지의 모든 방 인원수를 스크립트 한 번으로 가져온다(방마다 SCARD를 따로 보내지 않는다).
 			// 결과는 문자열 배열로 돌려받아 ZREVRANGE 응답과 같은 방식으로 읽는다.
 			// 스크립트의 키는 undeclared(ARGV)로 넘긴다 — Redis Cluster에서는 쓸 수 없는 방식이다.
-			static const std::string kCountScript =
+			static const CRedisScript kCountScript(
 				"local r = {}\n"
 				"for i = 1, #ARGV do r[i] = tostring(redis.call('SCARD', ARGV[i])) end\n"
-				"return r";
+				"return r");
 
-			CVector<std::string> args;
-			args.push_back("EVAL");
-			args.push_back(kCountScript);
-			args.push_back("0");
+			CVector<std::string> argv;
+			argv.reserve(displayRooms->size());
 			for( const SRoomListEntry& entry : *displayRooms )
-				args.push_back(BuildRoomMembersKey(entry.roomId));
+				argv.push_back(ChatServerKeys::BuildRoomMembersKey(entry.roomId));
 
-			const bool queued = _redisService->SendCommand(args, [finalizeAndDispatch, result, totalCount, resultPage, displayRooms](const RedisValue& res)
+			const bool queued = kCountScript.Run(*_redisService, CVector<std::string>(), argv, [finalizeAndDispatch, result, totalCount, resultPage, displayRooms](const RedisValue& res)
 				{
 					// 연결 오류 등으로 Error가 오면 인원수는 기본값 0으로 남긴다
 					// (인원수 하나 때문에 방 목록 전체를 실패시키지 않는다).
@@ -607,11 +605,7 @@ void CChatServerMain::RequestRecordRoomJoin(
 	// 패턴 — RecordRoomChatMessage() 등 참고).
 	if( _redisService != nullptr )
 	{
-		CVector<std::string> args;
-		args.push_back("SADD");
-		args.push_back(BuildRoomMembersKey(roomId));
-		args.push_back(PublicIdToHex(requesterPublicId));
-		_redisService->SendCommand(args, [](const RedisValue& /*res*/) {});
+		SendIdempotentRedisWrite(Redis::MakeArgs({ "SADD", ChatServerKeys::BuildRoomMembersKey(roomId), PublicIdToHex(requesterPublicId) }));
 	}
 }
 

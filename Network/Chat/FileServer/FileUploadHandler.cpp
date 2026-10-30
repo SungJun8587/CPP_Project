@@ -15,7 +15,8 @@ namespace fs = std::filesystem;
 namespace
 {
 	// 토큰 소모 스크립트: GET+DEL을 원자적으로 수행하고 값을 돌려준다(없으면 nil).
-	constexpr const char* kConsumeScript = "local v=redis.call('GET',KEYS[1]) if v then redis.call('DEL',KEYS[1]) end return v";
+	// EVALSHA 전송과 NOSCRIPT 시 EVAL 폴백은 CRedisScript가 처리한다.
+	const CRedisScript kConsumeScript("local v=redis.call('GET',KEYS[1]) if v then redis.call('DEL',KEYS[1]) end return v");
 
 	//***************************************************************************
 	// @brief 스코프를 벗어나면 파일을 삭제하는 RAII 가드 — 실패 경로마다
@@ -176,51 +177,15 @@ void CFileUploadHandler::VerifyUploadToken(const std::string& tokenHex, std::fun
 
 	const std::string redisKey = FileServerKeys::kUploadTokenPrefix + tokenHex;
 
-	// 토큰 소모 스크립트: GET+DEL을 원자적으로. 적재된 SHA가 있으면 EVALSHA로 보내
-	// 스크립트 본문 전송을 피하고, 없으면 EVAL로 처리하면서 백그라운드로 적재한다.
-	std::string scriptSha;
-	{
-		std::lock_guard<std::mutex> lock(_scriptMutex);
-		scriptSha = _consumeScriptSha;
-	}
-
-	CVector<std::string> args;
-	if( !scriptSha.empty() )
-	{
-		args.push_back("EVALSHA");
-		args.push_back(scriptSha);
-	}
-	else
-	{
-		args.push_back("EVAL");
-		args.push_back(kConsumeScript);
-		EnsureConsumeScriptLoaded();
-	}
-	args.push_back("1");
-	args.push_back(redisKey);
-
 	// 콜백은 CRedisService가 생성자에 받은 CJobQueue 스레드에서 실행된다.
-	// SendCommand가 false(풀 없음/큐 가득)면 콜백이 안 오므로 직접 실패 처리한다.
-	const bool usedSha = !scriptSha.empty();
-	if( !_redisService->SendCommand(args, [this, tokenHex, usedSha, onComplete](const RedisValue& res)
+	// Run()이 false(풀 없음/큐 가득)면 콜백이 안 오므로 직접 실패 처리한다.
+	if( !kConsumeScript.Run(*_redisService, { redisKey }, CVector<std::string>(), [onComplete](const RedisValue& res)
 		{
-			// Redis가 스크립트 캐시를 잃은 경우(재시작/FLUSH, NOSCRIPT 오류) —
-			// SHA를 버리고 EVAL로 한 번 다시 시도한다(이때 스크립트도 다시 적재된다).
-			if( usedSha && res.eType == ERedisType::Error )
-			{
-				{
-					std::lock_guard<std::mutex> lock(_scriptMutex);
-					_consumeScriptSha.clear();
-				}
-				VerifyUploadToken(tokenHex, onComplete);
-				return;
-			}
-
-			// 결과는 문자열(채팅 서버가 저장한 public_id 16진) 또는 nil.
+			// 결과는 문자열(채팅 서버가 저장한 public_id 16진) 또는 nil. 에러(연결 오류 포함)는 빈 결과로 보여 무효 처리된다.
 			CRedisResultSet resultSet(res);
 
 			std::string ownerPublicIdHex;
-			const bool valid = !resultSet.IsEmpty() && resultSet.GetData(ownerPublicIdHex) && !ownerPublicIdHex.empty();
+			const bool valid = !resultSet.IsError() && !resultSet.IsEmpty() && resultSet.GetData(ownerPublicIdHex) && !ownerPublicIdHex.empty();
 
 			if( onComplete )
 				onComplete(valid, valid ? ownerPublicIdHex : std::string());
@@ -229,35 +194,6 @@ void CFileUploadHandler::VerifyUploadToken(const std::string& tokenHex, std::fun
 		if( onComplete )
 			onComplete(false, std::string());
 	}
-}
-
-//***************************************************************************
-// @brief 토큰 소모 스크립트를 Redis에 적재해 SHA를 보관한다(동시에 한 번만).
-//***************************************************************************
-void CFileUploadHandler::EnsureConsumeScriptLoaded()
-{
-	if( _redisService == nullptr || _scriptLoading.exchange(true) )
-		return;
-
-	CVector<std::string> args;
-	args.push_back("SCRIPT");
-	args.push_back("LOAD");
-	args.push_back(kConsumeScript);
-
-	const bool sent = _redisService->SendCommand(args, [this](const RedisValue& res)
-		{
-			CRedisResultSet resultSet(res);
-			std::string sha;
-			if( res.eType != ERedisType::Error && !resultSet.IsEmpty() && resultSet.GetData(sha) && !sha.empty() )
-			{
-				std::lock_guard<std::mutex> lock(_scriptMutex);
-				_consumeScriptSha = sha;
-			}
-			_scriptLoading.store(false); // 실패했으면 다음 소모 때 다시 시도한다
-		});
-
-	if( !sent )
-		_scriptLoading.store(false);
 }
 
 //***************************************************************************

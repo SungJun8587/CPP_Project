@@ -89,17 +89,8 @@ namespace
 			targets.push_back(recipient);
 		}
 
-		const std::string senderKey = res.newMsg.hasSender ? PublicIdToHex(res.newMsg.sender) : std::string();
-		const auto sessions = server->FindOnlineSessions(targets);
-		for( size_t i = 0; i < targets.size(); ++i )
-		{
-			const auto& session = sessions[i];
-			if( session == nullptr || !session->IsConnected() )
-				continue;
-			if( res.newMsg.hasSender && targets[i] != res.newMsg.sender && session->IsBlockingHex(senderKey) )
-				continue;
-			session->Send(&notify, sizeof(notify));
-		}
+		// 로컬 수신자는 바로, 다른 채널의 수신자는 DeliverToUsers()가 Pub/Sub으로 전달한다(발신자 차단 규칙은 양쪽 모두 적용).
+		server->DeliverToUsers(targets, &notify, sizeof(notify), nullptr, res.newMsg.hasSender ? &res.newMsg.sender : nullptr);
 	}
 
 	//***************************************************************************
@@ -629,38 +620,58 @@ namespace
 					return;
 
 				const bool ok = (res.result == EConvResult::Ok);
-				int32 sent = 0;
-				if( ok )
-				{
-					std::vector<PublicId> ids;
-					ids.reserve(res.members.size());
-					for( const SConvMember& member : res.members )
-						ids.push_back(member.publicId);
-					const auto onlineSessions = server->FindOnlineSessions(ids);
+				const uint8 reason = static_cast<uint8>(res.result);
 
-					for( size_t i = 0; i < res.members.size(); ++i )
+				auto sendMembers = [convId, reason](const std::shared_ptr<CChatSession>& target,
+					const std::vector<SConvMember>& members, const std::vector<bool>& online, bool success)
 					{
-						const SConvMember& member = res.members[i];
-						ConvMemberItemResPacket item{};
-						InitPacket(item, EChatPacketType::ConvMemberItemRes);
-						item.convId = convId;
-						CopyPublicId(item.publicId, member.publicId);
-						CopyStrUtf8(item.nickname, member.nickname);
-						CopyStrUtf8(item.profileImageUrl, member.profileImageRef);
-						item.lastReadMsgId = member.lastReadMsgId;
-						item.online = (onlineSessions[i] != nullptr) ? 1 : 0;
-						SendPacket(me, item);
-						++sent;
-					}
+						int32 sent = 0;
+						if( success )
+						{
+							for( size_t i = 0; i < members.size(); ++i )
+							{
+								const SConvMember& member = members[i];
+								ConvMemberItemResPacket item{};
+								InitPacket(item, EChatPacketType::ConvMemberItemRes);
+								item.convId = convId;
+								CopyPublicId(item.publicId, member.publicId);
+								CopyStrUtf8(item.nickname, member.nickname);
+								CopyStrUtf8(item.profileImageUrl, member.profileImageRef);
+								item.lastReadMsgId = member.lastReadMsgId;
+								item.online = online[i] ? 1 : 0;
+								SendPacket(target, item);
+								++sent;
+							}
+						}
+
+						ConvMembersEndResPacket end{};
+						InitPacket(end, EChatPacketType::ConvMembersEndRes);
+						end.success = success ? 1 : 0;
+						end.reason = reason;
+						end.convId = convId;
+						end.totalCount = sent;
+						SendPacket(target, end);
+					};
+
+				if( !ok )
+				{
+					sendMembers(me, res.members, std::vector<bool>(), false);
+					return;
 				}
 
-				ConvMembersEndResPacket end{};
-				InitPacket(end, EChatPacketType::ConvMembersEndRes);
-				end.success = ok ? 1 : 0;
-				end.reason = static_cast<uint8>(res.result);
-				end.convId = convId;
-				end.totalCount = sent;
-				SendPacket(me, end);
+				// 접속 여부는 한 번에 알아본다(다른 채널 접속자 포함).
+				std::vector<PublicId> ids;
+				ids.reserve(res.members.size());
+				for( const SConvMember& member : res.members )
+					ids.push_back(member.publicId);
+
+				std::weak_ptr<CChatSession> meWeak = me;
+				server->ResolveOnline(ids,
+					[meWeak, members = res.members, sendMembers](const std::vector<bool>& online)
+					{
+						if( auto target = meWeak.lock() )
+							sendMembers(target, members, online, true);
+					});
 			});
 	}
 }

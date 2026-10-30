@@ -209,12 +209,7 @@ void CChatServerMain::RequestUploadToken(
 	// SET key value EX seconds — 한 커맨드로 등록+TTL을 동시에 건다
 	// (RedisServerHeartbeat.cpp의 HSET+EXPIRE 두 단계보다 간단 — 여긴 필드가
 	// 값 하나뿐이라 SET의 EX 옵션만으로 충분하다).
-	CVector<std::string> args;
-	args.push_back("SET");
-	args.push_back(redisKey);
-	args.push_back(publicIdHex);
-	args.push_back("EX");
-	args.push_back(std::to_string(FileServerKeys::kUploadTokenTtlSec));
+	const CVector<std::string> args = Redis::MakeArgs({ "SET", redisKey, publicIdHex, "EX", std::to_string(FileServerKeys::kUploadTokenTtlSec) });
 
 	// SendCommand()는 풀이 없거나 대기 큐가 가득 차면 false를 반환하며 이때는 콜백이
 	// 호출되지 않는다 — 호출부가 응답을 영원히 기다리지 않도록 여기서 실패를 알린다.

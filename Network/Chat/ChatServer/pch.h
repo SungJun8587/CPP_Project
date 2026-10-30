@@ -91,6 +91,7 @@ using namespace std;
 #include "../ChatCommon/Protocol/ChatPacket.h"
 #include "../ChatCommon/Protocol/ChatPacketUtil.h"
 #include "../ChatCommon/ImageRef.h"
+#include "../ChatCommon/ChatServerKeys.h"
 #include "../ChatCommon/FileServerKeys.h"
 #include "ChatServerOptions.h"
 #include "ChatServerConfig.h"

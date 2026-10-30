@@ -19,9 +19,9 @@
 //          CJSONConfigFieldWriter를 쓴다 —
 //          베이스 필드(ServiceName/DisplayName/ServerName/GroupId/
 //          ChannelId/IP/Port/KeepAliveSec/MaxSessionCount/WorkerThreadCnt/
-//          ServerNodeVec/DBNodeVec/RedisNodeVec)와 이 클래스 고유 6개
+//          ServerNodeVec/DBNodeVec/RedisNodeVec)와 이 클래스 고유 7개
 //          필드(RedisPoolSize/DbWorkerThreadCnt/HeartbeatTtlSec/
-//          HeartbeatIntervalSec/FileServerUrl/MaxRoomsPerOwner)를 같은
+//          HeartbeatIntervalSec/FileServerUrl/MaxRoomsPerOwner/EnableRelay)를 같은
 //          JSON 파일 하나에서 한 번에 읽는다.
 //
 //          이전에 "SERVER_CONFIG" 같은 매크로/전역 접근자로
@@ -73,6 +73,7 @@ public:
 	// @brief 1인당 생성 가능한 방 개수 상한을 반환합니다(0 이하면 무제한).
 	//***************************************************************************
 	int32 GetMaxRoomsPerOwner() { return _nMaxRoomsPerOwner; }
+	bool IsRelayEnabled() { return _nEnableRelay != 0; }
 
 	void PrintServerSettingInfo();
 
@@ -100,6 +101,7 @@ private:
 
 	TCHAR						_tszFileServerUrl[HOSTNAME_STRLEN];	// 클라이언트에게 알려줄 파일 서버 주소(프로필 이미지 업로드용, 채팅 서버와 별개 프로세스)
 	int32						_nMaxRoomsPerOwner;					// 1인당 생성 가능한 방 개수 상한(0 이하면 무제한)
+	int32						_nEnableRelay;						// 1이면 채널 간 전달 계층 사용(Redis Pub/Sub), 0이면 이 프로세스 안에서만 전달
 };
 
 #endif // ndef CHATSERVERCONFIG_H

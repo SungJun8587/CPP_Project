@@ -16,6 +16,7 @@
 #include <Network/HTTP/HttpPacketBuilder.h>
 #include <Network/HTTP/HttpRequestParser.h>
 #include <Redis/RedisService.h>
+#include <Redis/RedisScript.h>
 #include <Redis/RedisResultSet.h>
 
 #include <memory>
@@ -56,12 +57,6 @@ public:
 
 private:
 	//***************************************************************************
-	// @brief 토큰 소모용 Lua 스크립트를 Redis에 올려(SCRIPT LOAD) EVALSHA로 쓸 수 있게
-	//        한다. 첫 소모는 EVAL로 처리하고, 적재가 끝나면 이후부터 SHA만 보낸다.
-	//***************************************************************************
-	void EnsureConsumeScriptLoaded();
-
-	//***************************************************************************
 	// @brief relativePath로 접근 가능한 공개 URL을 만든다.
 	//***************************************************************************
 	std::string BuildPublicUrl(const std::string& relativePath) const;
@@ -72,10 +67,6 @@ private:
 	CRedisService* _redisService;	// 위와 동일
 
 	std::string	_publicBaseUrl;
-
-	std::mutex			_scriptMutex;
-	std::string			_consumeScriptSha;		// 적재된 스크립트의 SHA1(비어있으면 아직 없음)
-	std::atomic<bool>	_scriptLoading{ false };
 };
 
 #endif // ndef FILEUPLOADHANDLER_H

@@ -204,46 +204,64 @@ namespace
 					return;
 
 				const bool ok = (res.result == EFriendResult::Ok);
-				int32 sent = 0;
-				if( ok )
+				const auto reason = static_cast<uint8>(res.result);
+
+				if( !ok )
 				{
-					// 접속 여부는 친구 수만큼 락을 잡지 않도록 한 번에 조회한다.
-					std::vector<PublicId> ids;
-					ids.reserve(res.entries.size());
-					for( const SFriendEntry& e : res.entries )
-						ids.push_back(e.publicId);
-					const auto onlineSessions = server->FindOnlineSessions(ids);
-
-					// 항목을 kMaxFriendsPerBatch개씩 묶어 보낸다. 마지막 묶음은 쓴 만큼만 전송한다.
-					for( size_t begin = 0; begin < res.entries.size(); begin += kMaxFriendsPerBatch )
-					{
-						const size_t count = (std::min)(res.entries.size() - begin, static_cast<size_t>(kMaxFriendsPerBatch));
-
-						FriendListBatchResPacket batch{};
-						InitPacket(batch, EChatPacketType::FriendListBatchRes);
-						batch.count = static_cast<uint8>(count);
-						for( size_t k = 0; k < count; ++k )
-						{
-							const SFriendEntry& e = res.entries[begin + k];
-							FriendListEntryWire& wire = batch.entries[k];
-							CopyPublicId(wire.publicId, e.publicId);
-							CopyStrUtf8(wire.nickname, e.nickname);
-							CopyStrUtf8(wire.profileImageUrl, e.profileImageRef);
-							wire.online = (onlineSessions[begin + k] != nullptr) ? 1 : 0;
-						}
-
-						batch.size = static_cast<uint16>(sizeof(PacketHeader) + sizeof(batch.count) + count * sizeof(FriendListEntryWire));
-						me->Send(&batch, batch.size);
-						sent += static_cast<int32>(count);
-					}
+					FriendListEndResPacket end{};
+					InitPacket(end, EChatPacketType::FriendListEndRes);
+					end.success = 0;
+					end.reason = reason;
+					end.totalCount = 0;
+					SendPacket(me, end);
+					return;
 				}
 
-				FriendListEndResPacket end{};
-				InitPacket(end, EChatPacketType::FriendListEndRes);
-				end.success = ok ? 1 : 0;
-				end.reason = static_cast<uint8>(res.result);
-				end.totalCount = sent;
-				SendPacket(me, end);
+				// 접속 여부는 친구 수만큼 락/조회를 하지 않도록 한 번에 알아본다(다른 채널 접속자 포함).
+				std::vector<PublicId> ids;
+				ids.reserve(res.entries.size());
+				for( const SFriendEntry& e : res.entries )
+					ids.push_back(e.publicId);
+
+				std::weak_ptr<CChatSession> meWeak = me;
+				server->ResolveOnline(ids,
+					[meWeak, entries = res.entries, reason](const std::vector<bool>& online)
+					{
+						auto target = meWeak.lock();
+						if( target == nullptr )
+							return;	// 조회 중에 요청자가 끊김
+
+						int32 sent = 0;
+						// 항목을 kMaxFriendsPerBatch개씩 묶어 보낸다. 마지막 묶음은 쓴 만큼만 전송한다.
+						for( size_t begin = 0; begin < entries.size(); begin += kMaxFriendsPerBatch )
+						{
+							const size_t count = (std::min)(entries.size() - begin, static_cast<size_t>(kMaxFriendsPerBatch));
+
+							FriendListBatchResPacket batch{};
+							InitPacket(batch, EChatPacketType::FriendListBatchRes);
+							batch.count = static_cast<uint8>(count);
+							for( size_t k = 0; k < count; ++k )
+							{
+								const SFriendEntry& e = entries[begin + k];
+								FriendListEntryWire& wire = batch.entries[k];
+								CopyPublicId(wire.publicId, e.publicId);
+								CopyStrUtf8(wire.nickname, e.nickname);
+								CopyStrUtf8(wire.profileImageUrl, e.profileImageRef);
+								wire.online = online[begin + k] ? 1 : 0;
+							}
+
+							batch.size = static_cast<uint16>(sizeof(PacketHeader) + sizeof(batch.count) + count * sizeof(FriendListEntryWire));
+							target->Send(&batch, batch.size);
+							sent += static_cast<int32>(count);
+						}
+
+						FriendListEndResPacket end{};
+						InitPacket(end, EChatPacketType::FriendListEndRes);
+						end.success = 1;
+						end.reason = reason;
+						end.totalCount = sent;
+						SendPacket(target, end);
+					});
 			});
 	}
 

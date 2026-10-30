@@ -83,6 +83,7 @@ using namespace std;
 #include <Redis/RedisCommon.h>
 
 #include "../ChatCommon/ImageRef.h"
+#include "../ChatCommon/ChatServerKeys.h"
 #include "../ChatCommon/FileServerKeys.h"
 #include "FileServerOptions.h"
 #include "FileServerConfig.h"

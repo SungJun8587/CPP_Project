@@ -179,6 +179,16 @@
     <ClCompile Include="PacketHandler\RequestUploadTokenHandler.cpp">
       <Filter>PacketHandler</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisRetry.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisScript.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\..\Library\UtilCore\Redis\RedisSubscriber.cpp">
+      <Filter>UtilCore\Redis</Filter>
+    </ClCompile>
+    <ClCompile Include="ChatServerMainRelay.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -509,6 +519,26 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpDefine.h">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisDefine.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisHelper.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisRetry.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisScript.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisSubscriber.h">
+      <Filter>UtilCore\Redis</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatServerKeys.h" />
+    <ClInclude Include="..\ChatCommon\ChatServerKeys.h">
+      <Filter>ChatCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatRelayFrame.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
