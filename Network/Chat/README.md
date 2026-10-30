@@ -241,11 +241,11 @@ MySQL의 `chat` 데이터베이스(utf8mb4, InnoDB)에 계정·방·친구·대�
 
 ## 서버 클래스 구조
 
-CChatSession이 CIocpSession을 상속해 IOCP 송수신을 담당하고, 패킷은 디스패처가 타입별 핸들러로 라우팅한다. 로직은 전부 CChatServerMain에 모이고, 거기서 Redis와 DB는 각각 비동기 서비스 계층(CRedisService, COdbcAsyncSrv)을 거쳐 커넥션 풀에 접근한다.
+CChatSession이 CIocpSession을 상속해 IOCP 송수신을 담당하고, 패킷은 디스패처가 타입별 핸들러로 라우팅한다. 로직은 전부 CChatServerMain에 모이고, 거기서 Redis와 DB는 각각 비동기 서비스 계층(CRedisService, COdbcAsyncSrv)을 거쳐 커넥션 풀에 접근하고, 다른 채널 인스턴스가 보낸 릴레이 메시지는 전용 구독 연결(CRedisSubscriber)로 받는다.
 
-![서버 클래스 구조 · IOCP 엔진이 세션을 만들고 CChatServerMain이 Redis·DB를 조율](Doc/md_images/02-server-class-structure.png)
+![서버 클래스 구조 · IOCP 엔진이 세션을 만들고 CChatServerMain이 Redis·DB를 조율, Redis 구독 연결은 채널 간 릴레이 수신](Doc/md_images/02-server-class-structure.png)
 
-*서버 클래스 구조 · IOCP 엔진이 세션을 만들고 CChatServerMain이 Redis·DB를 조율*
+*서버 클래스 구조 · IOCP 엔진이 세션을 만들고 CChatServerMain이 Redis·DB를 조율, Redis 구독 연결은 채널 간 릴레이 수신*
 
 세션 → 서버 → Redis/DB로 이어지는 호출 방향이 곧 책임의 경계다: 세션은 네트워크만, 서버는 로직만, 서비스 계층은 커넥션 관리만 맡는다.
 
