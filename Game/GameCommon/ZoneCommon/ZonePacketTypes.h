@@ -87,6 +87,7 @@ enum class EZoneEnterResult : uint8_t
 	Ok = 0,
 	DuplicateEntity = 1,	// 같은 캐릭터/세션이 이미 존에 있음
 	ZoneError = 2,
+	InvalidCharId = 3,		// 캐릭터 ID가 몬스터 전용 대역(최상위 비트)을 침범
 };
 
 //***************************************************************************
@@ -170,6 +171,7 @@ enum class EZoneClientPacketType : uint16_t
 	ZcDeathNotify = 2009,		// Zone -> Client, 엔티티 사망
 	ZcRespawnNotify = 2010,		// Zone -> Client, 엔티티 부활(리스폰 위치/체력)
 	ZcAttackRejectNotify = 2011,// Zone -> Client, 내 공격 요청 거부 사유
+	ZcHealNotify = 2012,		// Zone -> Client, 체력 회복(몬스터 복귀 회복 등)
 };
 
 #endif // ndef ZONEPACKETTYPES_H

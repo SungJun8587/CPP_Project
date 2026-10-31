@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="..\..\..\Library\UtilCore\Excel\XlntUtil.cpp">
+      <Filter>UtilCore\Excel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Excel\XlntWorkbookReader.cpp">
+      <Filter>UtilCore\Excel</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="SheetConverter.cpp" />
+    <ClCompile Include="ValueFormat.cpp" />
+    <ClCompile Include="XlsxToJson.cpp" />
+    <ClCompile Include="pch.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Excel\XlntUtil.h">
+      <Filter>UtilCore\Excel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Excel\XlntWorkbookReader.h">
+      <Filter>UtilCore\Excel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="SheetConverter.h" />
+    <ClInclude Include="ValueFormat.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Excel\XlntDefine.h">
+      <Filter>UtilCore\Excel</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{9f68627f-2102-4894-8df4-8592d914ba8d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Excel">
+      <UniqueIdentifier>{ed2e72c6-a793-4b44-a47f-43226219c296}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{f737d23e-2cd0-447c-9f55-36b70d0c0e2d}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\Library\UtilCore\Excel\XlntUtil.inl">
+      <Filter>UtilCore\Excel</Filter>
+    </None>
+  </ItemGroup>
+</Project>

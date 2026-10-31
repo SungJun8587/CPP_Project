@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include "ZoneServerMain.h"
+#include "GameDataLoader.h"
 #include "ZoneLinkSession.h"
 
 #include <algorithm>
@@ -65,7 +66,22 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 	spawnPos.x = _options.spawnX;
 	spawnPos.y = _options.spawnY;
 
-	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, _options.playerSpeed, playerStats);
+	// 기획 데이터(몬스터/스폰). 폴더가 지정됐는데 읽기/검증에 실패하면 구동하지 않는다(데이터 없이 조용히 뜨는 것이 더 위험).
+	std::shared_ptr<const CMonsterData> monsterData;
+	if( !_options.gameDataDir.empty() )
+	{
+		monsterData = CGameDataLoader::LoadMonsters(_options.gameDataDir);
+		if( monsterData == nullptr )
+		{
+			LOG_ERROR(_T("[CZoneServerMain] game data load failed. dir=%s"), _options.gameDataDir.c_str());
+			return false;
+		}
+	}
+
+	SMonsterSystemConfig monsterConfig;
+	monsterConfig.thinkIntervalMs = _options.monsterThinkIntervalMs;
+
+	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, _options.playerSpeed, playerStats, std::move(monsterData), monsterConfig);
 	if( !_zone->IsValid() )
 	{
 		LOG_ERROR(_T("[CZoneServerMain] invalid zone configuration. zoneId=%u"), _options.zoneId);
@@ -80,6 +96,20 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 			_options.zoneId, _options.attackRange, _options.playerSpeed, _zone->GetGuaranteedViewRange());
 		_zone.reset();
 		return false;
+	}
+
+	// 몬스터 데이터는 존 영역/AOI 시야와 맞아야 한다(선공 거리, 사거리). 맞지 않으면 구동하지 않는다.
+	{
+		std::string error;
+		if( !_zone->ValidateMonsters(error) )
+		{
+			LOG_ERROR(_T("[CZoneServerMain] monster data does not fit the zone. zoneId=%u, reason=%hs"), _options.zoneId, error.c_str());
+			_zone.reset();
+			return false;
+		}
+
+		const uint32 spawned = _zone->SpawnMonsters();
+		LOG_INFO(_T("[CZoneServerMain] monsters spawned. zoneId=%u, count=%u"), _options.zoneId, spawned);
 	}
 
 	if( !_zone->Start() )

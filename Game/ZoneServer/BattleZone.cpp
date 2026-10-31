@@ -5,10 +5,10 @@
 //***************************************************************************
 
 #include "pch.h"
-#include "../GameCommon/ZoneCommon/ZonePacket.h"
 #include "BattleZone.h"
 #include "ZoneServerMain.h"
 
+#include <algorithm>
 #include <cmath>
 
 //***************************************************************************
@@ -18,16 +18,63 @@
 // @param spawnPos    입장 시 스폰 위치
 // @param playerSpeed 플레이어 기본 이동 속도 (units/sec)
 // @param playerStats 플레이어 전투 능력치
+// @param monsterData   몬스터 데이터 (nullptr이면 몬스터 없음)
+// @param monsterConfig 몬스터 AI 튜닝값
 //***************************************************************************
-CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed, const SCombatStats& playerStats)
+CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed, const SCombatStats& playerStats,
+	std::shared_ptr<const CMonsterData> monsterData, const SMonsterSystemConfig& monsterConfig)
 	: CFieldZone<>(config)
 	, _server(server)
 	, _spawnPos(spawnPos)
 	, _playerSpeed(playerSpeed)
+	, _monsters(std::make_unique<CMonsterSystem>(*this, std::move(monsterData), monsterConfig))
 	, _playerStats(playerStats)
 	, _playerCount(0)
 {
 	_recipients.reserve(256);
+}
+
+//***************************************************************************
+// @brief 플레이어 설정과 몬스터 데이터가 이 존 설정(영역, AOI 시야, 사거리)과 맞는지 검사합니다. Start() 전에 호출합니다.
+//        - 플레이어 이동 속도가 유한하고 0보다 큼, 입장 위치가 존 영역 안
+//          (벗어나면 입장 응답은 성공으로 보낸 뒤 AddEntity가 실패해 추방 통지로 정정하는 경로를 매번 타게 된다)
+//        - 플레이어 공격 판정 거리 <= AOI 최소 보장 시야. 상대(몬스터)의 최고 속도를 반영한다
+//        - 몬스터 데이터 검사(CMonsterSystem::Validate). 상대(플레이어)의 속도를 반영한다
+// @param error [out] 오류 설명
+// @return 문제가 없으면 true
+//***************************************************************************
+bool CBattleZone::ValidateMonsters(std::string& error) const
+{
+	const FieldZoneConfig& fc = GetFieldConfig();
+
+	if( !(std::isfinite(_playerSpeed) && _playerSpeed > 0.0f) )
+	{
+		error = "player speed must be a finite value > 0";
+		return false;
+	}
+
+	if( !(_spawnPos.x >= fc.minX && _spawnPos.x <= fc.maxX && _spawnPos.y >= fc.minY && _spawnPos.y <= fc.maxY) )
+	{
+		error = "player spawn position is outside the zone bounds";
+		return false;
+	}
+
+	if( !IsAttackRangeSupported(_playerStats.attackRange, (std::max)(_playerSpeed, _monsters->GetMaxSpawnSpeed())) )
+	{
+		error = "player attack reach exceeds the guaranteed AOI view range";
+		return false;
+	}
+
+	return _monsters->Validate(error, _playerSpeed);
+}
+
+//***************************************************************************
+// @brief 이 존의 스폰 테이블대로 몬스터를 배치합니다. Start() 전에 한 번 호출합니다.
+// @return 배치된 몬스터 수
+//***************************************************************************
+uint32 CBattleZone::SpawnMonsters()
+{
+	return _monsters->SpawnAll();
 }
 
 //***************************************************************************
@@ -54,6 +101,16 @@ void CBattleZone::HandleEnter(uint64 clientSessionId, uint64 charId)
 	res.charId = charId;
 	res.spawnX = _spawnPos.x;
 	res.spawnY = _spawnPos.y;
+
+	if( charId == 0 || (charId & kMonsterIdBase) != 0 )
+	{
+		// 0은 "공격자/대상 없음"을 뜻하는 값이라 엔티티 ID로 쓸 수 없다.
+		// 최상위 비트는 몬스터 ID 대역이다. 플레이어가 침범하면 몬스터로 오인되어 static_cast가 깨지므로 입구에서 막는다.
+		res.success = 0;
+		res.reason = static_cast<uint8>(EZoneEnterResult::InvalidCharId);
+		_server->SendToGateway(&res, res.size);
+		return;
+	}
 
 	if( FindEntity(charId) != nullptr || _sessionToEntity.find(clientSessionId) != _sessionToEntity.end() )
 	{
@@ -99,6 +156,9 @@ void CBattleZone::HandleLeave(uint64 clientSessionId, uint64 charId)
 	auto it = _sessionToEntity.find(clientSessionId);
 	if( it == _sessionToEntity.end() || it->second->GetId() != charId )
 		return;
+
+	// 제거 중 AOI 이탈 통지로 이 플레이어 본인에게 이웃 수만큼 디스폰이 나가지 않도록 먼저 표시한다.
+	static_cast<CZonePlayer*>(it->second)->MarkLeaving();
 
 	_sessionToEntity.erase(it);
 	RemoveEntity(charId);
@@ -177,6 +237,7 @@ void CBattleZone::SendSpawn(CZonePlayer& to, CZoneEntity& about)
 	notify.hp = about.GetHp();
 	notify.maxHp = about.GetCombatStats().maxHp;
 	notify.dead = about.IsAlive() ? 0 : 1;
+	notify.templateId = _monsters->IsAiMonster(about) ? static_cast<const CMonster&>(about).GetTemplate().id : 0;
 
 	SendToEntity(to, &notify, notify.size);
 }
@@ -193,6 +254,15 @@ void CBattleZone::SendDespawn(CZonePlayer& to, CZoneEntity& about)
 	notify.entityId = about.GetId();
 
 	SendToEntity(to, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 엔티티가 존에서 제거되기 직전에 몬스터 AI 목록에서 뺀다.
+// @param entity 제거될 엔티티
+//***************************************************************************
+void CBattleZone::OnEntityRemoved(CZoneEntity& entity)
+{
+	_monsters->OnRemoved(entity);
 }
 
 //***************************************************************************
@@ -293,6 +363,8 @@ void CBattleZone::OnEntityDamaged(CZoneEntity* attacker, CZoneEntity& victim, in
 	notify.maxHp = victim.GetCombatStats().maxHp;
 
 	BroadcastCombat(victim, attacker, &notify, notify.size);
+
+	_monsters->OnDamaged(attacker, victim, damage);
 }
 
 //***************************************************************************
@@ -308,6 +380,8 @@ void CBattleZone::OnEntityDied(CZoneEntity& victim, CZoneEntity* killer)
 	notify.killerId = killer != nullptr ? killer->GetId() : 0;
 
 	BroadcastCombat(victim, killer, &notify, notify.size);
+
+	_monsters->OnDied(victim);
 }
 
 //***************************************************************************
@@ -327,6 +401,52 @@ void CBattleZone::OnEntityRespawned(CZoneEntity& entity)
 	notify.invulnerableMs = IsInvulnerable(entity) ? static_cast<uint32>(entity.GetInvulnerableUntilMs() - GetNowMs()) : 0;
 
 	BroadcastAround(entity, &notify, notify.size);
+
+	_monsters->OnRespawned(entity);
+}
+
+//***************************************************************************
+// @brief 체력이 회복되면 주변 전원에게 알린다.
+// @param entity 회복된 엔티티
+// @param amount 실제 회복량
+//***************************************************************************
+void CBattleZone::OnEntityHealed(CZoneEntity& entity, int32 amount)
+{
+	ZcHealNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcHealNotify);
+	notify.entityId = entity.GetId();
+	notify.amount = amount;
+	notify.hp = entity.GetHp();
+	notify.maxHp = entity.GetCombatStats().maxHp;
+
+	BroadcastAround(entity, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 매 틱 이동 갱신이 끝난 뒤 몬스터 AI를 진행한다.
+// @param dtMs 이전 틱 이후 경과 시간(ms)
+//***************************************************************************
+void CBattleZone::OnUpdate(uint32 dtMs)
+{
+	CFieldZone<>::OnUpdate(dtMs);
+	_monsters->Update();
+}
+
+//***************************************************************************
+// @brief AI 몬스터는 템플릿의 부활 시간을, 그 외는 기본 정책을 따른다.
+//***************************************************************************
+uint32 CBattleZone::GetRespawnDelayMs(const CZoneEntity& victim) const
+{
+	return _monsters->IsAiMonster(victim) ? _monsters->GetRespawnDelayMs(victim) : CFieldZone<>::GetRespawnDelayMs(victim);
+}
+
+//***************************************************************************
+// @brief AI 몬스터는 스폰 반경 안의 무작위 지점에서, 그 외는 기본 정책대로 부활한다.
+//***************************************************************************
+Vec2 CBattleZone::GetRespawnPos(const CZoneEntity& entity) const
+{
+	Vec2 pos;
+	return _monsters->GetRespawnPos(entity, pos) ? pos : CFieldZone<>::GetRespawnPos(entity);
 }
 
 //***************************************************************************
@@ -365,7 +485,11 @@ void CBattleZone::SendToEntity(CZoneEntity& target, const void* data, uint16 siz
 	if( target.GetType() != EntityType::Player )
 		return;
 
-	_server->SendToClient(static_cast<CZonePlayer&>(target).GetClientSessionId(), data, size);
+	const CZonePlayer& player = static_cast<CZonePlayer&>(target);
+	if( player.IsLeaving() )
+		return;
+
+	_server->SendToClient(player.GetClientSessionId(), data, size);
 }
 
 //***************************************************************************
@@ -377,6 +501,10 @@ void CBattleZone::SendToEntity(CZoneEntity& target, const void* data, uint16 siz
 //***************************************************************************
 void CBattleZone::BroadcastAround(CZoneEntity& entity, const void* data, uint16 size)
 {
+	// 시야에 플레이어가 없는 몬스터(복귀 중 이동/회복, 외딴 곳의 부활 등)는 알릴 대상이 없으니 AOI를 훑지 않는다.
+	if( HasNoObserver(entity) )
+		return;
+
 	_recipients.clear();
 
 	AddRecipient(entity);
@@ -402,7 +530,7 @@ void CBattleZone::BroadcastCombat(CZoneEntity& victim, CZoneEntity* other, const
 
 	AddRecipient(victim);
 
-	bool otherVisited = (other == nullptr);
+	bool otherVisited = (other == nullptr || other == &victim);		// 자기 자신이 상대면 이미 수신자다
 	ForEachInAoi(victim, [this, other, &otherVisited](CZoneEntity& neighbor)
 		{
 			if( &neighbor == other )
@@ -415,6 +543,16 @@ void CBattleZone::BroadcastCombat(CZoneEntity& victim, CZoneEntity* other, const
 		AddRecipient(*other);
 
 	FlushRecipients(data, size);
+}
+
+//***************************************************************************
+// @brief 이 엔티티의 변화를 볼 플레이어가 없는지 확인한다. AI 몬스터는 시야 안 플레이어 수(_nearPlayers)를 이미 세고 있다.
+// @param entity 확인할 엔티티
+// @return 보는 플레이어가 없다고 확실하면 true (플레이어와 그 외 엔티티는 항상 false)
+//***************************************************************************
+bool CBattleZone::HasNoObserver(const CZoneEntity& entity) const
+{
+	return _monsters->IsAiMonster(entity) && static_cast<const CMonster&>(entity).GetNearPlayers() == 0;
 }
 
 //***************************************************************************
@@ -434,5 +572,8 @@ void CBattleZone::AddRecipient(CZoneEntity& target)
 //***************************************************************************
 void CBattleZone::FlushRecipients(const void* data, uint16 size)
 {
+	if( _recipients.empty() )
+		return;
+
 	_server->SendToClients(_recipients.data(), _recipients.size(), data, size);
 }

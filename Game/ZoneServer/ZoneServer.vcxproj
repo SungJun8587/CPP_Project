@@ -121,9 +121,13 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\Monster.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\MonsterData.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\MonsterSystem.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\Zone.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\ZoneEntity.cpp" />
     <ClCompile Include="BattleZone.cpp" />
+    <ClCompile Include="GameDataLoader.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -195,10 +199,14 @@
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZone.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZoneBase.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\GridAOI.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\Monster.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\MonsterData.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\MonsterSystem.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\Zone.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\ZoneEntity.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\ZoneMath.h" />
     <ClInclude Include="BattleZone.h" />
+    <ClInclude Include="GameDataLoader.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="ZoneLinkSession.h" />
     <ClInclude Include="ZonePlayer.h" />

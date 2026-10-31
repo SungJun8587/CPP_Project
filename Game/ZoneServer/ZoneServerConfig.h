@@ -23,6 +23,7 @@
 //     ZoneId / ZoneKind / Capacity / TickIntervalMs
 //     MinX / MinY / MaxX / MaxY / CellSize / SpawnX / SpawnY / PlayerSpeed
 //     PlayerMaxHp / PlayerAttack / PlayerDefense / AttackRange / AttackIntervalMs / RespawnDelayMs / RespawnInvulnMs / AllowPvp
+//     GameDataDir / MonsterThinkIntervalMs  (몬스터/스폰 데이터 폴더와 AI 사고 주기)
 // AttackRange는 (사거리 + 위치 허용 오차 + 이동 지연 보정)이 AOI 최소 보장 시야 이내여야 하며, CZoneServerMain::Start()가 구동 시 검사한다.
 // 이 서버는 리스너가 없으므로 베이스의 IP/Port/MaxSessionCount는 읽지 않는다.
 // 키가 없으면 SZoneServerOptions의 기본값을 유지한다.
@@ -65,6 +66,8 @@ private:
 	uint32		_nRespawnDelayMs;
 	uint32		_nRespawnInvulnMs;
 	bool		_bAllowPvp;
+	_tstring	_strGameDataDir;
+	uint32		_nMonsterThinkIntervalMs;
 };
 
 #endif // ndef ZONESERVERCONFIG_H

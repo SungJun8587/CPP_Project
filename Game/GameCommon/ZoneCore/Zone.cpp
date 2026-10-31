@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // Zone.cpp : implementation of the CZone class.
 //
 //***************************************************************************
@@ -82,6 +83,7 @@ CZone::CZone(const ZoneConfig& config)
 	, _started(false)
 	, _running(false)
 	, _accepting(false)
+	, _threadAlive(false)
 	, _drainPos(0)
 	, _pendingJobs(0)
 	, _activePosters(0)
@@ -122,6 +124,7 @@ bool CZone::Start()
 	if( _started.exchange(true) )
 		return false;
 
+	_threadAlive.store(true, std::memory_order_release);
 	_running.store(true, std::memory_order_release);
 	_accepting.store(true, std::memory_order_seq_cst);
 
@@ -133,6 +136,7 @@ bool CZone::Start()
 	{
 		_accepting.store(false, std::memory_order_seq_cst);
 		_running.store(false, std::memory_order_release);
+		_threadAlive.store(false, std::memory_order_release);
 		return false;
 	}
 
@@ -157,6 +161,8 @@ void CZone::Stop()
 	if( IsZoneThread() )
 		return;
 
+	// 여러 스레드가 동시에 Stop()해도 join은 한 번만 일어나게 직렬화한다. (같은 std::thread를 동시에 join하면 안 된다)
+	std::lock_guard<std::mutex> joinLock(_joinMutex);
 	if( _thread.joinable() )
 		_thread.join();
 }
@@ -202,13 +208,15 @@ bool CZone::Post(ZoneJob job)
 }
 
 //***************************************************************************
-// @brief 타이머를 직접 만질 수 있는 상태인지 확인합니다.
-//        존 스레드이거나, 아직 시작 전/정지 후라서 다른 스레드가 접근하지 않는 상태여야 합니다.
+// @brief 존 내부 상태(타이머 등)를 직접 만질 수 있는 상태인지 확인합니다.
+//        존 스레드이거나, 틱 스레드가 시작 전이거나 완전히 끝난 뒤라서 다른 스레드가 접근하지 않는 상태여야 합니다.
+//        Stop()이 _running을 내린 직후에도 틱 스레드는 잔여 작업 처리, OnStop, 타이머 정리를 하므로
+//        _running이 아니라 스레드 생존 여부(_threadAlive)로 판정한다.
 // @return 접근 가능하면 true
 //***************************************************************************
-bool CZone::CanTouchTimers() const
+bool CZone::CanTouchZoneState() const
 {
-	return IsZoneThread() || !IsRunning();
+	return IsZoneThread() || !_threadAlive.load(std::memory_order_acquire);
 }
 
 //***************************************************************************
@@ -221,7 +229,7 @@ bool CZone::CanTouchTimers() const
 //***************************************************************************
 uint64 CZone::ScheduleTimer(uint32 delayMs, ZoneJob job)
 {
-	if( !job || !CanTouchTimers() )
+	if( !job || !CanTouchZoneState() )
 		return 0;
 
 	if( delayMs == 0 )
@@ -237,7 +245,7 @@ uint64 CZone::ScheduleTimer(uint32 delayMs, ZoneJob job)
 //***************************************************************************
 bool CZone::CancelTimer(uint64 timerId)
 {
-	if( timerId == 0 || !CanTouchTimers() )
+	if( timerId == 0 || !CanTouchZoneState() )
 		return false;
 
 	return _timers.Cancel(timerId);
@@ -255,7 +263,7 @@ bool CZone::ScheduleAfter(uint32 delayMs, ZoneJob job)
 	if( !job )
 		return false;
 
-	if( CanTouchTimers() )
+	if( CanTouchZoneState() )
 		return ScheduleTimer(delayMs, std::move(job)) != 0;
 
 	return Post([delayMs, job = std::move(job)](CZone& zone) mutable
@@ -388,8 +396,10 @@ void CZone::ThreadMain()
 			++ran;
 		}
 
+		// 따라잡기 한도에 걸려 멈춘 경우에만 건너뛴다. (한도에 걸리지 않았는데 시계를 다시 읽어 판정하면,
+		// 방금 도래한 틱 하나를 잘못 건너뛸 수 있다.)
 		const auto now = Clock::now();
-		if( now >= nextTick )
+		if( ran >= _config.maxCatchUpTicks && now >= nextTick )
 		{
 			// 따라잡기 한도를 넘겨 여전히 밀려 있음: 남은 틱을 건너뛴다.
 			const auto behind = std::chrono::duration_cast<std::chrono::milliseconds>(now - nextTick);
@@ -415,6 +425,7 @@ void CZone::ThreadMain()
 	_timers.Clear();
 
 	_threadId.store(std::thread::id(), std::memory_order_release);
+	_threadAlive.store(false, std::memory_order_release);		// 마지막에 내린다: 이후부터 외부 스레드가 존 상태를 만질 수 있다
 }
 
 //***************************************************************************

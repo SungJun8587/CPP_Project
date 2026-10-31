@@ -78,6 +78,7 @@ public:
 
 protected:
 	// ── 타입 안전 이벤트 훅 (CFieldZoneBase 문서 참고) ───────
+	virtual void OnEntityRemoved(TEntity& entity) { (void)entity; }
 	virtual void OnEntityMoveStarted(TEntity& entity) { (void)entity; }
 	virtual void OnEntityMoveStopped(TEntity& entity, bool arrived) { (void)entity; (void)arrived; }
 	virtual void OnEntityTeleported(TEntity& entity) { (void)entity; }
@@ -85,9 +86,11 @@ protected:
 	virtual void OnEntityDamaged(TEntity* attacker, TEntity& victim, int32 damage) { (void)attacker; (void)victim; (void)damage; }
 	virtual void OnEntityDied(TEntity& victim, TEntity* killer) { (void)victim; (void)killer; }
 	virtual void OnEntityRespawned(TEntity& entity) { (void)entity; }
+	virtual void OnEntityHealed(TEntity& entity, int32 amount) { (void)entity; (void)amount; }
 	virtual void OnAttackRejected(TEntity& attacker, uint64 targetId, AttackResult reason) { (void)attacker; (void)targetId; (void)reason; }
 
 private:
+	void HandleEntityRemoved(CZoneEntity& entity) final { OnEntityRemoved(static_cast<TEntity&>(entity)); }
 	void HandleMoveStarted(CZoneEntity& entity) final { OnEntityMoveStarted(static_cast<TEntity&>(entity)); }
 	void HandleMoveStopped(CZoneEntity& entity, bool arrived) final { OnEntityMoveStopped(static_cast<TEntity&>(entity), arrived); }
 	void HandleTeleported(CZoneEntity& entity) final { OnEntityTeleported(static_cast<TEntity&>(entity)); }
@@ -95,6 +98,7 @@ private:
 	void HandleDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage) final { OnEntityDamaged(static_cast<TEntity*>(attacker), static_cast<TEntity&>(victim), damage); }
 	void HandleDied(CZoneEntity& victim, CZoneEntity* killer) final { OnEntityDied(static_cast<TEntity&>(victim), static_cast<TEntity*>(killer)); }
 	void HandleRespawned(CZoneEntity& entity) final { OnEntityRespawned(static_cast<TEntity&>(entity)); }
+	void HandleHealed(CZoneEntity& entity, int32 amount) final { OnEntityHealed(static_cast<TEntity&>(entity), amount); }
 	void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) final { OnAttackRejected(static_cast<TEntity&>(attacker), targetId, reason); }
 };
 

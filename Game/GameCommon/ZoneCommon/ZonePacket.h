@@ -251,6 +251,7 @@ struct ZcSpawnNotifyPacket : PacketHeader
 	int32	hp;				// 현재 체력
 	int32	maxHp;			// 최대 체력
 	uint8	dead;			// 1이면 사망 상태(시체)
+	uint32	templateId;		// 몬스터 종류 ID (플레이어는 0). 클라이언트가 모델/이름을 고르는 키
 };
 
 //***************************************************************************
@@ -320,6 +321,17 @@ struct ZcAttackRejectNotifyPacket : PacketHeader
 {
 	uint64	targetId;		// 요청에 실렸던 대상 ID
 	uint8	reason;			// EAttackRejectReason
+};
+
+//***************************************************************************
+// @brief 체력 회복 알림 (Zone -> Client). 엔티티 주변 플레이어 전원에게 전송된다.
+//***************************************************************************
+struct ZcHealNotifyPacket : PacketHeader
+{
+	uint64	entityId;
+	int32	amount;			// 실제 회복량
+	int32	hp;				// 회복 후 체력
+	int32	maxHp;
 };
 
 #pragma pack(pop)

@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include "ZonePlayer.h"
+#include "BattleZone.h"
 
 //***************************************************************************
 // @brief 플레이어 엔티티를 생성한다.
@@ -17,6 +18,7 @@ CZonePlayer::CZonePlayer(uint64 charId, uint64 clientSessionId, CBattleZone* zon
 	: CZoneEntity(charId, EntityType::Player)
 	, _clientSessionId(clientSessionId)
 	, _zone(zone)
+	, _leaving(false)
 {
 }
 
@@ -36,6 +38,6 @@ void CZonePlayer::OnAoiEnter(CZoneEntity& other)
 //***************************************************************************
 void CZonePlayer::OnAoiLeave(CZoneEntity& other)
 {
-	if( _zone != nullptr )
+	if( _zone != nullptr && !_leaving )
 		_zone->SendDespawn(*this, other);
 }

@@ -7,6 +7,7 @@
 #include "pch.h"
 #include "FieldZoneBase.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 
@@ -54,7 +55,7 @@ bool CFieldZoneBase::IsValid() const
 //***************************************************************************
 CZoneEntity* CFieldZoneBase::AddEntity(std::unique_ptr<CZoneEntity> entity)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 
 	if( !_valid || !entity || !IsInBounds(entity->_pos) )
 		return nullptr;
@@ -82,13 +83,14 @@ CZoneEntity* CFieldZoneBase::AddEntity(std::unique_ptr<CZoneEntity> entity)
 
 //***************************************************************************
 // @brief 엔티티를 존에서 제거합니다. 이동 중이면 중단하고, AOI에서 양방향 이탈 통지를 보낸 뒤 해제합니다.
+//        엔티티를 빼기 직전에 HandleEntityRemoved()를 호출해, 엔티티를 가리키는 외부 목록을 정리할 수 있게 합니다.
 //        이동 갱신/AOI 콜백 안에서는 호출할 수 없습니다. 존 스레드에서만 호출해야 합니다.
 // @param id 제거할 엔티티 ID
 // @return 제거했으면 true, 없으면 false
 //***************************************************************************
 bool CFieldZoneBase::RemoveEntity(uint64 id)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 	assert(!_updatingMovement && "CFieldZoneBase::RemoveEntity called during movement update");
 
 	auto it = _entities.find(id);
@@ -105,6 +107,8 @@ bool CFieldZoneBase::RemoveEntity(uint64 id)
 		CancelTimer(entity->_respawnTimerId);
 		entity->_respawnTimerId = 0;
 	}
+
+	HandleEntityRemoved(*entity);
 
 	_aoi.Remove(entity);
 	_entities.erase(it);
@@ -131,7 +135,7 @@ CZoneEntity* CFieldZoneBase::FindEntity(uint64 id) const
 //***************************************************************************
 MoveResult CFieldZoneBase::RequestMove(uint64 id, const Vec2& clientPos, const Vec2& dest)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 
 	CZoneEntity* entity = FindEntity(id);
 	if( entity == nullptr )
@@ -155,7 +159,7 @@ MoveResult CFieldZoneBase::RequestMove(uint64 id, const Vec2& clientPos, const V
 //***************************************************************************
 MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPos, const Vec2& dest)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 	assert(entity._inZone);
 
 	// 스로틀을 먼저 적용한다. 죽은 클라이언트가 이동 요청을 쏟아내도 보정 통지가 요청 수만큼 나가지 않게 한다.
@@ -168,7 +172,7 @@ MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPo
 		return MoveResult::Dead;
 	}
 
-	if( entity._speed <= 0.0f )
+	if( !(entity._speed > 0.0f) )		// NaN도 이동 불가로 본다
 	{
 		HandleMoveRejected(entity, MoveResult::Immobile);
 		return MoveResult::Immobile;
@@ -190,16 +194,28 @@ MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPo
 		return MoveResult::PositionMismatch;
 	}
 
-	// 이미 목적지에 있으면 이동하지 않고 정지 처리한다.
+	OrderMove(entity, dest);
+	return MoveResult::Ok;
+}
+
+//***************************************************************************
+// @brief 검증을 마친 이동 명령을 실행합니다. 클라이언트 요청(RequestMove)과 서버 주도 이동(MoveEntity)이 공유합니다.
+//        - 이미 목적지에 있으면 이동하지 않고 정지 처리한다.
+//        - 같은 목적지로 이미 이동 중이면 알릴 변화가 없으므로 아무것도 하지 않는다(중복 브로드캐스트 방지).
+//        - 그 외에는 목적지를 갱신하고 이동 시작을 통지한다.
+// @param entity 이동시킬 엔티티 (생존, 이동 속도 > 0, 목적지가 영역 안임이 검증된 상태)
+// @param dest   목적지
+//***************************************************************************
+void CFieldZoneBase::OrderMove(CZoneEntity& entity, const Vec2& dest)
+{
 	if( DistanceSq(dest, entity._pos) < 1e-4f )
 	{
 		StopMove(entity.GetId());
-		return MoveResult::Ok;
+		return;
 	}
 
-	// 같은 목적지로 이미 이동 중이면 알릴 변화가 없다.
 	if( entity._moving && DistanceSq(dest, entity._dest) < 1e-4f )
-		return MoveResult::Ok;
+		return;
 
 	entity._dest = dest;
 
@@ -207,7 +223,27 @@ MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPo
 		BeginMoving(&entity);
 
 	HandleMoveStarted(entity);
-	return MoveResult::Ok;
+}
+
+//***************************************************************************
+// @brief 서버가 엔티티를 목적지로 걸어가게 합니다. (몬스터 AI, 스크립트 등 클라이언트 요청이 아닌 이동)
+//        클라이언트 요청과 달리 위치 보고 검증과 요청 간격 제한이 없고, 호출자가 서버 코드이므로 보정 통지도 없다.
+//        이동 갱신 중에는 호출할 수 없고 존 스레드에서만 호출해야 한다.
+// @param entity 이동시킬 엔티티 (이 존에 등록된 엔티티)
+// @param dest   목적지
+// @return 이동을 시작했거나 이미 그 목적지로 이동 중이면 true, 사망/이동 불가/영역 밖이면 false
+//***************************************************************************
+bool CFieldZoneBase::MoveEntity(CZoneEntity& entity, const Vec2& dest)
+{
+	assert(CanTouchZoneState());
+	assert(entity._inZone);
+	assert(!_updatingMovement && "CFieldZoneBase::MoveEntity called during movement update");
+
+	if( entity._dead || !(entity._speed > 0.0f) || !IsInBounds(dest) )
+		return false;
+
+	OrderMove(entity, dest);
+	return true;
 }
 
 //***************************************************************************
@@ -217,7 +253,7 @@ MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPo
 //***************************************************************************
 bool CFieldZoneBase::StopMove(uint64 id)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 
 	CZoneEntity* entity = FindEntity(id);
 	if( entity == nullptr || !entity->_moving )
@@ -239,7 +275,7 @@ bool CFieldZoneBase::StopMove(uint64 id)
 //***************************************************************************
 bool CFieldZoneBase::Teleport(uint64 id, const Vec2& pos)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 
 	CZoneEntity* entity = FindEntity(id);
 	if( entity == nullptr )
@@ -305,6 +341,16 @@ void CFieldZoneBase::OnUpdate(uint32 dtMs)
 }
 
 //***************************************************************************
+// @brief 엔티티가 존에서 제거되기 직전에 호출됩니다. 엔티티는 아직 AOI와 엔티티 테이블에 남아 있습니다.
+//        재정의하여 엔티티를 가리키는 외부 목록(몬스터 AI 활성 목록 등)에서 뺍니다.
+// @param entity 제거될 엔티티
+//***************************************************************************
+void CFieldZoneBase::HandleEntityRemoved(CZoneEntity& entity)
+{
+	(void)entity;
+}
+
+//***************************************************************************
 // @brief 이동이 시작(또는 목적지가 갱신)되었을 때 호출됩니다.
 //        재정의하여 AOI 내 플레이어에게 이동 패킷(시작 위치, 목적지, 속도, 서버 시각)을
 //        ForEachInAoi()로 브로드캐스트합니다. 이동 중인 엔티티 목록 변경은 허용되지 않습니다.
@@ -355,7 +401,7 @@ void CFieldZoneBase::HandleMoveRejected(CZoneEntity& entity, MoveResult reason)
 //***************************************************************************
 AttackResult CFieldZoneBase::RequestAttack(uint64 attackerId, uint64 targetId)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 
 	CZoneEntity* attacker = FindEntity(attackerId);
 	if( attacker == nullptr )
@@ -384,7 +430,7 @@ AttackResult CFieldZoneBase::RequestAttack(uint64 attackerId, uint64 targetId)
 //***************************************************************************
 AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetId)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 	assert(attacker._inZone);
 	assert(!_updatingMovement && "CFieldZoneBase::RequestAttack called during movement update");
 
@@ -398,7 +444,7 @@ AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetI
 		return AttackResult::AttackerDead;
 	}
 
-	if( nowMs + _fieldConfig.zone.tickIntervalMs < attacker._nextAttackMs )
+	if( nowMs + GetTickIntervalMs() < attacker._nextAttackMs )
 		return AttackResult::Cooldown;
 
 	CZoneEntity* target = FindEntity(targetId);
@@ -478,7 +524,7 @@ int32 CFieldZoneBase::CalcDamage(const CZoneEntity& attacker, const CZoneEntity&
 //***************************************************************************
 bool CFieldZoneBase::DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 amount)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 	assert(victim._inZone);
 	assert(!_updatingMovement && "CFieldZoneBase::DealDamage called during movement update");
 
@@ -496,6 +542,28 @@ bool CFieldZoneBase::DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 
 }
 
 //***************************************************************************
+// @brief 체력을 회복합니다. 최대 체력을 넘지 않으며, 죽은 엔티티나 이미 가득 찬 엔티티는 무시합니다.
+//        이동 갱신 중에도 호출할 수 있고(위치/이동 목록을 건드리지 않음) 존 스레드에서만 호출해야 합니다.
+// @param entity 회복할 엔티티 (이 존에 등록된 엔티티)
+// @param amount 회복량
+// @return 실제로 회복했으면 true
+//***************************************************************************
+bool CFieldZoneBase::Heal(CZoneEntity& entity, int32 amount)
+{
+	assert(CanTouchZoneState());
+	assert(entity._inZone);
+
+	if( amount <= 0 || entity._dead || entity._hp >= entity._stats.maxHp )
+		return false;
+
+	const int64 healed = (std::min)(static_cast<int64>(amount), static_cast<int64>(entity._stats.maxHp) - entity._hp);
+	entity._hp += static_cast<int32>(healed);
+
+	HandleHealed(entity, static_cast<int32>(healed));
+	return true;
+}
+
+//***************************************************************************
 // @brief 엔티티가 무적 상태인지 확인합니다.
 // @param entity 확인할 엔티티
 // @return 무적이면 true
@@ -507,11 +575,12 @@ bool CFieldZoneBase::IsInvulnerable(const CZoneEntity& entity) const
 
 //***************************************************************************
 // @brief AOI가 모든 방향에서 보장하는 최소 시야 거리를 반환합니다. (viewCells - 2 * aoiHysteresis) * cellSize
+//        AOI 설정이 유효하지 않은 존은 아무 거리도 보장하지 못하므로 0입니다.
 // @return 최소 보장 시야 거리 (units)
 //***************************************************************************
 float CFieldZoneBase::GetGuaranteedViewRange() const
 {
-	return (static_cast<float>(_fieldConfig.viewCells) - 2.0f * _fieldConfig.aoiHysteresis) * _fieldConfig.cellSize;
+	return _valid ? _aoi.GetGuaranteedViewRadius() : 0.0f;
 }
 
 //***************************************************************************
@@ -579,7 +648,7 @@ void CFieldZoneBase::ScheduleRespawn(CZoneEntity& victim)
 	if( victim._respawnTimerId == 0 )
 	{
 		LOG_ERROR(_T("[CFieldZoneBase] respawn timer failed; respawning immediately. zoneId=%u, entityId=%llu"),
-			_fieldConfig.zone.zoneId, static_cast<unsigned long long>(id));
+			GetZoneId(), static_cast<unsigned long long>(id));
 		Respawn(id);
 	}
 }
@@ -592,7 +661,7 @@ void CFieldZoneBase::ScheduleRespawn(CZoneEntity& victim)
 //***************************************************************************
 bool CFieldZoneBase::Respawn(uint64 id)
 {
-	assert(IsZoneThread() || !IsRunning());
+	assert(CanTouchZoneState());
 
 	CZoneEntity* entity = FindEntity(id);
 	if( entity == nullptr || !entity->_dead )
@@ -607,10 +676,12 @@ bool CFieldZoneBase::Respawn(uint64 id)
 	entity->_dead = false;
 	entity->_hp = entity->_stats.maxHp;
 	entity->_nextAttackMs = GetNowMs();
-	entity->_invulnerableUntilMs = _fieldConfig.respawnInvulnMs != 0 ? GetNowMs() + _fieldConfig.respawnInvulnMs : 0;
+
+	const uint32 invulnMs = GetRespawnInvulnMs(*entity);
+	entity->_invulnerableUntilMs = invulnMs != 0 ? GetNowMs() + invulnMs : 0;
 
 	// 리스폰 위치가 영역 밖이면(설정 오류) 제자리에서 부활한다.
-	MoveTo(entity, entity->_spawnPos, false);
+	MoveTo(entity, GetRespawnPos(*entity), false);
 
 	HandleRespawned(*entity);
 	return true;
@@ -698,6 +769,38 @@ void CFieldZoneBase::HandleAttackRejected(CZoneEntity& attacker, uint64 targetId
 }
 
 //***************************************************************************
+// @brief 부활 위치를 정하는 기본 정책입니다. SetSpawnPos()로 정한 위치를 그대로 씁니다.
+//        재정의하여 스폰 반경 안의 무작위 지점 등을 돌려줍니다. 영역 밖 좌표를 돌려주면 제자리에서 부활합니다.
+// @param entity 부활하는 엔티티
+// @return 부활 좌표
+//***************************************************************************
+Vec2 CFieldZoneBase::GetRespawnPos(const CZoneEntity& entity) const
+{
+	return entity._spawnPos;
+}
+
+//***************************************************************************
+// @brief 부활 직후 무적 시간을 정하는 기본 정책입니다. 플레이어만 설정값(respawnInvulnMs)을 쓰고 나머지는 없습니다.
+// @param entity 부활하는 엔티티
+// @return 무적 시간(ms), 0이면 없음
+//***************************************************************************
+uint32 CFieldZoneBase::GetRespawnInvulnMs(const CZoneEntity& entity) const
+{
+	return entity.GetType() == EntityType::Player ? _fieldConfig.respawnInvulnMs : 0;
+}
+
+//***************************************************************************
+// @brief 체력이 회복된 직후 호출됩니다. 재정의하여 주변에 회복 패킷을 브로드캐스트합니다.
+// @param entity 회복한 엔티티 (현재 체력은 entity.GetHp())
+// @param amount 실제로 회복된 양
+//***************************************************************************
+void CFieldZoneBase::HandleHealed(CZoneEntity& entity, int32 amount)
+{
+	(void)entity;
+	(void)amount;
+}
+
+//***************************************************************************
 // @brief 좌표가 존 영역 안인지 확인합니다. NaN은 false입니다.
 // @param pos 확인할 좌표
 // @return 영역 안이면 true
@@ -723,6 +826,15 @@ void CFieldZoneBase::UpdateMovement(uint32 dtMs)
 	for( size_t i = 0; i < _moving.size(); )
 	{
 		CZoneEntity* entity = _moving[i];
+
+		// 이동 도중 속도가 0 이하(또는 NaN)가 되면(속박 등) 목적지에 영원히 도착하지 못하거나 뒤로 가므로 그 자리에 멈춘다.
+		if( !(entity->_speed > 0.0f) )
+		{
+			entity->_dest = entity->_pos;
+			EndMoving(entity);
+			HandleMoveStopped(*entity, false);
+			continue;
+		}
 
 		const float stepLen = entity->_speed * dtSec;
 		const float dx = entity->_dest.x - entity->_pos.x;

@@ -101,6 +101,16 @@
       <Filter>UtilCore</Filter>
     </ClCompile>
     <ClCompile Include="ZoneServerConfig.cpp" />
+    <ClCompile Include="GameDataLoader.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\Monster.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\MonsterData.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\MonsterSystem.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -298,6 +308,16 @@
     </ClInclude>
     <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpDefine.h">
       <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="GameDataLoader.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\Monster.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\MonsterData.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\MonsterSystem.h">
+      <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

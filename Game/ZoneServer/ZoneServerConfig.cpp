@@ -41,6 +41,8 @@ CZoneServerConfig::CZoneServerConfig()
 	_nRespawnDelayMs = defaults.respawnDelayMs;
 	_nRespawnInvulnMs = defaults.respawnInvulnMs;
 	_bAllowPvp = defaults.allowPvp;
+	_strGameDataDir = defaults.gameDataDir;
+	_nMonsterThinkIntervalMs = defaults.monsterThinkIntervalMs;
 }
 
 //***************************************************************************
@@ -107,6 +109,8 @@ bool CZoneServerConfig::Init(const TCHAR* tszConfigPath)
 	reader.Read(_T("RespawnDelayMs"), _nRespawnDelayMs, 0, UINT32_MAX - 1);	// UINT32_MAX는 "리스폰 안 함" 예약값
 	reader.Read(_T("RespawnInvulnMs"), _nRespawnInvulnMs, 0, UINT32_MAX);
 	reader.Read(_T("AllowPvp"), _bAllowPvp);
+	reader.Read(_T("GameDataDir"), _strGameDataDir);
+	reader.Read(_T("MonsterThinkIntervalMs"), _nMonsterThinkIntervalMs, 1, 60000);
 
 	return reader.Validate();
 }
@@ -156,6 +160,8 @@ bool CZoneServerConfig::Save(const TCHAR* tszConfigPath) const
 	writer.Write(_T("RespawnDelayMs"), _nRespawnDelayMs);
 	writer.Write(_T("RespawnInvulnMs"), _nRespawnInvulnMs);
 	writer.Write(_T("AllowPvp"), _bAllowPvp);
+	writer.Write(_T("GameDataDir"), _strGameDataDir);
+	writer.Write(_T("MonsterThinkIntervalMs"), _nMonsterThinkIntervalMs);
 
 	return writer.Save(tszConfigPath);
 }
@@ -180,6 +186,7 @@ void CZoneServerConfig::PrintServerSettingInfo() const
 	LOG_INFO(_T("PlayerMaxHp : %d, Attack : %d, Defense : %d"), _nPlayerMaxHp, _nPlayerAttack, _nPlayerDefense);
 	LOG_INFO(_T("AttackRange : %.1f, AttackIntervalMs : %u"), _fAttackRange, _nAttackIntervalMs);
 	LOG_INFO(_T("RespawnDelayMs : %u, RespawnInvulnMs : %u, AllowPvp : %d"), _nRespawnDelayMs, _nRespawnInvulnMs, _bAllowPvp ? 1 : 0);
+	LOG_INFO(_T("GameDataDir : %s, MonsterThinkIntervalMs : %u"), _strGameDataDir.c_str(), _nMonsterThinkIntervalMs);
 
 	LOG_INFO(_T("--------------- Connect ServerNode size : %d ---------------"), static_cast<int>(_serverNodeVec.size()));
 	for( uint32 i = 0; i < _serverNodeVec.size(); i++ )
@@ -230,4 +237,6 @@ void CZoneServerConfig::ToOptions(SZoneServerOptions& options) const
 	options.respawnDelayMs = _nRespawnDelayMs;
 	options.respawnInvulnMs = _nRespawnInvulnMs;
 	options.allowPvp = _bAllowPvp;
+	options.gameDataDir = _strGameDataDir;
+	options.monsterThinkIntervalMs = _nMonsterThinkIntervalMs;
 }

@@ -91,6 +91,8 @@ struct FieldZoneConfig
 	uint32 respawnInvulnMs = 3000;		// 리스폰 직후 무적 시간(ms)
 };
 
+class CMonsterSystem;
+
 //***************************************************************************
 // @class CFieldZoneBase
 // @brief 필드 전투 존의 비템플릿 구현부. CZone의 틱 루프 위에 엔티티 관리, 서버 권위 이동, 그리드 AOI를 얹는다.
@@ -114,6 +116,12 @@ public:
 
 	bool IsValid() const;
 
+	//***************************************************************************
+	// @brief 필드 존 설정을 반환합니다. 영역/AOI 값에 의존하는 시스템(몬스터 등)이 검증과 좌표 보정에 씁니다.
+	// @return 필드 존 설정
+	//***************************************************************************
+	const FieldZoneConfig& GetFieldConfig() const { return _fieldConfig; }
+
 	// ── 엔티티 관리 (존 스레드 전용) ──────────────────────
 	bool RemoveEntity(uint64 id);
 	CZoneEntity* FindEntity(uint64 id) const;
@@ -123,11 +131,13 @@ public:
 	MoveResult RequestMove(CZoneEntity& entity, const Vec2& clientPos, const Vec2& dest);
 	bool StopMove(uint64 id);
 	bool Teleport(uint64 id, const Vec2& pos);
+	bool MoveEntity(CZoneEntity& entity, const Vec2& dest);
 
 	// ── 전투 (존 스레드 전용) ─────────────────────────────
 	AttackResult RequestAttack(uint64 attackerId, uint64 targetId);
 	AttackResult RequestAttack(CZoneEntity& attacker, uint64 targetId);
 	bool DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 amount);
+	bool Heal(CZoneEntity& entity, int32 amount);
 	bool Respawn(uint64 id);
 	bool IsInvulnerable(const CZoneEntity& entity) const;
 
@@ -174,12 +184,17 @@ public:
 	size_t GetEntityCount() const { return _entities.size(); }
 
 protected:
+	friend class CMonsterSystem;	// 스폰 시 엔티티를 직접 등록한다 (AddEntity는 타입 래퍼가 공개한다)
+
 	void OnUpdate(uint32 dtMs) override;
 
 	// 엔티티 등록. 파생 템플릿(CFieldZone<TEntity>)이 타입 검사를 거쳐 호출한다.
 	CZoneEntity* AddEntity(std::unique_ptr<CZoneEntity> entity);
 
 	// 이벤트 훅의 타입 소거 버전. CFieldZone<TEntity>가 TEntity&로 변환해 OnEntity*/OnMoveRejected 훅으로 전달한다.
+	// HandleEntityRemoved는 RemoveEntity()가 엔티티를 AOI와 테이블에서 빼기 직전에 호출한다. 엔티티를 가리키는 외부 목록
+	// (몬스터 AI 활성 목록 등)을 정리하는 곳이며, 호출 중에는 엔티티 추가/제거/이동 호출이 허용되지 않는다.
+	virtual void HandleEntityRemoved(CZoneEntity& entity);
 	virtual void HandleMoveStarted(CZoneEntity& entity);
 	virtual void HandleMoveStopped(CZoneEntity& entity, bool arrived);
 	virtual void HandleTeleported(CZoneEntity& entity);
@@ -190,16 +205,20 @@ protected:
 	virtual void HandleDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage);
 	virtual void HandleDied(CZoneEntity& victim, CZoneEntity* killer);
 	virtual void HandleRespawned(CZoneEntity& entity);
+	virtual void HandleHealed(CZoneEntity& entity, int32 amount);
 	virtual void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason);
 
 	// 전투 정책. 파생 클래스가 재정의한다.
 	virtual bool CanAttack(const CZoneEntity& attacker, const CZoneEntity& target) const;
 	virtual uint32 GetRespawnDelayMs(const CZoneEntity& victim) const;
 	virtual int32 CalcDamage(const CZoneEntity& attacker, const CZoneEntity& victim) const;
+	virtual Vec2 GetRespawnPos(const CZoneEntity& entity) const;
+	virtual uint32 GetRespawnInvulnMs(const CZoneEntity& entity) const;
 
 private:
 	bool IsInBounds(const Vec2& pos) const;
 	void UpdateMovement(uint32 dtMs);
+	void OrderMove(CZoneEntity& entity, const Vec2& dest);
 	void BeginMoving(CZoneEntity* entity);
 	void EndMoving(CZoneEntity* entity);
 	bool MoveTo(CZoneEntity* entity, const Vec2& pos, bool notify);

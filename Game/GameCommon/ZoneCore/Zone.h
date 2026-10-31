@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // Zone.h : interface for the CZone class.
 //
 //***************************************************************************
@@ -130,6 +131,15 @@ protected:
 	virtual void OnUpdate(uint32 dtMs);
 	virtual void OnStop();
 
+	//***************************************************************************
+	// @brief 존 내부 상태(타이머, 엔티티 테이블 등)를 직접 만져도 되는 호출인지 확인합니다.
+	// @details 존 스레드이거나, 틱 스레드가 시작 전이거나 완전히 끝난 뒤여야 한다.
+	//          Stop()이 IsRunning()을 내린 뒤에도 틱 스레드는 잔여 작업 처리와 OnStop을 하므로,
+	//          그 구간의 외부 스레드 접근을 막기 위해 IsRunning()이 아니라 스레드 생존 여부로 판정한다.
+	// @return 접근 가능하면 true
+	//***************************************************************************
+	bool CanTouchZoneState() const;
+
 private:
 	template <typename F>
 	void Guarded(const TCHAR* phase, F&& fn);
@@ -138,7 +148,6 @@ private:
 	void RunTick();
 	void DrainInbox(uint32 budget);
 	void RunJob(ZoneJob& job);
-	bool CanTouchTimers() const;
 
 	ZoneConfig _config;							// 생성 설정
 
@@ -147,6 +156,8 @@ private:
 	std::atomic<bool> _started;					// Start() 호출 여부 (재시작 차단)
 	std::atomic<bool> _running;					// 틱 루프 동작 여부
 	std::atomic<bool> _accepting;				// Post 수락 여부
+	std::atomic<bool> _threadAlive;				// 틱 스레드가 시작되어 아직 끝나지 않았는지 (Stop()이 _running을 내린 뒤에도 정리 작업이 끝날 때까지 true)
+	std::mutex _joinMutex;						// Stop()의 join 직렬화 (여러 스레드가 동시에 Stop()해도 join은 한 번만)
 
 	std::mutex _sleepMutex;						// 틱 대기용 뮤텍스
 	std::condition_variable _sleepCv;			// Stop 시 대기 중인 스레드를 깨우기 위한 CV

@@ -8,7 +8,7 @@
 #define UC_ZONESERVEROPTIONS_H
 
 #include <Network/NetworkCommon.h>
-#include "../GameCommon/ZoneCommon/ZonePacketTypes.h"
+#include "../GameCommon/ZoneCommon/ZonePacketTypes.h"		
 
 #include <string>
 
@@ -50,6 +50,10 @@ struct SZoneServerOptions
 	uint32		respawnDelayMs = 5000;			// 사망 후 자동 리스폰까지의 시간 (ms)
 	bool		allowPvp = true;				// 플레이어끼리 공격 허용 여부
 	uint32		respawnInvulnMs = 3000;			// 리스폰 직후 무적 시간 (ms). 스폰 캠핑 방지, 본인이 공격하면 해제
+
+	// ── 게임 데이터 / 몬스터 ─────────────────────────────
+	_tstring	gameDataDir = _T("GameData");	// 게임 데이터(JSON) 폴더. 비어 있으면 데이터 없이 구동(몬스터 없음)
+	uint32		monsterThinkIntervalMs = 100;	// 몬스터 AI 사고 주기 (ms). 틱 간격 이상으로 두는 것이 의미 있다
 };
 
 #endif // ndef UC_ZONESERVEROPTIONS_H

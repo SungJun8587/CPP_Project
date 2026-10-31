@@ -7,10 +7,14 @@
 #ifndef BATTLEZONE_H
 #define BATTLEZONE_H
 
+#include "../GameCommon/ZoneCommon/ZonePacket.h"
 #include "../GameCommon/ZoneCore/FieldZone.h"
+#include "../GameCommon/ZoneCore/MonsterSystem.h"
 #include "ZonePlayer.h"
 
 #include <atomic>
+#include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -28,8 +32,14 @@ class CZoneServerMain;
 class CBattleZone : public CFieldZone<>
 {
 public:
-	CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed, const SCombatStats& playerStats);
+	CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed, const SCombatStats& playerStats,
+		std::shared_ptr<const CMonsterData> monsterData, const SMonsterSystemConfig& monsterConfig);
 	virtual ~CBattleZone();
+
+	// ── 구동 전(Start 이전) 한 번 ─────────────────────────
+	// 플레이어 설정(이동 속도, 입장 위치, 공격 사거리)과 몬스터 데이터가 존 설정(영역, AOI 시야)에 맞는지 함께 검사한다.
+	bool ValidateMonsters(std::string& error) const;
+	uint32 SpawnMonsters();
 
 	// ── 존 스레드 전용 ───────────────────────────────────
 	void HandleEnter(uint64 clientSessionId, uint64 charId);
@@ -46,6 +56,7 @@ public:
 	uint32 GetPlayerCount() const { return _playerCount.load(std::memory_order_relaxed); }
 
 protected:
+	virtual void OnEntityRemoved(CZoneEntity& entity) override;
 	virtual void OnEntityMoveStarted(CZoneEntity& entity) override;
 	virtual void OnEntityMoveStopped(CZoneEntity& entity, bool arrived) override;
 	virtual void OnEntityTeleported(CZoneEntity& entity) override;
@@ -53,10 +64,15 @@ protected:
 	virtual void OnEntityDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage) override;
 	virtual void OnEntityDied(CZoneEntity& victim, CZoneEntity* killer) override;
 	virtual void OnEntityRespawned(CZoneEntity& entity) override;
+	virtual void OnEntityHealed(CZoneEntity& entity, int32 amount) override;
 	virtual void OnAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) override;
+	virtual void OnUpdate(uint32 dtMs) override;
+	virtual uint32 GetRespawnDelayMs(const CZoneEntity& victim) const override;
+	virtual Vec2 GetRespawnPos(const CZoneEntity& entity) const override;
 
 private:
 	void SendToEntity(CZoneEntity& target, const void* data, uint16 size);
+	bool HasNoObserver(const CZoneEntity& entity) const;
 	void AddRecipient(CZoneEntity& target);
 	void FlushRecipients(const void* data, uint16 size);
 	void BroadcastAround(CZoneEntity& entity, const void* data, uint16 size);
@@ -66,6 +82,7 @@ private:
 	Vec2				_spawnPos;		// 입장 시 스폰 위치
 	float				_playerSpeed;	// 플레이어 기본 이동 속도 (units/sec)
 	std::vector<uint64>	_recipients;	// 브로드캐스트 수신자 세션 ID 모음 (존 스레드 전용, 재사용으로 힙 할당 방지)
+	std::unique_ptr<CMonsterSystem>	_monsters;	// 몬스터 스폰/AI (존 스레드 전용)
 	SCombatStats		_playerStats;	// 플레이어 전투 능력치 (서버 설정값. 클라이언트 값은 신뢰하지 않음)
 
 	std::unordered_map<uint64, CZoneEntity*>	_sessionToEntity;	// 클라이언트 세션 ID -> 플레이어 엔티티 (존 스레드 전용, 패킷마다 해시 조회 1회로 끝내기 위함)

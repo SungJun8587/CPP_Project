@@ -74,12 +74,16 @@ using namespace std;
 #include "../GameCommon/ZoneCommon/ArgParser.h"
 #include "../GameCommon/ZoneCore/FieldZone.h"
 #include "../GameCommon/ZoneCore/ZoneEntity.h"
+#include "../GameCommon/ZoneCore/MonsterData.h"
+#include "../GameCommon/ZoneCore/Monster.h"
+#include "../GameCommon/ZoneCore/MonsterSystem.h"
 
 #include "BattleZone.h"
 #include "ZonePlayer.h"
 #include "ZoneLinkSession.h"
 #include "ZoneServerOptions.h"
 #include "ZoneServerConfig.h"
+#include "GameDataLoader.h"
 #include "ZoneServerMain.h"
 
 #endif // ndef PCH_H

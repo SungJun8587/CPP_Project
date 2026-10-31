@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="pch.cpp" />
+    <ClCompile Include="TestMain.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="tests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="combat_tests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="monster_tests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="fuzz_combat.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="fuzz_monster.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="game_data_tests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="zone_config_tests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\Monster.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\MonsterData.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\MonsterSystem.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\Zone.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\ZoneEntity.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ZoneServer\GameDataLoader.cpp">
+      <Filter>ZoneServer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\ZoneServer\ZoneServerConfig.cpp">
+      <Filter>ZoneServer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\BaseGlobal.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\BaseTLS.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\ServerConfig.cpp">
+      <Filter>UtilCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
+      <Filter>UtilCore\JSON</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\Allocator.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\Memory.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Memory\MemoryPool.cpp">
+      <Filter>UtilCore\Memory</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\DeadLockProfiler.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\SRWLock.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Thread\ThreadManager.cpp">
+      <Filter>UtilCore\Thread</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\CommonUtil.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="test_common.h">
+      <Filter>Tests</Filter>
+    </ClInclude>
+    <ClInclude Include="TestSuites.h">
+      <Filter>Tests</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\FieldZone.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\FieldZoneBase.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\GridAOI.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\Monster.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\MonsterData.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\MonsterSystem.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\Zone.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\ZoneEntity.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\ZoneMath.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ZoneServer\GameDataLoader.h">
+      <Filter>ZoneServer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ZoneServer\ZoneServerConfig.h">
+      <Filter>ZoneServer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\ZoneServer\ZoneServerOptions.h">
+      <Filter>ZoneServer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseGlobal.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseMacro.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseRedefineDataType.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\BaseTLS.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConfig.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ServerConnectInfo.h">
+      <Filter>UtilCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Containers\TimerHeap.h">
+      <Filter>UtilCore\Containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Containers\Queue\DoubleBufferQueue.h">
+      <Filter>UtilCore\Containers\Queue</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Job\Job.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Job\MoveOnlyFunction.h">
+      <Filter>UtilCore\Job</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
+      <Filter>UtilCore\JSON</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Allocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Containers.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Memory.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryCommon.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\MemoryPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\ObjectPool.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\RawAllocator.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Memory\Singleton.h">
+      <Filter>UtilCore\Memory</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\NetworkCommon.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\NetworkRedefineDataType.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Network\Packet.h">
+      <Filter>UtilCore\Network</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\CacheAlignment.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\DeadLockProfiler.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\PlatformLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\SRWLock.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\SyncValue.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Thread\ThreadManager.h">
+      <Filter>UtilCore\Thread</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\CommonUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\FixedBufUtil.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\ScopeExit.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="GameCommon">
+      <UniqueIdentifier>{31c3ae53-caf4-4329-aff3-809a67109512}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GameCommon\ZoneCommon">
+      <UniqueIdentifier>{e118cbd1-961a-47be-9305-0cdcde042bb8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GameCommon\ZoneCore">
+      <UniqueIdentifier>{b9626095-5813-4701-be1a-640402f44f00}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Tests">
+      <UniqueIdentifier>{e726b87c-a610-4d05-a292-849f6a692799}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore">
+      <UniqueIdentifier>{5aee2a4d-e3a9-4b7b-905a-bfe77f780778}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\ConfigFile">
+      <UniqueIdentifier>{58718b6a-26d4-4e06-84e3-964a7e273fcc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers">
+      <UniqueIdentifier>{4c836e88-e8a7-4cb9-8bc3-0c8210f4b1a9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Containers\Queue">
+      <UniqueIdentifier>{ae576e7c-33b6-4bad-a795-970e06431de4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\JSON">
+      <UniqueIdentifier>{b32d0b33-82a8-4157-8d44-7a1f460d9c79}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Job">
+      <UniqueIdentifier>{6b1912de-b080-4250-b887-2e8fa7f9adde}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Memory">
+      <UniqueIdentifier>{1c810b19-3603-4efd-be23-3fc828caa0be}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Network">
+      <UniqueIdentifier>{5fe9a9a0-46e5-4cb0-af62-b30a3f3e90b4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Thread">
+      <UniqueIdentifier>{9c31806b-dcc4-4683-af76-d1d0ef7050bd}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\Util">
+      <UniqueIdentifier>{8747f6c4-690d-46c1-adf7-c1073e7346f1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="ZoneServer">
+      <UniqueIdentifier>{562eeea4-0173-405e-aa2e-167ed5118d0c}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
+      <Filter>UtilCore\JSON</Filter>
+    </None>
+    <None Include="..\..\..\Library\UtilCore\Memory\Singleton.inl">
+      <Filter>UtilCore\Memory</Filter>
+    </None>
+  </ItemGroup>
+</Project>
