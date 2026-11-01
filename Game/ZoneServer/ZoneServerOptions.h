@@ -8,9 +8,11 @@
 #define UC_ZONESERVEROPTIONS_H
 
 #include <Network/NetworkCommon.h>
-#include "../GameCommon/ZoneCommon/ZonePacketTypes.h"		
+#include "../GameCommon/ZoneCommon/ZonePacketTypes.h"
 
 #include <string>
+
+#include "../GameCommon/ZoneCore/MonsterData.h"		// CMonsterData::kMaxSpawnPerZone (maxMonsterCount 기본값)
 
 //***************************************************************************
 // @struct SZoneServerOptions
@@ -39,21 +41,17 @@ struct SZoneServerOptions
 	float		cellSize = 50.0f;				// AOI 셀 크기 (최소 보장 시야 반경 이상)
 	float		spawnX = 100.0f;
 	float		spawnY = 100.0f;
-	float		playerSpeed = 6.0f;				// units/sec
 
 	// ── 전투 ─────────────────────────────────────────────
-	int32		playerMaxHp = 100;				// 플레이어 최대 체력
-	int32		playerAttack = 10;				// 플레이어 공격력
-	int32		playerDefense = 0;				// 플레이어 방어력
-	float		attackRange = 2.0f;				// 기본 공격 사거리 (units)
-	uint32		attackIntervalMs = 1000;		// 기본 공격 최소 간격 (ms)
+	// 플레이어의 체력/공격력/방어력/사거리/공격 간격/이동 속도는 게임 데이터의 Hero 시트(영웅)가 정한다.
 	uint32		respawnDelayMs = 5000;			// 사망 후 자동 리스폰까지의 시간 (ms)
 	bool		allowPvp = true;				// 플레이어끼리 공격 허용 여부
 	uint32		respawnInvulnMs = 3000;			// 리스폰 직후 무적 시간 (ms). 스폰 캠핑 방지, 본인이 공격하면 해제
 
 	// ── 게임 데이터 / 몬스터 ─────────────────────────────
-	_tstring	gameDataDir = _T("GameData");	// 게임 데이터(JSON) 폴더. 비어 있으면 데이터 없이 구동(몬스터 없음)
+	_tstring	gameDataDir = _T("GameData");	// 게임 데이터(JSON) 폴더. 비어 있으면 데이터 없이 구동(몬스터 없음, 영웅은 내장 기본 영웅 하나)
 	uint32		monsterThinkIntervalMs = 100;	// 몬스터 AI 사고 주기 (ms). 틱 간격 이상으로 두는 것이 의미 있다
+	uint32		maxMonsterCount = static_cast<uint32>(CMonsterData::kMaxSpawnPerZone);	// 이 존에 스폰할 몬스터 총 마릿수 상한. 스폰 테이블 합계가 넘으면 구동 검사에서 거부
 };
 
 #endif // ndef UC_ZONESERVEROPTIONS_H

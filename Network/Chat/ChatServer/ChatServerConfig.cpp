@@ -10,6 +10,10 @@
 #include <ConfigFile/JSONConfigFieldReader.h>
 #include <ConfigFile/JSONConfigFieldWriter.h>
 
+#include <Util/MainArgParser.h>
+
+#include <limits>
+
 //***************************************************************************
 // Construction/Destruction
 //***************************************************************************
@@ -38,6 +42,9 @@ namespace
 	// 포트 번호 허용 범위
 	constexpr uint16 kMinPort = 1;
 	constexpr uint16 kMaxPort = 65535;
+	// 채널 ID 허용 범위 — 메시지 id의 노드 번호 자리(하위 10비트)에 들어가야 한다(MessageIdGenerator.h)
+	constexpr uint16 kMinChannelId = 0;
+	constexpr uint16 kMaxChannelId = static_cast<uint16>(ChatId::kMaxNodeId);
 	// 노드 ID 허용 범위(Get*Node()가 ID - 1을 인덱스로 쓰므로 1부터)
 	constexpr int64 kMinNodeId = 1;
 	constexpr int64 kMaxNodeId = 32767;
@@ -68,7 +75,7 @@ bool CChatServerConfig::Init(const TCHAR* tszServerInfo)
 	reader.Read(_T("DisplayName"), _tszDisplayName);
 	reader.Read(_T("Name"), _tszServerName);
 	reader.Read(_T("GroupId"), _nServerGroupId);
-	reader.Read(_T("ChannelId"), _nServerChannelId);
+	reader.Read(_T("ChannelId"), _nServerChannelId, kMinChannelId, kMaxChannelId);
 
 	reader.Read(_T("IP"), _tszIP);
 	reader.Read(_T("Port"), _nServerPort, kMinPort, kMaxPort);
@@ -114,6 +121,25 @@ bool CChatServerConfig::Init(const TCHAR* tszServerInfo)
 	reader.Read(_T("EnableRelay"), _nEnableRelay, 0, 1);			// 1이면 다른 채널의 접속자에게도 알림/대화를 전달
 
 	return reader.Validate();
+}
+
+//***************************************************************************
+// @brief 명령행 인자로 설정 파일에서 읽은 값을 덮어씁니다.
+// @param args 파싱된 명령행 인자
+// @return 성공 시 true, 하나라도 형식/범위를 벗어나면 false
+// @details 모든 인자를 검사해서 오류를 한꺼번에 로그로 남긴다. 범위는 Init()과 같다.
+//***************************************************************************
+bool CChatServerConfig::ApplyArgs(const CMainArgParser& args)
+{
+	bool ok = true;
+	ok &= args.ReadString(_T("name"), _tszServerName);
+	ok &= args.ReadInt(_T("group"), _nServerGroupId, 0, 65535);
+	ok &= args.ReadInt(_T("channel"), _nServerChannelId, kMinChannelId, kMaxChannelId);
+	ok &= args.ReadString(_T("ip"), _tszIP);
+	ok &= args.ReadInt(_T("port"), _nServerPort, kMinPort, kMaxPort);
+	ok &= args.ReadInt(_T("max-sessions"), _nMaxSessionCount, 1, (std::numeric_limits<int32>::max)());
+	ok &= args.ReadInt(_T("workers"), _nWorkerThreadCnt, 0, (std::numeric_limits<int32>::max)());
+	return ok;
 }
 
 //***************************************************************************

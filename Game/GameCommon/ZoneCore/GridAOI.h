@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // GridAOI.h : interface for the CGridAOI class.
 //
 //***************************************************************************
@@ -26,6 +27,19 @@ struct SAoiNode
 
 	int32	cellIdx = -1;				// 소속 셀 인덱스 (-1: 미소속)
 	uint32	slot = kInvalidSlot;		// 소속 셀 안에서의 위치
+	bool	watcher = false;			// 등록 시점의 IsAoiWatcher() 값. 셀의 어느 목록에 있는지 결정한다 (등록 중에는 바뀌지 않는다)
+};
+
+//***************************************************************************
+// @struct SAoiCell
+// @brief AOI 셀 하나. 관찰자(watcher)와 그 외 엔티티를 따로 보관한다.
+//        관찰자만 훑는 순회(어그로 탐색, 패킷 수신자 수집)는 그 외 엔티티를 건드리지 않는다.
+//***************************************************************************
+template <typename TEntity>
+struct SAoiCell
+{
+	CVector<TEntity*>	watchers;		// IsAoiWatcher()가 true인 엔티티 (플레이어 등)
+	CVector<TEntity*>	others;			// 그 외 엔티티 (몬스터 등)
 };
 
 //***************************************************************************
@@ -40,6 +54,11 @@ struct SAoiNode
 // 엔티티가 셀 경계를 넘을 때만 (새 시야 - 옛 시야)에 진입 통지, (옛 시야 - 새 시야)에 이탈 통지를
 // 양방향으로 발생시킨다. 같은 셀 안의 이동은 비용이 거의 없다(셀 인덱스 계산만 수행).
 //
+// 관찰자(watcher): 통지를 받아 무언가를 하는 엔티티(플레이어처럼 시야 안 엔티티의 스폰/디스폰을 알려야 하는 쪽).
+// 두 엔티티 중 하나라도 관찰자일 때만 서로에게 통지하고, 둘 다 관찰자가 아니면(몬스터끼리 등) 통지하지 않는다.
+// 그래서 관찰자가 아닌 엔티티는 주변의 관찰자만 훑으면 되고, 밀집한 구역에서도 비용이 관찰자 수에 비례한다.
+// 시야 안 모든 엔티티가 필요한 순회는 ForEachNeighbor/ForEachInRadius, 관찰자만 필요하면 ForEachWatcher*를 쓴다.
+//
 // 히스테리시스: 셀 경계에서 왔다 갔다 하는 엔티티가 매 틱 진입/이탈 통지를 쏟아내지 않도록,
 // 엔티티는 현재 셀을 경계 바깥으로 hysteresis*cellSize 이상 벗어나야 소속 셀을 바꾼다.
 // (그래서 엔티티의 실제 위치는 소속 셀에서 최대 hysteresis*cellSize 만큼 벗어나 있을 수 있다.)
@@ -47,6 +66,7 @@ struct SAoiNode
 // 요구 사항 — TEntity는 다음을 제공해야 한다:
 //     - const Vec2& GetPos() const
 //     - SAoiNode 멤버 _aoiNode, Vec2 멤버 _pos (이 클래스가 friend로 접근)
+//     - bool IsAoiWatcher() const : 등록(Add) 시점에 한 번 읽는다. 값을 바꾸려면 Remove 후 다시 Add해야 한다
 //     - void OnAoiEnter(TEntity& other) / void OnAoiLeave(TEntity& other)
 //
 // 스레드 안전하지 않다. 소유 존의 틱 스레드에서만 호출해야 한다.
@@ -108,6 +128,8 @@ public:
 
 		if( entity == nullptr || _cols == 0 || entity->_aoiNode.cellIdx >= 0 )
 			return false;
+
+		entity->_aoiNode.watcher = entity->IsAoiWatcher();
 
 		const int32 cellIdx = CellIndexOf(entity->_pos);
 		InsertToCell(entity, cellIdx);
@@ -185,24 +207,21 @@ public:
 	template <typename F>
 	void ForEachNeighbor(const TEntity& entity, F&& fn) const
 	{
-		if( entity._aoiNode.cellIdx < 0 )
-			return;
+		ForEachNeighborImpl<true>(entity, std::forward<F>(fn));
+	}
 
-		const int32 cx = entity._aoiNode.cellIdx % _cols;
-		const int32 cy = entity._aoiNode.cellIdx / _cols;
-
-		for( int32 y = (std::max)(cy - _view, 0); y <= (std::min)(cy + _view, _rows - 1); ++y )
-		{
-			for( int32 x = (std::max)(cx - _view, 0); x <= (std::min)(cx + _view, _cols - 1); ++x )
-			{
-				const CVector<TEntity*>& cell = _cells[static_cast<size_t>(y) * _cols + x];
-				for( size_t i = 0; i < cell.size(); ++i )
-				{
-					if( cell[i] != &entity )
-						fn(*cell[i]);
-				}
-			}
-		}
+	//***************************************************************************
+	// @brief 엔티티의 시야 셀 안에 있는 관찰자(IsAoiWatcher)만 순회합니다. (자기 자신 제외)
+	//        패킷 수신자를 모으는 용도처럼 관찰자만 필요할 때, 시야 안의 그 외 엔티티(몬스터 등)를 건드리지 않아 빠르다.
+	//        순회 중 AOI 구조를 변경하면 안 됩니다.
+	// @tparam F void(TEntity&) 형태의 호출 가능 객체
+	// @param entity 기준 엔티티 (AOI에 등록되어 있어야 함)
+	// @param fn     각 이웃 관찰자에 대해 호출할 함수
+	//***************************************************************************
+	template <typename F>
+	void ForEachWatcherNeighbor(const TEntity& entity, F&& fn) const
+	{
+		ForEachNeighborImpl<false>(entity, std::forward<F>(fn));
 	}
 
 	//***************************************************************************
@@ -217,28 +236,21 @@ public:
 	template <typename F>
 	void ForEachInRadius(const Vec2& center, float radius, F&& fn) const
 	{
-		if( _cols == 0 || !(radius >= 0.0f) || !std::isfinite(center.x) || !std::isfinite(center.y) )
-			return;
+		ForEachInRadiusImpl<true>(center, radius, std::forward<F>(fn));
+	}
 
-		const float radiusSq = radius * radius;
-		const float reach = radius + _hysteresis * _cellSize;
-		const int32 x0 = CellX(center.x - reach);
-		const int32 x1 = CellX(center.x + reach);
-		const int32 y0 = CellY(center.y - reach);
-		const int32 y1 = CellY(center.y + reach);
-
-		for( int32 y = y0; y <= y1; ++y )
-		{
-			for( int32 x = x0; x <= x1; ++x )
-			{
-				const CVector<TEntity*>& cell = _cells[static_cast<size_t>(y) * _cols + x];
-				for( size_t i = 0; i < cell.size(); ++i )
-				{
-					if( DistanceSq(cell[i]->GetPos(), center) <= radiusSq )
-						fn(*cell[i]);
-				}
-			}
-		}
+	//***************************************************************************
+	// @brief 임의 좌표 기준 원형 범위 안의 관찰자(IsAoiWatcher)만 순회합니다. 선공 대상(플레이어) 탐색용.
+	//        ForEachInRadius와 같지만 그 외 엔티티(밀집한 몬스터 등)를 훑지 않는다.
+	// @tparam F void(TEntity&) 형태의 호출 가능 객체
+	// @param center 중심 좌표
+	// @param radius 반경 (NaN/음수면 아무것도 순회하지 않음)
+	// @param fn     범위 안의 각 관찰자에 대해 호출할 함수
+	//***************************************************************************
+	template <typename F>
+	void ForEachWatcherInRadius(const Vec2& center, float radius, F&& fn) const
+	{
+		ForEachInRadiusImpl<false>(center, radius, std::forward<F>(fn));
 	}
 
 	//***************************************************************************
@@ -261,6 +273,72 @@ public:
 	float GetGuaranteedViewRadius() const { return (static_cast<float>(_view) - 2.0f * _hysteresis) * _cellSize; }
 
 private:
+	template <bool kIncludeOthers, typename F>
+	void ForEachNeighborImpl(const TEntity& entity, F&& fn) const
+	{
+		if( entity._aoiNode.cellIdx < 0 )
+			return;
+
+		const int32 cx = entity._aoiNode.cellIdx % _cols;
+		const int32 cy = entity._aoiNode.cellIdx / _cols;
+
+		for( int32 y = (std::max)(cy - _view, 0); y <= (std::min)(cy + _view, _rows - 1); ++y )
+		{
+			for( int32 x = (std::max)(cx - _view, 0); x <= (std::min)(cx + _view, _cols - 1); ++x )
+			{
+				const SAoiCell<TEntity>& cell = _cells[static_cast<size_t>(y) * _cols + x];
+				VisitList(cell.watchers, entity, fn);
+				if constexpr( kIncludeOthers )
+					VisitList(cell.others, entity, fn);
+			}
+		}
+	}
+
+	template <bool kIncludeOthers, typename F>
+	void ForEachInRadiusImpl(const Vec2& center, float radius, F&& fn) const
+	{
+		if( _cols == 0 || !(radius >= 0.0f) || !std::isfinite(center.x) || !std::isfinite(center.y) )
+			return;
+
+		const float radiusSq = radius * radius;
+		const float reach = radius + _hysteresis * _cellSize;
+		const int32 x0 = CellX(center.x - reach);
+		const int32 x1 = CellX(center.x + reach);
+		const int32 y0 = CellY(center.y - reach);
+		const int32 y1 = CellY(center.y + reach);
+
+		for( int32 y = y0; y <= y1; ++y )
+		{
+			for( int32 x = x0; x <= x1; ++x )
+			{
+				const SAoiCell<TEntity>& cell = _cells[static_cast<size_t>(y) * _cols + x];
+				VisitInRadius(cell.watchers, center, radiusSq, fn);
+				if constexpr( kIncludeOthers )
+					VisitInRadius(cell.others, center, radiusSq, fn);
+			}
+		}
+	}
+
+	template <typename F>
+	static void VisitList(const CVector<TEntity*>& list, const TEntity& self, F& fn)
+	{
+		for( size_t i = 0; i < list.size(); ++i )
+		{
+			if( list[i] != &self )
+				fn(*list[i]);
+		}
+	}
+
+	template <typename F>
+	static void VisitInRadius(const CVector<TEntity*>& list, const Vec2& center, float radiusSq, F& fn)
+	{
+		for( size_t i = 0; i < list.size(); ++i )
+		{
+			if( DistanceSq(list[i]->GetPos(), center) <= radiusSq )
+				fn(*list[i]);
+		}
+	}
+
 	//***************************************************************************
 	// @brief 셀 공간 실수 좌표를 [0, count-1] 범위의 셀 인덱스로 변환합니다.
 	//        NaN/Inf/거대한 값도 안전하게 가장자리 셀로 보정합니다. (float->int 캐스트의 UB 방지)
@@ -283,7 +361,8 @@ private:
 	//***************************************************************************
 	void InsertToCell(TEntity* entity, int32 cellIdx)
 	{
-		CVector<TEntity*>& cell = _cells[cellIdx];
+		SAoiCell<TEntity>& owner = _cells[cellIdx];
+		CVector<TEntity*>& cell = entity->_aoiNode.watcher ? owner.watchers : owner.others;
 
 		entity->_aoiNode.cellIdx = cellIdx;
 		entity->_aoiNode.slot = static_cast<uint32>(cell.size());
@@ -295,7 +374,8 @@ private:
 	//***************************************************************************
 	void EraseFromCell(TEntity* entity)
 	{
-		CVector<TEntity*>& cell = _cells[entity->_aoiNode.cellIdx];
+		SAoiCell<TEntity>& owner = _cells[entity->_aoiNode.cellIdx];
+		CVector<TEntity*>& cell = entity->_aoiNode.watcher ? owner.watchers : owner.others;
 
 		TEntity* last = cell.back();
 		cell[entity->_aoiNode.slot] = last;
@@ -321,6 +401,9 @@ private:
 		const int32 ex = excludeCell >= 0 ? excludeCell % _cols : 0;
 		const int32 ey = excludeCell >= 0 ? excludeCell / _cols : 0;
 
+		// 관찰자가 아닌 엔티티는 주변 관찰자하고만 통지를 주고받는다. (두 엔티티 모두 관찰자가 아니면 통지가 필요 없다)
+		const bool scanOthers = entity->_aoiNode.watcher;
+
 		_dispatching = true;
 
 		for( int32 y = (std::max)(cy - _view, 0); y <= (std::min)(cy + _view, _rows - 1); ++y )
@@ -330,28 +413,38 @@ private:
 				if( excludeCell >= 0 && std::abs(x - ex) <= _view && std::abs(y - ey) <= _view )
 					continue;
 
-				CVector<TEntity*>& cell = _cells[static_cast<size_t>(y) * _cols + x];
-				for( size_t i = 0; i < cell.size(); ++i )
-				{
-					TEntity* other = cell[i];
-					if( other == entity )
-						continue;
-
-					if( enter )
-					{
-						entity->OnAoiEnter(*other);
-						other->OnAoiEnter(*entity);
-					}
-					else
-					{
-						entity->OnAoiLeave(*other);
-						other->OnAoiLeave(*entity);
-					}
-				}
+				SAoiCell<TEntity>& cell = _cells[static_cast<size_t>(y) * _cols + x];
+				Dispatch(entity, cell.watchers, enter);
+				if( scanOthers )
+					Dispatch(entity, cell.others, enter);
 			}
 		}
 
 		_dispatching = false;
+	}
+
+	//***************************************************************************
+	// @brief 목록의 각 엔티티와 entity 사이에 양방향 진입/이탈 통지를 주고받습니다. (자기 자신은 건너뜀)
+	//***************************************************************************
+	static void Dispatch(TEntity* entity, CVector<TEntity*>& list, bool enter)
+	{
+		for( size_t i = 0; i < list.size(); ++i )
+		{
+			TEntity* other = list[i];
+			if( other == entity )
+				continue;
+
+			if( enter )
+			{
+				entity->OnAoiEnter(*other);
+				other->OnAoiEnter(*entity);
+			}
+			else
+			{
+				entity->OnAoiLeave(*other);
+				other->OnAoiLeave(*entity);
+			}
+		}
 	}
 
 	float	_minX = 0.0f;				// 영역 최소 X
@@ -365,7 +458,7 @@ private:
 	size_t	_entityCount = 0;			// 등록된 엔티티 수
 	bool	_dispatching = false;		// 통지 콜백 실행 중 여부 (재진입 방지)
 
-	CVector<CVector<TEntity*>> _cells;	// 셀별 엔티티 목록
+	CVector<SAoiCell<TEntity>> _cells;	// 셀별 엔티티 목록 (관찰자 / 그 외)
 };
 
 #endif // ndef GRIDAOI_H

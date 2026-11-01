@@ -55,23 +55,19 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 	zoneConfig.allowPvp = _options.allowPvp;
 	zoneConfig.respawnInvulnMs = _options.respawnInvulnMs;
 
-	SCombatStats playerStats;
-	playerStats.maxHp = _options.playerMaxHp;
-	playerStats.attack = _options.playerAttack;
-	playerStats.defense = _options.playerDefense;
-	playerStats.attackRange = _options.attackRange;
-	playerStats.attackIntervalMs = _options.attackIntervalMs;
-
 	Vec2 spawnPos;
 	spawnPos.x = _options.spawnX;
 	spawnPos.y = _options.spawnY;
 
-	// 기획 데이터(몬스터/스폰). 폴더가 지정됐는데 읽기/검증에 실패하면 구동하지 않는다(데이터 없이 조용히 뜨는 것이 더 위험).
+	// 기획 데이터(영웅/몬스터/스폰). 폴더가 지정됐는데 읽기/검증에 실패하면 구동하지 않는다(데이터 없이 조용히 뜨는 것이 더 위험).
+	// 폴더가 비어 있으면 몬스터 없이, 영웅은 존이 내장 기본 영웅 하나를 쓴다.
 	std::shared_ptr<const CMonsterData> monsterData;
+	std::shared_ptr<const CHeroData> heroData;
 	if( !_options.gameDataDir.empty() )
 	{
+		heroData = CGameDataLoader::LoadHeroes(_options.gameDataDir);
 		monsterData = CGameDataLoader::LoadMonsters(_options.gameDataDir);
-		if( monsterData == nullptr )
+		if( heroData == nullptr || monsterData == nullptr )
 		{
 			LOG_ERROR(_T("[CZoneServerMain] game data load failed. dir=%s"), _options.gameDataDir.c_str());
 			return false;
@@ -80,8 +76,9 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 
 	SMonsterSystemConfig monsterConfig;
 	monsterConfig.thinkIntervalMs = _options.monsterThinkIntervalMs;
+	monsterConfig.maxMonsters = _options.maxMonsterCount;
 
-	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, _options.playerSpeed, playerStats, std::move(monsterData), monsterConfig);
+	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, std::move(heroData), std::move(monsterData), monsterConfig);
 	if( !_zone->IsValid() )
 	{
 		LOG_ERROR(_T("[CZoneServerMain] invalid zone configuration. zoneId=%u"), _options.zoneId);
@@ -89,21 +86,13 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 		return false;
 	}
 
-	// 사거리가 AOI 시야보다 길면 보이지 않는 대상을 공격할 수 있고 피해 통지도 시야 밖으로 나간다.
-	if( !_zone->IsAttackRangeSupported(_options.attackRange, _options.playerSpeed) )
-	{
-		LOG_ERROR(_T("[CZoneServerMain] attack reach (range + tolerance + latency allowance) exceeds the guaranteed AOI view range. zoneId=%u, attackRange=%.1f, playerSpeed=%.1f, viewRange=%.1f"),
-			_options.zoneId, _options.attackRange, _options.playerSpeed, _zone->GetGuaranteedViewRange());
-		_zone.reset();
-		return false;
-	}
-
-	// 몬스터 데이터는 존 영역/AOI 시야와 맞아야 한다(선공 거리, 사거리). 맞지 않으면 구동하지 않는다.
+	// 영웅/몬스터 데이터는 존 영역/AOI 시야와 맞아야 한다(선공 거리, 사거리). 사거리가 시야보다 길면 보이지 않는 대상을
+	// 공격할 수 있고 피해 통지도 시야 밖으로 나가므로, 맞지 않으면 구동하지 않는다.
 	{
 		std::string error;
 		if( !_zone->ValidateMonsters(error) )
 		{
-			LOG_ERROR(_T("[CZoneServerMain] monster data does not fit the zone. zoneId=%u, reason=%hs"), _options.zoneId, error.c_str());
+			LOG_ERROR(_T("[CZoneServerMain] game data does not fit the zone. zoneId=%u, reason=%hs"), _options.zoneId, error.c_str());
 			_zone.reset();
 			return false;
 		}
@@ -364,10 +353,11 @@ bool CZoneServerMain::HandleEnterReq(const PacketHeader* header)
 	const ZoneEnterReqPacket* req = static_cast<const ZoneEnterReqPacket*>(header);
 	const uint64 clientSessionId = req->clientSessionId;
 	const uint64 charId = req->charId;
+	const uint32 heroId = req->heroId;
 
-	const bool posted = _zone != nullptr && _zone->Post([clientSessionId, charId](CZone& zone)
+	const bool posted = _zone != nullptr && _zone->Post([clientSessionId, charId, heroId](CZone& zone)
 		{
-			static_cast<CBattleZone&>(zone).HandleEnter(clientSessionId, charId);
+			static_cast<CBattleZone&>(zone).HandleEnter(clientSessionId, charId, heroId);
 		});
 
 	if( !posted )

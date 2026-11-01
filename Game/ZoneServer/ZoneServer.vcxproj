@@ -121,6 +121,7 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\HeroData.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\Monster.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\MonsterData.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\MonsterSystem.cpp" />
@@ -191,14 +192,15 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\FixedBufUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
-    <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZone.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZoneBase.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\GridAOI.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\HeroData.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\Monster.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\MonsterData.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\MonsterSystem.h" />

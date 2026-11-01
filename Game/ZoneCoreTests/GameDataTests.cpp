@@ -1,9 +1,10 @@
 ﻿// 게임 데이터 로더 테스트: 샘플 GameData 로드, 정상/비정상 JSON 검증
 #include "pch.h"
 #include "GameDataLoader.h"
+#include "HeroData.h"
 #include "MonsterData.h"
 #include "TestSuites.h"
-#include "test_common.h"
+#include "TestCommon.h"
 
 #include <filesystem>
 #include <fstream>
@@ -76,6 +77,70 @@ namespace
 		}
 	}
 
+	const char* kHero1 = "{\"Id\":1,\"Name\":\"a\",\"MaxHp\":100,\"Attack\":10,\"Defense\":0,\"AttackRange\":2,\"AttackIntervalMs\":1000,\"Speed\":6}";
+	const char* kHero2 = "{\"Id\":2,\"Name\":\"b\",\"MaxHp\":80,\"Attack\":20,\"Defense\":1,\"AttackRange\":8,\"AttackIntervalMs\":1500,\"Speed\":5.5}";
+
+	std::shared_ptr<const CHeroData> LoadHeroesFrom(const fs::path& dir, const std::string& hero)
+	{
+		WriteFile(dir / "Hero.json", hero);
+		return CGameDataLoader::LoadHeroes(ToTString(dir));
+	}
+
+	void TestHeroSample(const _tstring& dataDir)
+	{
+		auto data = CGameDataLoader::LoadHeroes(dataDir);
+		CHECK(data != nullptr);
+		if( data == nullptr )
+			return;
+
+		CHECK(data->GetHeroCount() >= 2);									// 영웅은 둘 이상이어서 입장 시 고를 수 있다
+		const SHeroTemplate* archer = data->FindHero(2);
+		CHECK(archer != nullptr);
+		if( archer != nullptr )
+		{
+			CHECK(archer->stats.maxHp == 100 && archer->stats.attack == 15 && archer->stats.defense == 1);
+			CHECK(archer->stats.attackRange == 12.0f && archer->stats.attackIntervalMs == 1000 && archer->speed == 6.5f && !archer->name.empty());
+		}
+		CHECK(data->GetDefaultHero() == data->FindHero(1));					// 기본 영웅 = ID가 가장 작은 영웅
+		CHECK(data->Resolve(0) == data->FindHero(1) && data->Resolve(2) == archer && data->Resolve(99) == nullptr);
+		CHECK(data->GetMaxSpeed() >= 6.5f);
+	}
+
+	void TestHeroLoadAndReject(const fs::path& dir)
+	{
+		const std::string both = std::string("{\"Hero\":[") + kHero1 + "," + kHero2 + "]}";
+		auto data = LoadHeroesFrom(dir, both);
+		CHECK(data != nullptr && data->GetHeroCount() == 2 && data->GetMaxSpeed() == 6.0f);
+
+		// 정렬되어 있어 입력 순서와 무관하게 가장 작은 ID가 기본 영웅이다.
+		auto reversed = LoadHeroesFrom(dir, std::string("{\"Hero\":[") + kHero2 + "," + kHero1 + "]}");
+		CHECK(reversed != nullptr && reversed->GetDefaultHero() != nullptr && reversed->GetDefaultHero()->id == 1);
+
+		CHECK(CGameDataLoader::LoadHeroes(ToTString(dir / "nonexistent")) == nullptr);
+
+		const char* invalid[][2] = {
+			{ "영웅 0개", "{\"Hero\":[]}" },
+			{ "키 없음", "{}" },
+			{ "필드 누락", "{\"Hero\":[{\"Id\":1}]}" },
+			{ "최상위가 배열", "[]" },
+			{ "id 0", "{\"Hero\":[{\"Id\":0,\"Name\":\"a\",\"MaxHp\":100,\"Attack\":10,\"Defense\":0,\"AttackRange\":2,\"AttackIntervalMs\":1000,\"Speed\":6}]}" },
+			{ "maxHp 0", "{\"Hero\":[{\"Id\":1,\"Name\":\"a\",\"MaxHp\":0,\"Attack\":10,\"Defense\":0,\"AttackRange\":2,\"AttackIntervalMs\":1000,\"Speed\":6}]}" },
+			{ "speed 0", "{\"Hero\":[{\"Id\":1,\"Name\":\"a\",\"MaxHp\":100,\"Attack\":10,\"Defense\":0,\"AttackRange\":2,\"AttackIntervalMs\":1000,\"Speed\":0}]}" },
+			{ "사거리 음수", "{\"Hero\":[{\"Id\":1,\"Name\":\"a\",\"MaxHp\":100,\"Attack\":10,\"Defense\":0,\"AttackRange\":-1,\"AttackIntervalMs\":1000,\"Speed\":6}]}" },
+			{ "공격 간격 0", "{\"Hero\":[{\"Id\":1,\"Name\":\"a\",\"MaxHp\":100,\"Attack\":10,\"Defense\":0,\"AttackRange\":2,\"AttackIntervalMs\":0,\"Speed\":6}]}" },
+		};
+		for( const auto& c : invalid )
+		{
+			const bool rejected = LoadHeroesFrom(dir, c[1]) == nullptr;
+			if( !rejected )
+				std::printf("  accepted invalid hero data: %s\n", c[0]);
+			CHECK(rejected);
+		}
+
+		const std::string dup = std::string("{\"Hero\":[") + kHero1 + "," + kHero1 + "]}";
+		CHECK(LoadHeroesFrom(dir, dup) == nullptr);							// id 중복
+	}
+
 	void TestLoadAndReject(const fs::path& dir)
 	{
 		CHECK(LoadFrom(dir, kMonster, kSpawn) != nullptr);
@@ -109,6 +174,8 @@ int RunGameDataTests(const _tstring& dataDir)
 	fs::create_directories(dir);
 
 	TestSampleData(dataDir);
+	TestHeroSample(dataDir);
+	TestHeroLoadAndReject(dir);
 	TestLoadAndReject(dir);
 
 	std::error_code ec;

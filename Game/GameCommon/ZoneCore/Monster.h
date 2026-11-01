@@ -88,6 +88,9 @@ protected:
 	virtual void OnAoiEnter(CZoneEntity& other) override;
 	virtual void OnAoiLeave(CZoneEntity& other) override;
 
+	// 몬스터는 시야 안 플레이어 수만 세므로, 다른 몬스터와는 AOI 통지를 주고받지 않는다.
+	virtual bool IsAoiWatcher() const override { return false; }
+
 private:
 	friend class CMonsterSystem;
 

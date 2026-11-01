@@ -9,6 +9,8 @@
 //   - User:{publicId 16진}      로그인 상태 해시 (TTL, 하트비트 주기로 갱신)
 //   - RoomChatOrder:{roomId}    방 대화 기록의 순서(ZSET, score=messageId)
 //   - RoomChatMsg:{roomId}      방 대화 기록의 내용(HASH, field=messageId)
+//   - MessageIdFloor:{group}:{channel}  채널(인스턴스)이 마지막으로 발급한 방 대화 메시지 id(문자열, TTL 없음).
+//                               시작할 때 읽어 시계가 거꾸로 가도 이전 id보다 큰 값부터 발급하게 한다(MessageIdGenerator.h).
 //   - RoomMembers:{roomId}      방에 입장한 적이 있는 전체 유저 집합(SET, 원소=publicId 16진).
 //                               SADD는 이미 있는 원소를 다시 넣어도 크기가 늘지 않으므로 SCARD가
 //                               "서로 다른 유저 수"를 정확히 유지한다. 방 목록의 totalMemberCount만을
@@ -31,6 +33,7 @@ namespace ChatServerKeys
 	inline constexpr const char* kRoomChatOrderPrefix = "RoomChatOrder:";
 	inline constexpr const char* kRoomChatMsgPrefix = "RoomChatMsg:";
 	inline constexpr const char* kRoomMembersPrefix = "RoomMembers:";
+	inline constexpr const char* kMessageIdFloorPrefix = "MessageIdFloor:";
 
 	// 채널 간 전달 계층의 Pub/Sub 토픽(ChatServerMainRelay.cpp). 채널마다 토픽 하나를 구독한다.
 	inline constexpr const char* kRelayTopicPrefix = "Chat:";
@@ -60,6 +63,11 @@ namespace ChatServerKeys
 	inline std::string BuildRoomChatMsgKey(int32_t roomId)
 	{
 		return kRoomChatMsgPrefix + std::to_string(roomId);
+	}
+
+	inline std::string BuildMessageIdFloorKey(const std::string& groupId, const std::string& channelId)
+	{
+		return kMessageIdFloorPrefix + BuildChannelKey(groupId, channelId);
 	}
 
 	inline std::string BuildRoomMembersKey(int32_t roomId)

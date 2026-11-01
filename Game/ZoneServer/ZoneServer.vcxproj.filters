@@ -111,6 +111,9 @@
     <ClCompile Include="..\GameCommon\ZoneCore\MonsterSystem.cpp">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\HeroData.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -244,9 +247,6 @@
     <ClInclude Include="BattleZone.h" />
     <ClInclude Include="ZoneLinkSession.h" />
     <ClInclude Include="ZonePlayer.h" />
-    <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h">
-      <Filter>GameCommon\ZoneCommon</Filter>
-    </ClInclude>
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h">
       <Filter>GameCommon\ZoneCommon</Filter>
     </ClInclude>
@@ -318,6 +318,12 @@
     </ClInclude>
     <ClInclude Include="..\GameCommon\ZoneCore\MonsterSystem.h">
       <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\HeroData.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

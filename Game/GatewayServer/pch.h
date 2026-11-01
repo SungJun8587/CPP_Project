@@ -38,6 +38,7 @@ using namespace std;
 #include <BaseMacro.h>
 
 #include <Util/ConsoleUtil.h>
+#include <Util/MainArgParser.h>
 #include <Util/CommonUtil.h>
 #include <Util/Log.h>
 #include <Util/ScopeExit.h>
@@ -73,7 +74,6 @@ using namespace std;
 
 #include "../GameCommon/ZoneCommon/ZonePacketTypes.h"
 #include "../GameCommon/ZoneCommon/ZonePacket.h"
-#include "../GameCommon/ZoneCommon/ArgParser.h"
 #include "ZoneRouter.h"
 #include "GatewayZoneSession.h"
 #include "GatewayClientSession.h"

@@ -52,6 +52,7 @@ struct GwLoginResPacket : PacketHeader
 struct GwEnterZoneReqPacket : PacketHeader
 {
 	uint32	zoneId;
+	uint32	heroId;				// 선택한 영웅 ID (0 = 영웅 데이터의 기본 영웅)
 };
 
 //***************************************************************************
@@ -135,6 +136,7 @@ struct ZoneEnterReqPacket : PacketHeader
 {
 	uint64	clientSessionId;
 	uint64	charId;
+	uint32	heroId;			// 선택한 영웅 ID (0 = 영웅 데이터의 기본 영웅)
 };
 
 //***************************************************************************
@@ -251,7 +253,7 @@ struct ZcSpawnNotifyPacket : PacketHeader
 	int32	hp;				// 현재 체력
 	int32	maxHp;			// 최대 체력
 	uint8	dead;			// 1이면 사망 상태(시체)
-	uint32	templateId;		// 몬스터 종류 ID (플레이어는 0). 클라이언트가 모델/이름을 고르는 키
+	uint32	templateId;		// 몬스터는 몬스터 종류 ID, 플레이어는 영웅 ID (entityType으로 구분). 클라이언트가 모델/이름을 고르는 키
 };
 
 //***************************************************************************

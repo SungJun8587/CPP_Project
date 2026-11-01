@@ -38,6 +38,7 @@ using namespace std;
 #include <BaseMacro.h>
 
 #include <Util/ConsoleUtil.h>
+#include <Util/MainArgParser.h>
 #include <Util/CommonUtil.h>
 #include <Util/DateTimeUtil.h>
 #include <Util/Log.h>
@@ -93,6 +94,7 @@ using namespace std;
 #include "../ChatCommon/ImageRef.h"
 #include "../ChatCommon/ChatServerKeys.h"
 #include "../ChatCommon/FileServerKeys.h"
+#include "../ChatCommon/MessageIdGenerator.h"
 #include "ChatServerOptions.h"
 #include "ChatServerConfig.h"
 #include "ChatPacketDispatcher.h"

@@ -23,7 +23,7 @@ int64 CChatServerMain::RegisterOutgoingMessage(const std::array<BYTE, kPublicIdB
 	std::lock_guard<std::mutex> lock(_messageOwnerMutex);
 
 	// 발급과 큐 삽입을 같은 락 안에서 해서 _messageOwnerOrder가 항상 id 오름차순을 유지하게 한다.
-	const int64 messageId = _nextMessageId.fetch_add(kMessageIdStride);
+	const int64 messageId = _messageIdGenerator.Next();
 
 	_messageOwners[messageId] = SMessageOwnerRecord{ senderPublicId, roomId, fileRelativePath };
 	_messageOwnerOrder.push_back(messageId);

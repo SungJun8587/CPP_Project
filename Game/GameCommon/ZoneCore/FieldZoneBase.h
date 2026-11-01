@@ -178,6 +178,33 @@ public:
 	}
 
 	//***************************************************************************
+	// @brief 엔티티의 시야 안 AOI 관찰자(CZoneEntity::IsAoiWatcher)만 순회합니다. 패킷 수신자 수집용.
+	//        시야 안의 그 외 엔티티(몬스터 등)를 훑지 않아 밀집한 구역에서 ForEachInAoi보다 빠르다.
+	//        순회 중 엔티티 추가/제거/이동을 호출하면 안 됩니다.
+	// @tparam F void(CZoneEntity&) 형태의 호출 가능 객체
+	// @param entity 기준 엔티티
+	// @param fn     각 이웃 관찰자에 대해 호출할 함수
+	//***************************************************************************
+	template <typename F>
+	void ForEachWatcherInAoi(const CZoneEntity& entity, F&& fn) const
+	{
+		_aoi.ForEachWatcherNeighbor(entity, std::forward<F>(fn));
+	}
+
+	//***************************************************************************
+	// @brief 원형 범위 안의 AOI 관찰자만 순회합니다. 선공 대상(플레이어) 탐색용.
+	// @tparam F void(CZoneEntity&) 형태의 호출 가능 객체
+	// @param center 중심 좌표
+	// @param radius 반경
+	// @param fn     각 관찰자에 대해 호출할 함수
+	//***************************************************************************
+	template <typename F>
+	void ForEachWatcherInRadius(const Vec2& center, float radius, F&& fn) const
+	{
+		_aoi.ForEachWatcherInRadius(center, radius, std::forward<F>(fn));
+	}
+
+	//***************************************************************************
 	// @brief 존에 등록된 엔티티 수를 반환합니다.
 	// @return 엔티티 수
 	//***************************************************************************

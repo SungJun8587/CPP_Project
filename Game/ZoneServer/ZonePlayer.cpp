@@ -13,10 +13,12 @@
 // @param charId          캐릭터 ID (엔티티 ID로 사용)
 // @param clientSessionId Gateway 클라이언트 세션 ID
 // @param zone            소속 존
+// @param heroId          선택한 영웅 ID
 //***************************************************************************
-CZonePlayer::CZonePlayer(uint64 charId, uint64 clientSessionId, CBattleZone* zone)
+CZonePlayer::CZonePlayer(uint64 charId, uint64 clientSessionId, CBattleZone* zone, uint32 heroId)
 	: CZoneEntity(charId, EntityType::Player)
 	, _clientSessionId(clientSessionId)
+	, _heroId(heroId)
 	, _zone(zone)
 	, _leaving(false)
 {

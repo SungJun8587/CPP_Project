@@ -76,6 +76,26 @@ public:
 		CFieldZoneBase::ForEachInRadius(center, radius, [&fn](CZoneEntity& other) { fn(static_cast<TEntity&>(other)); });
 	}
 
+	//***************************************************************************
+	// @brief 엔티티의 시야 안 AOI 관찰자만 순회합니다. (ForEachInAoi의 관찰자 전용 버전)
+	// @tparam F void(TEntity&) 형태의 호출 가능 객체
+	//***************************************************************************
+	template <typename F>
+	void ForEachWatcherInAoi(const TEntity& entity, F&& fn) const
+	{
+		CFieldZoneBase::ForEachWatcherInAoi(entity, [&fn](CZoneEntity& other) { fn(static_cast<TEntity&>(other)); });
+	}
+
+	//***************************************************************************
+	// @brief 원형 범위 안의 AOI 관찰자만 순회합니다. (ForEachInRadius의 관찰자 전용 버전)
+	// @tparam F void(TEntity&) 형태의 호출 가능 객체
+	//***************************************************************************
+	template <typename F>
+	void ForEachWatcherInRadius(const Vec2& center, float radius, F&& fn) const
+	{
+		CFieldZoneBase::ForEachWatcherInRadius(center, radius, [&fn](CZoneEntity& other) { fn(static_cast<TEntity&>(other)); });
+	}
+
 protected:
 	// ── 타입 안전 이벤트 훅 (CFieldZoneBase 문서 참고) ───────
 	virtual void OnEntityRemoved(TEntity& entity) { (void)entity; }

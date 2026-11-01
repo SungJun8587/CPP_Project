@@ -65,11 +65,20 @@ bool CMonsterSystem::Validate(std::string& error, float opponentMaxSpeed) const
 
 	const FieldZoneConfig& fc = _zone.GetFieldConfig();
 	const float viewRange = _zone.GetGuaranteedViewRange();
+	uint64 totalCount = 0;
 
 	for( const SSpawnEntry& s : _data->GetSpawns() )
 	{
 		if( s.zoneId != _zone.GetZoneId() )
 			continue;
+
+		totalCount += s.count;
+		if( totalCount > _config.maxMonsters )
+		{
+			std::snprintf(buf, sizeof(buf), "zone %u: total spawn count exceeds the configured limit %u", s.zoneId, _config.maxMonsters);
+			error = buf;
+			return false;
+		}
 
 		const SMonsterTemplate* tmpl = _data->FindMonster(s.monsterId);
 		if( tmpl == nullptr )
@@ -436,6 +445,7 @@ CZoneEntity* CMonsterSystem::PickTarget(CMonster& monster)
 
 //***************************************************************************
 // @brief 선공 범위 안에서 가장 가까운 공격 가능한 플레이어를 찾습니다. (생존, 무적 아님)
+//        AOI 관찰자만 훑으므로 플레이어 엔티티는 CZoneEntity::IsAoiWatcher()가 true(기본값)여야 한다.
 // @return 플레이어, 없으면 nullptr
 //***************************************************************************
 CZoneEntity* CMonsterSystem::FindAggroCandidate(CMonster& monster)
@@ -444,7 +454,7 @@ CZoneEntity* CMonsterSystem::FindAggroCandidate(CMonster& monster)
 	float bestDistSq = std::numeric_limits<float>::infinity();
 	const Vec2 pos = monster.GetPos();
 
-	_zone.ForEachInRadius(pos, monster._tmpl->aggroRange, [&](CZoneEntity& entity)
+	_zone.ForEachWatcherInRadius(pos, monster._tmpl->aggroRange, [&](CZoneEntity& entity)
 		{
 			if( entity.GetType() != EntityType::Player || !entity.IsAlive() || _zone.IsInvulnerable(entity) )
 				return;

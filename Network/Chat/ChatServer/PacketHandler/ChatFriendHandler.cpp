@@ -108,9 +108,12 @@ namespace
 
 				if( ok && res.autoAccepted )
 				{
-					const bool online = (server->FindOnlineSession(res.target.publicId) != nullptr);
-					NotifyAccepted(server, actor.publicId, res.target.publicId,
-						res.target.nickname, res.target.profileImageRef, online);
+					// 새 친구가 다른 채널에 접속 중일 수도 있으므로 접속 여부는 다른 채널까지 확인한다.
+					server->ResolveOnline({ res.target.publicId },
+						[server, actor, targetId = res.target.publicId, nickname = res.target.nickname, imageRef = res.target.profileImageRef](const std::vector<bool>& online)
+						{
+							NotifyAccepted(server, actor.publicId, targetId, nickname, imageRef, !online.empty() && online[0]);
+						});
 				}
 			});
 	}
@@ -132,7 +135,6 @@ namespace
 			[server, actor, accept, target](const SFriendOpResult& res)
 			{
 				const bool ok = (res.result == EFriendResult::Ok);
-				const bool targetOnline = ok && (server->FindOnlineSession(res.target.publicId) != nullptr);
 
 				// 수락되면 요청을 보냈던 쪽에게 알린다 (거절은 알리지 않음)
 				if( ok && accept )
@@ -141,18 +143,32 @@ namespace
 						actor.nickname, actor.profileImageUrl, true);
 				}
 
-				auto me = actor.session.lock();
-				if( me == nullptr )
-					return;
+				const uint8 reason = static_cast<uint8>(res.result);
+				auto sendResponse = [actor, target, ok, accept, reason](bool targetOnline)
+					{
+						auto me = actor.session.lock();
+						if( me == nullptr )
+							return;
 
-				FriendRespondResPacket out{};
-				InitPacket(out, EChatPacketType::FriendRespondRes);
-				out.success = ok ? 1 : 0;
-				out.reason = static_cast<uint8>(res.result);
-				out.accepted = accept ? 1 : 0;
-				CopyPublicId(out.publicId, target);	// 요청에 실려온 대상을 그대로 되돌려준다(실패 시에도 클라이언트가 짝지을 수 있도록)
-				out.online = targetOnline ? 1 : 0;
-				SendPacket(me, out);
+						FriendRespondResPacket out{};
+						InitPacket(out, EChatPacketType::FriendRespondRes);
+						out.success = ok ? 1 : 0;
+						out.reason = reason;
+						out.accepted = accept ? 1 : 0;
+						CopyPublicId(out.publicId, target);	// 요청에 실려온 대상을 그대로 되돌려준다(실패 시에도 클라이언트가 짝지을 수 있도록)
+						out.online = targetOnline ? 1 : 0;
+						SendPacket(me, out);
+					};
+
+				if( !ok )
+				{
+					sendResponse(false);
+					return;
+				}
+
+				// 상대가 다른 채널에 접속 중일 수도 있으므로 접속 여부는 다른 채널까지 확인한 뒤 응답한다.
+				server->ResolveOnline({ res.target.publicId },
+					[sendResponse](const std::vector<bool>& online) { sendResponse(!online.empty() && online[0]); });
 			});
 	}
 
@@ -372,13 +388,14 @@ namespace
 				if( ok && res.friendshipRemoved )
 					NotifyRemoved(server, res.target.publicId, actor.publicId);
 
+				// 채팅 수신 필터 갱신 — 이후 이 사용자의 메시지는 이 계정의 세션들에 전달되지 않는다.
+				// 같은 계정의 다른 세션(다른 채널 포함)에도 반영하며, 요청 세션이 그 사이 끊겼어도 한다.
+				if( ok || res.result == EFriendResult::AlreadyBlocked )
+					server->PropagateBlockChange(actor.publicId, res.target.publicId, true);
+
 				auto me = actor.session.lock();
 				if( me == nullptr )
 					return;
-
-				// 채팅 수신 필터 갱신 — 이후 이 사용자의 메시지는 이 세션에 전달되지 않는다.
-				if( ok || res.result == EFriendResult::AlreadyBlocked )
-					me->AddBlockedUser(PublicIdToHex(res.target.publicId));
 
 				BlockResPacket out{};
 				InitPacket(out, EChatPacketType::BlockRes);
@@ -402,14 +419,15 @@ namespace
 		const PublicId target = ToPublicId(packet->publicId);
 
 		server->RequestFriendOp(actor.publicId, EFriendOp::Unblock, &target, std::string(),
-			[actor, target](const SFriendOpResult& res)
+			[server, actor, target](const SFriendOpResult& res)
 			{
+				// 같은 계정의 다른 세션(다른 채널 포함)에도 반영하며, 요청 세션이 그 사이 끊겼어도 한다.
+				if( res.result == EFriendResult::Ok || res.result == EFriendResult::NotBlocked )
+					server->PropagateBlockChange(actor.publicId, target, false);
+
 				auto me = actor.session.lock();
 				if( me == nullptr )
 					return;
-
-				if( res.result == EFriendResult::Ok || res.result == EFriendResult::NotBlocked )
-					me->RemoveBlockedUser(PublicIdToHex(target));
 
 				UnblockResPacket out{};
 				InitPacket(out, EChatPacketType::UnblockRes);

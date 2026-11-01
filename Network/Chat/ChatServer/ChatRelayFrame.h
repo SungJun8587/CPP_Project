@@ -12,6 +12,10 @@
 //   kind = Packet          본문 = 수신자에게 그대로 보낼 패킷(PacketHeader.size 길이와 정확히 일치해야 함)
 //   kind = PresenceOffline 본문 없음. "수신자" 목록 = 접속을 종료하는 계정들 — 받은 서버가 각 계정의 친구 중
 //                          자기 프로세스에 접속한 사람에게 종료를 알린다(서버 종료 시 일괄 통지용).
+//   kind = FriendCacheInvalidate 본문 없음. "수신자" 목록 = 친구 관계가 바뀐 계정들 — 받은 서버가 각 계정의
+//                          친구 id 캐시를 무효화한다(다음 조회 때 DB에서 다시 읽음). 다시 전달하지 않는다.
+//   kind = BlockAdd / BlockRemove 본문 없음. "수신자" 목록 = 차단한 계정 1개, 발신자 필드 = 차단(해제)된 사용자.
+//                          받은 서버가 그 계정의 이 프로세스 세션 전부의 차단 목록에 추가/제거한다. 다시 전달하지 않는다.
 //***************************************************************************
 
 #ifndef CHATRELAYFRAME_H
@@ -36,6 +40,9 @@ namespace ChatRelay
 	{
 		Packet = 0,
 		PresenceOffline = 1,
+		FriendCacheInvalidate = 2,
+		BlockAdd = 3,
+		BlockRemove = 4,
 	};
 
 	using Id = std::array<uint8_t, kPublicIdSize>;
@@ -95,7 +102,7 @@ namespace ChatRelay
 	//***************************************************************************
 	// @brief 프레임을 검증하며 해석한다. 버전/종류/길이가 어긋나면 false.
 	// @details Packet 본문은 첫 2바이트(PacketHeader.size, 리틀엔디안)가 본문 길이와 정확히 같아야 하고
-	//          헤더(4바이트)보다 커야 한다. PresenceOffline은 본문이 없어야 한다.
+	//          헤더(4바이트)보다 커야 한다. PresenceOffline/FriendCacheInvalidate/BlockAdd/BlockRemove는 본문이 없어야 한다.
 	//***************************************************************************
 	inline bool ParseFrame(const std::string& payload, SFrameView& out)
 	{
@@ -103,7 +110,7 @@ namespace ChatRelay
 			return false;
 
 		const uint8_t* p = reinterpret_cast<const uint8_t*>(payload.data());
-		if( p[0] != kFrameVersion || p[1] > static_cast<uint8_t>(EKind::PresenceOffline) )
+		if( p[0] != kFrameVersion || p[1] > static_cast<uint8_t>(EKind::BlockRemove) )
 			return false;
 
 		out.kind = static_cast<EKind>(p[1]);
@@ -119,7 +126,7 @@ namespace ChatRelay
 
 		out.ids = p + kFixedHeaderSize;
 		const size_t bodySize = payload.size() - bodyOffset;
-		if( out.kind == EKind::PresenceOffline )
+		if( out.kind != EKind::Packet )
 		{
 			out.packet = nullptr;
 			out.packetSize = 0;

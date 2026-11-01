@@ -8,6 +8,8 @@
 #define UC_GAMEDATALOADER_H
 
 #include <Network/NetworkCommon.h>
+
+#include "../GameCommon/ZoneCore/HeroData.h"
 #include "../GameCommon/ZoneCore/MonsterData.h"
 
 #include <memory>
@@ -22,6 +24,8 @@
 //     <dir>/Monster.json : { "Monster": [ { "Id","Name","MaxHp","Attack","Defense","AttackRange","AttackIntervalMs",
 //                                           "Speed","AggroRange","LeashRange","RespawnMs" }, ... ] }
 //     <dir>/Spawn.json   : { "Spawn":   [ { "ZoneId","MonsterId","Count","X","Y","Radius" }, ... ] }
+//     <dir>/Hero.json    : { "Hero":    [ { "Id","Name","MaxHp","Attack","Defense","AttackRange","AttackIntervalMs",
+//                                           "Speed" }, ... ] }   (영웅은 1개 이상, 플레이어가 입장할 때 하나를 선택한다)
 //
 // 모든 필드는 필수이며 타입/범위가 맞지 않으면 어느 행의 어느 필드인지 로그를 남기고 실패한다.
 // 테이블 간 참조(스폰 -> 몬스터)와 값 범위는 CMonsterData::Validate()가 검사한다.
@@ -30,6 +34,7 @@
 class CGameDataLoader
 {
 public:
+	static std::shared_ptr<const CHeroData> LoadHeroes(const _tstring& dir);
 	static std::shared_ptr<const CMonsterData> LoadMonsters(const _tstring& dir);
 };
 

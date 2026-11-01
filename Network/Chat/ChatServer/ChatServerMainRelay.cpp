@@ -18,6 +18,8 @@
 //   - 알림 전용: Pub/Sub은 구독자가 없거나 끊겨 있으면 메시지가 사라진다. 대화 내용은 항상 DB에 먼저 저장되고
 //     이 경로는 "접속 중인 상대에게 즉시 알리는" 용도로만 쓴다(놓쳐도 다음 목록/기록 조회에서 복구된다).
 //   - 차단 규칙 유지: 발신자 id를 프레임에 실어, 수신 서버가 수신자 세션의 차단 목록으로 같은 필터를 적용한다.
+//   - 친구 캐시 무효화: 친구 관계가 바뀌면(수락·삭제·차단·맞물린 요청) 양쪽 계정의 친구 id 캐시를 이 프로세스에서 지우고,
+//     같은 계정 목록을 다른 채널 토픽에도 한 프레임으로 발행해(FriendCacheInvalidate) 그쪽 캐시도 지운다.
 //   - 정상 종료 통지: 서버가 내려갈 때는 로컬 접속자 목록을 다른 채널 토픽에 한 번에 발행해(PresenceOffline),
 //     받은 서버가 각 계정의 친구에게 종료를 알린다 — 종료 중에는 Redis 응답을 처리할 JobQueue가 돌지 않아
 //     수신자 채널을 조회해서 보내는 일반 경로를 쓸 수 없기 때문이다.
@@ -205,6 +207,57 @@ void CChatServerMain::BroadcastShutdownPresence()
 }
 
 //***************************************************************************
+// @brief 친구 관계가 바뀐 계정들의 친구 id 캐시를 다른 채널에서도 무효화하도록 알립니다.
+// @details 받은 서버는 OnRelayMessage()에서 InvalidateFriendCache()만 하고 다시 전달하지 않는다. 무효화 전에 시작한
+//          다른 채널의 DB 조회 결과는 그 서버의 세대 카운터가 막아 준다. Pub/Sub이라 전달 보장은 없다 —
+//          놓치면 그 계정이 로그아웃하거나 다음 친구 변경이 있을 때까지 옛 목록이 남는다.
+//***************************************************************************
+void CChatServerMain::BroadcastFriendCacheInvalidation(const std::vector<PublicId>& accounts)
+{
+	if( accounts.empty() || !_relayEnabled || !_relayHasPeers.load() || _redisService == nullptr )
+		return;
+
+	std::vector<std::string> topics;
+	{
+		std::lock_guard<std::mutex> lock(_relayPeerMutex);
+		topics = _relayPeerTopics;
+	}
+	if( topics.empty() )
+		return;
+
+	for( size_t from = 0; from < accounts.size(); from += ChatRelay::kMaxRecipients )
+	{
+		const size_t to = (std::min)(from + ChatRelay::kMaxRecipients, accounts.size());
+		const std::string frame = ChatRelay::BuildFrame(ChatRelay::EKind::FriendCacheInvalidate,
+			std::vector<PublicId>(accounts.begin() + from, accounts.begin() + to), nullptr, 0, nullptr);
+		for( const std::string& topic : topics )
+			_redisService->Publish(topic, frame);
+	}
+}
+
+//***************************************************************************
+// @brief 차단/차단 해제를 다른 채널 토픽 전체에 발행합니다(같은 계정이 다른 채널에도 로그인해 있을 수 있다).
+//***************************************************************************
+void CChatServerMain::BroadcastBlockChange(const PublicId& blocker, const PublicId& blocked, bool block)
+{
+	if( !_relayEnabled || !_relayHasPeers.load() || _redisService == nullptr )
+		return;
+
+	std::vector<std::string> topics;
+	{
+		std::lock_guard<std::mutex> lock(_relayPeerMutex);
+		topics = _relayPeerTopics;
+	}
+	if( topics.empty() )
+		return;
+
+	const std::string frame = ChatRelay::BuildFrame(block ? ChatRelay::EKind::BlockAdd : ChatRelay::EKind::BlockRemove,
+		std::vector<PublicId>{ blocker }, nullptr, 0, &blocked);
+	for( const std::string& topic : topics )
+		_redisService->Publish(topic, frame);
+}
+
+//***************************************************************************
 // @brief 최근 "접속 중이 아님"으로 확인된 수신자를 걸러냅니다.
 //***************************************************************************
 std::vector<PublicId> CChatServerMain::FilterOfflineCached(const std::vector<PublicId>& ids)
@@ -365,6 +418,8 @@ void CChatServerMain::RelayToRemote(const std::vector<PublicId>& remoteIds, cons
 // @details JobQueue(로직) 스레드에서 호출된다. 잘못된 프레임은 버린다.
 //          Packet: 발신자가 있으면 수신자 세션의 차단 목록으로 걸러낸다(BroadcastChatToRoom/PushMessage와 같은 규칙).
 //          PresenceOffline: 각 계정의 친구 중 이 프로세스 접속자에게만 종료를 알린다(다시 전달하지 않는다 — 루프 방지).
+//          FriendCacheInvalidate: 각 계정의 친구 id 캐시를 지운다(다시 전달하지 않는다 — 루프 방지).
+//          BlockAdd/BlockRemove: 차단한 계정의 이 프로세스 세션 전부의 차단 목록을 갱신한다(다시 전달하지 않는다).
 //***************************************************************************
 void CChatServerMain::OnRelayMessage(const std::string& payload)
 {
@@ -380,6 +435,20 @@ void CChatServerMain::OnRelayMessage(const std::string& payload)
 			if( !IsUserOnline(account) )	// 그 사이 이 서버로 다시 접속했다면 종료로 알리지 않는다
 				NotifyFriendPresence(account, false, true);
 		}
+		return;
+	}
+
+	if( frame.kind == ChatRelay::EKind::BlockAdd || frame.kind == ChatRelay::EKind::BlockRemove )
+	{
+		if( frame.hasSender && frame.count == 1 )
+			ApplyBlockChange(frame.RecipientAt(0), frame.sender, frame.kind == ChatRelay::EKind::BlockAdd);	// 다시 전달하지 않는다
+		return;
+	}
+
+	if( frame.kind == ChatRelay::EKind::FriendCacheInvalidate )
+	{
+		for( size_t i = 0; i < frame.count; ++i )
+			InvalidateFriendCache(frame.RecipientAt(i));	// 이 프로세스에 항목이 없으면 세대만 올라간다
 		return;
 	}
 

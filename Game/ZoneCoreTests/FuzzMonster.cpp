@@ -2,7 +2,7 @@
 #include "pch.h"
 #include "FieldZone.h"
 #include "MonsterSystem.h"
-#include "test_common.h"
+#include "TestCommon.h"
 
 #include <cmath>
 #include <cstdio>

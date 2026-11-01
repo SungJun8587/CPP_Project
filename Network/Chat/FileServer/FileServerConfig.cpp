@@ -10,6 +10,10 @@
 #include <ConfigFile/JSONConfigFieldReader.h>
 #include <ConfigFile/JSONConfigFieldWriter.h>
 
+#include <Util/MainArgParser.h>
+
+#include <limits>
+
 //***************************************************************************
 // @brief CFileServerConfig 클래스의 생성자
 //***************************************************************************
@@ -74,6 +78,26 @@ bool CFileServerConfig::Init(const TCHAR* tszServerInfo)
 		});
 
 	return reader.Validate();
+}
+
+//***************************************************************************
+// @brief 명령행 인자로 설정 파일에서 읽은 값을 덮어씁니다.
+// @param args 파싱된 명령행 인자
+// @return 성공 시 true, 하나라도 형식/범위를 벗어나면 false
+// @details 모든 인자를 검사해서 오류를 한꺼번에 로그로 남긴다. 범위는 Init()과 같다.
+//***************************************************************************
+bool CFileServerConfig::ApplyArgs(const CMainArgParser& args)
+{
+	bool ok = true;
+	ok &= args.ReadString(_T("name"), _tszServerName);
+	ok &= args.ReadString(_T("ip"), _tszIP);
+	ok &= args.ReadInt(_T("port"), _nServerPort, 1, 65535);
+	ok &= args.ReadInt(_T("max-sessions"), _nMaxSessionCount, 1, (std::numeric_limits<int32>::max)());
+	ok &= args.ReadInt(_T("workers"), _nWorkerThreadCnt, 0, (std::numeric_limits<int32>::max)());
+	ok &= args.ReadString(_T("storage-dir"), _tszStorageDir);
+	ok &= args.ReadString(_T("public-url"), _tszPublicBaseUrl);
+	ok &= args.ReadInt(_T("max-upload-bytes"), _nMaxUploadBytes, 1, (std::numeric_limits<long long>::max)());
+	return ok;
 }
 
 //***************************************************************************

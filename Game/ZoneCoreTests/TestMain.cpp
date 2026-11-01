@@ -11,7 +11,7 @@
 // 종료 코드: 0 모두 통과, 1 실패한 스위트가 있음, 2 사용법 오류.
 #include "pch.h"
 #include "TestSuites.h"
-#include "test_common.h"
+#include "TestCommon.h"
 
 #include <cstdio>
 #include <cstdlib>

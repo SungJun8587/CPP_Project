@@ -12,6 +12,7 @@
 #include "FileServerMain.h"
 #include "FileServerConfig.h"
 #include <ServerConnectInfo.h>
+#include <Util/MainArgParser.h>
 #include <iostream>
 
 namespace
@@ -65,7 +66,32 @@ void MainClose()
 	CSocketUtils::Clear();
 }
 
-int main()
+//***************************************************************************
+// @brief 명령행 인자 사용법을 콘솔에 출력합니다.
+//***************************************************************************
+static void PrintUsage()
+{
+	std::cout <<
+		"usage: FileServer [options]\n"
+		"  --config <file>       JSON config file (Config\\fileserver_config_mysql.json)\n"
+		"  --name <str>          server name\n"
+		"  --ip <addr>           bind address\n"
+		"  --port <n>            bind port\n"
+		"  --max-sessions <n>    max concurrent sessions\n"
+		"  --workers <n>         IOCP worker threads, 0=auto\n"
+		"  --storage-dir <dir>   directory for uploaded files\n"
+		"  --public-url <url>    public base URL handed to clients (e.g. http://host:8081)\n"
+		"  --max-upload-bytes <n> max upload size in bytes\n"
+		"options given here override the config file.\n";
+}
+
+//***************************************************************************
+// @brief FileServer 진입점
+// @param argc 명령행 인자 개수
+// @param argv 명령행 인자. "--key value" 또는 "--key=value" 형식이며 설정 파일 값을 덮어쓴다(--help로 목록 확인).
+// @return 프로세스 종료 코드(0=정상, -1=초기화/시작 실패)
+//***************************************************************************
+int wmain(int argc, TCHAR* argv[])
 {
 	// 1. Debug 빌드에서의 CRT 메모리 누수 감지 옵션 설정
 #ifdef	_MSC_VER
@@ -74,6 +100,14 @@ int main()
 
 	// 2. 콘솔 유니코드/UTF-8 환경 및 기본 프레임워크 초기화
 	InitUtf8Console();
+
+	// 2-1. 명령행 인자 파싱 — --help는 아무것도 초기화하기 전에 처리한다.
+	const CMainArgParser args(argc, argv);
+	if( args.Has(_T("help")) )
+	{
+		PrintUsage();
+		return 0;
+	}
 
 	// 3. Winsock 라이브러리(WSAStartup) 및 IOCP 확장 함수 포인터를 초기화
 	CSocketUtils::Init();
@@ -88,12 +122,27 @@ int main()
 	::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
 
 	// 6. 서버 설정 파일(JSON) 로드
-	TCHAR tszConfigPath[FULLPATH_STRLEN];
-	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("Config\\fileserver_config_mysql.json"));
+	// 설정 파일 경로 — 기본값은 아래이며 --config로 바꿀 수 있다.
+	_tstring configPath = _T("Config\\fileserver_config_mysql.json");
+	if( false == args.ReadString(_T("config"), configPath) )
+	{
+		PrintUsage();
+		MainClose();
+		return -1;
+	}
+	const TCHAR* tszConfigPath = configPath.c_str();
 
 	if( false == FILE_SERVER_CONFIG->Init(tszConfigPath) )
 	{
 		LOG_ERROR(_T("CFileServerConfig::Init Fail. (Path: %s)"), tszConfigPath);
+		MainClose();
+		return -1;
+	}
+
+	// 6-0. 명령행 인자로 설정 파일 값을 덮어쓴다(포트/저장 경로처럼 인스턴스마다 다른 값).
+	if( false == FILE_SERVER_CONFIG->ApplyArgs(args) )
+	{
+		PrintUsage();
 		MainClose();
 		return -1;
 	}

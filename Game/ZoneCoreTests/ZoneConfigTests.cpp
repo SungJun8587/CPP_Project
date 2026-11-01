@@ -3,7 +3,7 @@
 #include "TestSuites.h"
 #include "ZoneServerConfig.h"
 #include "ZoneServerOptions.h"
-#include "test_common.h"
+#include "TestCommon.h"
 
 #include <filesystem>
 #include <fstream>
@@ -47,25 +47,35 @@ namespace
 		SZoneServerOptions o;
 		CHECK(Load(dir / "defaults.json", o));
 		CHECK(o.gameDataDir == _T("GameData") && o.monsterThinkIntervalMs == 100);
+		CHECK(o.maxMonsterCount == static_cast<uint32>(CMonsterData::kMaxSpawnPerZone));
 	}
 
 	void TestReadAndSave(const fs::path& dir)
 	{
-		WriteFile(dir / "read.json", "{\"GameDataDir\":\"D:/data/live\",\"MonsterThinkIntervalMs\":250,\"PlayerMaxHp\":77}");
+		WriteFile(dir / "read.json", "{\"GameDataDir\":\"D:/data/live\",\"MonsterThinkIntervalMs\":250,\"RespawnDelayMs\":77,\"MaxMonsterCount\":1234}");
 
 		CZoneServerConfig config;
 		CHECK(config.Init(ToTString(dir / "read.json").c_str()));
 		SZoneServerOptions o;
 		config.ToOptions(o);
-		CHECK(o.gameDataDir == _T("D:/data/live") && o.monsterThinkIntervalMs == 250 && o.playerMaxHp == 77);
+		CHECK(o.gameDataDir == _T("D:/data/live") && o.monsterThinkIntervalMs == 250 && o.respawnDelayMs == 77 && o.maxMonsterCount == 1234);
 
 		// 저장한 파일을 다시 읽어도 같은 값이어야 한다.
 		const fs::path saved = dir / "saved.json";
 		CHECK(config.Save(ToTString(saved).c_str()));
 		SZoneServerOptions p;
 		CHECK(Load(saved, p));
-		CHECK(p.gameDataDir == _T("D:/data/live") && p.monsterThinkIntervalMs == 250);
+		CHECK(p.gameDataDir == _T("D:/data/live") && p.monsterThinkIntervalMs == 250 && p.maxMonsterCount == 1234);
 		config.PrintServerSettingInfo();
+	}
+
+	// 영웅 데이터로 옮겨 간 키(PlayerMaxHp 등)가 옛 설정 파일에 남아 있어도 구동에는 지장이 없고, 값은 적용되지 않는다.
+	void TestLegacyPlayerKeysIgnored(const fs::path& dir)
+	{
+		WriteFile(dir / "legacy.json", "{\"PlayerMaxHp\":77,\"PlayerAttack\":5,\"PlayerDefense\":1,\"PlayerSpeed\":9,\"AttackRange\":3,\"AttackIntervalMs\":400,\"RespawnDelayMs\":123}");
+		SZoneServerOptions o;
+		CHECK(Load(dir / "legacy.json", o));
+		CHECK(o.respawnDelayMs == 123);
 	}
 
 	void TestEmptyGameDataDir(const fs::path& dir)
@@ -83,6 +93,9 @@ namespace
 			"{\"MonsterThinkIntervalMs\":70000}",
 			"{\"MonsterThinkIntervalMs\":\"x\"}",
 			"{\"GameDataDir\":5}",
+			"{\"MaxMonsterCount\":0}",
+			"{\"MaxMonsterCount\":20001}",
+			"{\"MaxMonsterCount\":\"x\"}",
 		};
 		for( const char* text : invalid )
 		{
@@ -108,6 +121,7 @@ int RunZoneConfigTests()
 	TestDefaults(dir);
 	TestReadAndSave(dir);
 	TestEmptyGameDataDir(dir);
+	TestLegacyPlayerKeysIgnored(dir);
 	TestRejectInvalid(dir);
 
 	std::error_code ec;

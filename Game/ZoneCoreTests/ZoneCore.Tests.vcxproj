@@ -96,18 +96,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\GameCommon\ZoneCore\HeroData.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="TestMain.cpp" />
-    <ClCompile Include="tests.cpp" />
-    <ClCompile Include="combat_tests.cpp" />
-    <ClCompile Include="monster_tests.cpp" />
-    <ClCompile Include="fuzz_combat.cpp" />
-    <ClCompile Include="fuzz_monster.cpp" />
-    <ClCompile Include="game_data_tests.cpp" />
-    <ClCompile Include="zone_config_tests.cpp" />
+    <ClCompile Include="Tests.cpp" />
+    <ClCompile Include="CombatTests.cpp" />
+    <ClCompile Include="MonsterTests.cpp" />
+    <ClCompile Include="FuzzCombat.cpp" />
+    <ClCompile Include="FuzzMonster.cpp" />
+    <ClCompile Include="GameDataTests.cpp" />
+    <ClCompile Include="ZoneConfigTests.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\Monster.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\MonsterData.cpp" />
@@ -132,8 +133,10 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\HeroData.h" />
     <ClInclude Include="pch.h" />
-    <ClInclude Include="test_common.h" />
+    <ClInclude Include="TestCommon.h" />
     <ClInclude Include="TestSuites.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZone.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZoneBase.h" />
@@ -144,7 +147,6 @@
     <ClInclude Include="..\GameCommon\ZoneCore\Zone.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\ZoneEntity.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\ZoneMath.h" />
-    <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h" />
     <ClInclude Include="..\ZoneServer\GameDataLoader.h" />

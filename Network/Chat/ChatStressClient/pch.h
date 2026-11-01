@@ -32,6 +32,7 @@ using namespace std;
 #include <BaseMacro.h>
 
 #include <Util/ConsoleUtil.h>
+#include <Util/MainArgParser.h>
 #include <Util/DateTimeUtil.h>
 #include <Util/Log.h>
 #include <Util/WinCharsetConv.h>
@@ -50,7 +51,13 @@ using namespace std;
 
 #include <BaseGlobal.h>
 
+#include <JSON/RapidJSONUtil.h>
 #include <Crypto/CryptoUtil.h>
+
+#include <ConfigFile/ConfigFieldSpec.h>
+#include <ConfigFile/ConfigFieldCommon.h>
+#include <ConfigFile/JSONConfigFieldReader.h>
+#include <ConfigFile/JSONConfigFieldWriter.h>
 
 #include <Network/NetworkCommon.h>
 #include <Network/HTTP/HttpParseUtil.h>
@@ -59,6 +66,7 @@ using namespace std;
 #include "../ChatCommon/Protocol/ChatPacketTypes.h"
 #include "../ChatCommon/Protocol/ChatPacket.h"
 #include "../ChatCommon/Protocol/ChatPacketUtil.h"
+#include "ChatStressOptions.h"
 #include "ChatStressConfig.h"
 #include "ChatStressStats.h"
 #include "ChatStressReporter.h"

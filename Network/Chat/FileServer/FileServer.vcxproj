@@ -231,6 +231,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FileStream.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\MainArgParser.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\PercentCodec.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Regular.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />

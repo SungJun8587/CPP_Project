@@ -1,0 +1,19 @@
+{
+    "Host": "127.0.0.1",
+    "Port": 30201,
+    "Clients": 1000,
+    "Workers": 0,
+    "SchedThreads": 2,
+    "DurationSec": 30,
+    "RampPerSec": 100,
+    "ChatIntervalMs": 1000,
+    "ListIntervalMs": 5000,
+    "MemberIntervalMs": 0,
+    "CountIntervalMs": 0,
+    "RoomId": 0,
+    "RoomSpread": 1,
+    "MsgBytes": 32,
+    "PageSize": 20,
+    "Prefix": "S",
+    "AccountsFile": "ChatStressAccounts.txt"
+}

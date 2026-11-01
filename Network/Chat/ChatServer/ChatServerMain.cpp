@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// ChatServerMain.cpp : implementation of the CChatServerMain class — core.
+// ChatServerMain.cpp: implementation of the CChatServerMain class — core.
 //
 //***************************************************************************
 
@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <future>
 #include <algorithm>
 
 //***************************************************************************
@@ -32,14 +33,17 @@ bool CChatServerMain::Start(const SChatServerOptions& options)
 	_fileServerUrl = options.fileServerUrl;
 	_maxRoomsPerOwner = options.maxRoomsPerOwner;
 
-	// 메시지 id를 (현재 시각 ms << 10)부터 발급한다 — 재시작 후에도 id가 단조 증가해
-	// Redis에 남아 있는 방 대화 기록(RoomChatOrder/RoomChatMsg)의 id와 겹치지 않는다.
-	// 채널(인스턴스)이 여러 대여도 같은 id가 나오지 않도록 하위 4비트를 채널 번호(ChannelId % 16)로 고정하고
-	// 16씩 증가시킨다(RegisterOutgoingMessage 참고). 채널 번호가 16 차이 나는 두 서버는 같은 id를 낼 수 있다.
+	// 메시지 id 발급기 — 현재 시각에서 시작해 재시작 후에도 Redis에 남은 방 대화 기록의 id와 겹치지 않고,
+	// 하위 10비트에 채널 번호를 고정해 채널(인스턴스) 간에도 겹치지 않는다(MessageIdGenerator.h).
 	{
 		const int64 nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-		const int64 channelSlot = static_cast<int64>(std::atoi(_serverChannelId.c_str())) & (kMessageIdStride - 1);
-		_nextMessageId.store(((nowMs << 10) & ~(kMessageIdStride - 1)) | channelSlot);
+		const int64 nodeId = static_cast<int64>(std::atoi(_serverChannelId.c_str()));
+		if( !_messageIdGenerator.Init(nodeId, nowMs) )
+		{
+			LOG_ERROR(_T("[Start] ChannelId=%lld is out of range for message ids (0~%lld)"),
+				static_cast<long long>(nodeId), static_cast<long long>(ChatId::kMaxNodeId));
+			return false;
+		}
 	}
 
 	// 1. IOCP 코어 + JobQueue(Redis/DB 콜백 디스패치용) 준비
@@ -103,6 +107,10 @@ bool CChatServerMain::Start(const SChatServerOptions& options)
 		return false;
 	}
 
+	// 3-1. 이전 실행이 기록한 마지막 메시지 id를 읽어 발급기의 하한으로 반영한다. Redis 응답은 IOCP 워커가 처리하므로
+	//      서비스가 뜬 뒤에 읽는다 — 로그인(DB 왕복)을 거쳐야 첫 메시지가 나오므로 그 전에 끝난다.
+	LoadMessageIdFloor();
+
 	// 4. 서버 생존 하트비트 시작 — IOCP가 실제로 뜬 뒤에 시작(뜨기 전에 하트비트가
 	//    "살아있다"고 알리는 것은 의미가 없음)
 	_heartbeat = std::make_unique<CRedisServerHeartbeat>(_redisService.get(), _serverName, _serverGroupId, _serverChannelId, options.bindPort);
@@ -152,6 +160,9 @@ void CChatServerMain::Stop()
 		_service->Close(); // 모든 세션 종료까지 블로킹 대기 — 각 세션의 OnDisconnected()가 OnUserLogout()을 호출해 User: 키 정리
 		_service.reset();
 	}
+
+	// 세션이 모두 닫혀 더 발급하지 않으므로 마지막 id를 한 번 더 기록한다(응답은 기다리지 않는다 — 유실돼도 직전 주기의 값이 남는다).
+	SaveMessageIdFloor();
 
 	// MEMBER_DB_ASYNC(CDbServiceManager 소유)는 정지하지 않는다(소유권
 	// 밖 — 다른 서버 모듈과 공유될 수 있는 프로세스 전역 자원). 회원가입
@@ -254,6 +265,7 @@ void CChatServerMain::MaintenanceLoop(int32 loginKeyIntervalSec)
 	using Clock = std::chrono::steady_clock;
 	auto nextLoginKeyRefresh = Clock::now() + std::chrono::seconds((std::max)(1, loginKeyIntervalSec));
 	auto nextPeerRefresh = Clock::now() + std::chrono::milliseconds(kRelayPeerRefreshMs);
+	auto nextFloorSave = Clock::now() + std::chrono::seconds((std::max)(1, loginKeyIntervalSec));
 
 	std::unique_lock<std::mutex> lock(_maintenanceMutex);
 	while( !_maintenanceStop )
@@ -268,6 +280,11 @@ void CChatServerMain::MaintenanceLoop(int32 loginKeyIntervalSec)
 		{
 			RefreshRelayPeers();	// 다른 채널의 구독자가 있는지 확인(없으면 전달 경로의 Redis 조회를 건너뛴다)
 			nextPeerRefresh = Clock::now() + std::chrono::milliseconds(kRelayPeerRefreshMs);
+		}
+		if( Clock::now() >= nextFloorSave )
+		{
+			SaveMessageIdFloor();	// 로그인 키 갱신과 같은 주기(로그인 키 TTL 사용 여부와 무관)
+			nextFloorSave = Clock::now() + std::chrono::seconds((std::max)(1, loginKeyIntervalSec));
 		}
 		if( _loginKeyTtlSec > 0 && Clock::now() >= nextLoginKeyRefresh )
 		{
@@ -373,6 +390,72 @@ void CChatServerMain::RefreshLoginKeys()
 
 		kRefreshScript.Run(*_redisService, CVector<std::string>(), argv);
 	}
+}
+
+//***************************************************************************
+// @brief Redis에 기록된 이전 실행의 마지막 메시지 id를 읽어 발급기의 하한으로 올립니다.
+// @details 키가 없으면(처음 실행, 기록이 지워짐) 시계 기준 시작값을 그대로 쓴다. 읽기에 실패하거나 시간 안에
+//          응답이 없으면 경고만 남기고 시계 기준으로 계속한다 — 시계가 정상이면 id는 겹치지 않고, 이 하한은
+//          재시작 사이에 시계가 뒤로 갔을 때만 의미가 있다.
+//***************************************************************************
+void CChatServerMain::LoadMessageIdFloor()
+{
+	if( _redisService == nullptr )
+		return;
+
+	// 응답 콜백(IOCP 워커)이 약속을 채우고 이 함수가 기다린다. 타임아웃 뒤에 와도 안전하도록 shared_ptr.
+	auto done = std::make_shared<std::promise<int64>>();
+	std::future<int64> doneFuture = done->get_future();
+
+	const bool sent = _redisService->SendCommand(Redis::MakeArgs("GET", ChatServerKeys::BuildMessageIdFloorKey(_serverGroupId, _serverChannelId)),
+		[done](const RedisValue& res)
+		{
+			int64 floorId = 0;
+			if( res.eType == ERedisType::BulkString && !res.IsNull() )
+				floorId = std::strtoll(res.strVal.c_str(), nullptr, 10);
+			else if( res.eType == ERedisType::Error )
+				floorId = -1;
+			done->set_value(floorId);
+		});
+
+	constexpr int32 kLoadTimeoutSec = 5;
+	if( !sent || doneFuture.wait_for(std::chrono::seconds(kLoadTimeoutSec)) != std::future_status::ready )
+	{
+		LOG_WARNING(_T("[Start] message id floor was not read from Redis (%s) — starting from the clock"), sent ? _T("timeout") : _T("send failed"));
+		return;
+	}
+
+	const int64 floorId = doneFuture.get();
+	if( floorId < 0 )
+	{
+		LOG_WARNING(_T("[Start] reading the message id floor failed — starting from the clock"));
+		return;
+	}
+
+	_messageIdGenerator.RaiseFloor(floorId);
+	LOG_INFO(_T("[Start] message id floor=%lld, next id > %lld"), static_cast<long long>(floorId), static_cast<long long>(_messageIdGenerator.LastIssuedId()));
+}
+
+//***************************************************************************
+// @brief 지금까지 발급한 가장 큰 메시지 id를 Redis에 기록합니다(유지보수 주기마다, 종료 때 한 번 더).
+// @details 이미 기록된 값보다 작으면 덮어쓰지 않는다(같은 채널 번호로 인스턴스가 겹쳐 떠 있어도 값이 줄지 않는다).
+//          id는 2^53을 넘어 Lua의 숫자(double)로 비교하면 정밀도를 잃으므로, 자릿수와 사전순으로 비교한다.
+//          키에는 TTL을 걸지 않는다 — 서버가 오래 꺼져 있다 켜져도 하한이 남아 있어야 한다.
+//***************************************************************************
+void CChatServerMain::SaveMessageIdFloor()
+{
+	if( _redisService == nullptr )
+		return;
+
+	static const CRedisScript kSaveFloorScript(
+		"local cur = redis.call('GET', KEYS[1])\n"
+		"local new = ARGV[1]\n"
+		"if (not cur) or #cur < #new or (#cur == #new and cur < new) then\n"
+		"  redis.call('SET', KEYS[1], new)\n"
+		"end\n"
+		"return 1");
+
+	kSaveFloorScript.Run(*_redisService, { ChatServerKeys::BuildMessageIdFloorKey(_serverGroupId, _serverChannelId) }, { std::to_string(_messageIdGenerator.LastIssuedId()) });
 }
 
 //***************************************************************************

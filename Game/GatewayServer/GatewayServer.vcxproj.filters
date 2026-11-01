@@ -143,9 +143,6 @@
     <ClInclude Include="GatewayServerMain.h" />
     <ClInclude Include="GatewayZoneSession.h" />
     <ClInclude Include="ZoneRouter.h" />
-    <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h">
-      <Filter>GameCommon\ZoneCommon</Filter>
-    </ClInclude>
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h">
       <Filter>GameCommon\ZoneCommon</Filter>
     </ClInclude>
@@ -321,6 +318,9 @@
     </ClInclude>
     <ClInclude Include="..\..\..\Library\UtilCore\Network\IOCP\IocpDefine.h">
       <Filter>UtilCore\Network\IOCP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

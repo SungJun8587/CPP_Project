@@ -534,11 +534,16 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Redis\RedisSubscriber.h">
       <Filter>UtilCore\Redis</Filter>
     </ClInclude>
-    <ClInclude Include="ChatServerKeys.h" />
     <ClInclude Include="..\ChatCommon\ChatServerKeys.h">
       <Filter>ChatCommon</Filter>
     </ClInclude>
     <ClInclude Include="ChatRelayFrame.h" />
+    <ClInclude Include="..\ChatCommon\MessageIdGenerator.h">
+      <Filter>ChatCommon</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\MainArgParser.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">

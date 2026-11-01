@@ -1,7 +1,7 @@
 ﻿// ZoneCore 단위 테스트: CMoveOnlyFunction / CTimerHeap / CJob 호출 패턴 / CZone / CGridAOI / CFieldZone
 #include "pch.h"
 #include "FieldZone.h"
-#include "test_common.h"
+#include "TestCommon.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -406,6 +406,147 @@ namespace
 		return f;
 	}
 
+	//***************************************************************************
+	// 관찰자(IsAoiWatcher) 분리: 두 엔티티 모두 관찰자가 아니면 통지가 없고, 관찰자 전용 순회는 관찰자만 돌려준다
+	//***************************************************************************
+	class CWatchEntity : public CZoneEntity
+	{
+	public:
+		CWatchEntity(uint64 id, bool watcher) : CZoneEntity(id, EntityType::Monster), _watcher(watcher) {}
+		std::set<uint64> seen;
+	protected:
+		void OnAoiEnter(CZoneEntity& o) override { if( !seen.insert(o.GetId()).second ) { std::printf("  duplicate enter\n"); ++g_failed; } }
+		void OnAoiLeave(CZoneEntity& o) override { if( seen.erase(o.GetId()) != 1 ) { std::printf("  leave without enter\n"); ++g_failed; } }
+		bool IsAoiWatcher() const override { return _watcher; }
+	private:
+		bool _watcher;
+	};
+
+	static void TestAoiWatchers()
+	{
+		std::printf("[AOI watchers]\n");
+		CFieldZone<CWatchEntity> zone(MakeField(0.0f, 1));
+		auto add = [&](uint64 id, bool watcher, float x, float y)
+			{
+				auto e = std::make_unique<CWatchEntity>(id, watcher);
+				e->SetSpawnPos({ x, y });
+				return zone.AddEntity(std::move(e));
+			};
+		auto count = [](auto&& iter) { size_t n = 0; iter([&](CWatchEntity&) { ++n; }); return n; };
+
+		CWatchEntity* a = add(1, false, 100, 100);
+		CWatchEntity* b = add(2, false, 110, 100);
+		CHECK(a && b && a->seen.empty() && b->seen.empty());		// 관찰자가 아닌 둘은 서로 통지하지 않는다
+
+		CWatchEntity* w = add(3, true, 120, 100);
+		CHECK(w && a->seen == std::set<uint64>({ 3 }) && b->seen == std::set<uint64>({ 3 }));
+		CHECK(w->seen == std::set<uint64>({ 1, 2 }));				// 관찰자는 둘 다 통지받는다
+
+		CHECK(count([&](auto f) { zone.ForEachInAoi(*a, f); }) == 2);			// 전체 순회: b, w
+		CHECK(count([&](auto f) { zone.ForEachWatcherInAoi(*a, f); }) == 1);	// 관찰자만: w
+		CHECK(count([&](auto f) { zone.ForEachWatcherInAoi(*w, f); }) == 0);	// 자기 자신 제외
+		CHECK(count([&](auto f) { zone.ForEachInRadius({ 100, 100 }, 100.0f, f); }) == 3);
+		CHECK(count([&](auto f) { zone.ForEachWatcherInRadius({ 100, 100 }, 100.0f, f); }) == 1);
+		CHECK(count([&](auto f) { zone.ForEachWatcherInRadius({ 100, 100 }, 5.0f, f); }) == 0);
+
+		// 관찰자가 시야 밖으로 나가면 둘 다 이탈 통지를 받고, 관찰자가 아닌 둘 사이에는 여전히 아무것도 없다.
+		CHECK(zone.Teleport(3, { 900, 900 }));
+		CHECK(a->seen.empty() && b->seen.empty() && w->seen.empty());
+		CHECK(count([&](auto f) { zone.ForEachWatcherInAoi(*a, f); }) == 0);
+
+		// 관찰자가 아닌 엔티티가 다른 셀로 이동 -> 관찰자가 근처에 있을 때만 통지
+		CHECK(zone.Teleport(3, { 300, 300 }));
+		CHECK(zone.Teleport(1, { 290, 300 }));
+		CHECK(a->seen == std::set<uint64>({ 3 }) && w->seen == std::set<uint64>({ 1 }));
+		CHECK(zone.Teleport(2, { 280, 300 }));
+		CHECK(b->seen == std::set<uint64>({ 3 }) && w->seen == std::set<uint64>({ 1, 2 }));
+
+		// 한 셀 안에서 제거 순서가 섞여도(스왑 제거) 두 목록이 일관된다.
+		for( uint64 id = 10; id < 20; ++id )
+			add(id, (id % 3) == 0, 295.0f, 295.0f);
+		CHECK(count([&](auto f) { zone.ForEachInRadius({ 295, 295 }, 30.0f, f); }) == 13);
+		CHECK(count([&](auto f) { zone.ForEachWatcherInRadius({ 295, 295 }, 30.0f, f); }) == 4);	// 3, 12, 15, 18
+		for( uint64 id : { 11, 12, 10, 18, 13 } )
+			CHECK(zone.RemoveEntity(id));
+		CHECK(count([&](auto f) { zone.ForEachInRadius({ 295, 295 }, 30.0f, f); }) == 8);
+		CHECK(count([&](auto f) { zone.ForEachWatcherInRadius({ 295, 295 }, 30.0f, f); }) == 2);	// 3, 15
+		CHECK(w->seen.size() == 2 + 5);															// 1, 2 + 14,15,16,17,19 중 남은 5 (12, 18 제거됨)
+	}
+
+	// 관찰자/비관찰자를 섞어 이동시키며, 통지 결과가 "시야 안 + 둘 중 하나는 관찰자" 규칙과 정확히 일치하는지 전수 비교한다.
+	static void TestAoiWatchersRandom(float hyst, int view)
+	{
+		std::printf("[AOI watchers random hyst=%.2f view=%d]\n", hyst, view);
+		CFieldZone<CWatchEntity> zone(MakeField(hyst, view));
+		std::mt19937 rng(777);
+		std::uniform_real_distribution<float> pos(0.0f, 300.0f);
+		const int N = 160;
+		std::vector<CWatchEntity*> es;
+		std::vector<bool> watcher;
+		for( int i = 0; i < N; ++i )
+		{
+			const bool w = (rng() % 10) < 3;		// 30%만 관찰자
+			auto e = std::make_unique<CWatchEntity>(i + 1, w);
+			e->SetSpawnPos({ pos(rng), pos(rng) });
+			es.push_back(zone.AddEntity(std::move(e)));
+			watcher.push_back(w);
+		}
+
+		auto verify = [&]
+			{
+				for( int i = 0; i < N; ++i )
+				{
+					std::set<uint64> expected, watchersOnly;
+					zone.ForEachInAoi(*es[i], [&](CWatchEntity& o)
+						{
+							const bool ow = watcher[o.GetId() - 1];
+							if( watcher[i] || ow ) expected.insert(o.GetId());
+							if( ow ) watchersOnly.insert(o.GetId());
+						});
+					std::set<uint64> viaWatcherIter;
+					zone.ForEachWatcherInAoi(*es[i], [&](CWatchEntity& o) { viaWatcherIter.insert(o.GetId()); });
+					if( es[i]->seen != expected ) { std::printf("  notified set mismatch (entity %d)\n", i); ++g_failed; return; }
+					if( viaWatcherIter != watchersOnly ) { std::printf("  watcher iteration mismatch (entity %d)\n", i); ++g_failed; return; }
+				}
+				for( int t = 0; t < 20; ++t )
+				{
+					const Vec2 c{ pos(rng), pos(rng) };
+					const float r = 10.0f + (rng() % 90);
+					std::set<uint64> all, w, bruteAll, bruteW;
+					zone.ForEachInRadius(c, r, [&](CWatchEntity& o) { all.insert(o.GetId()); });
+					zone.ForEachWatcherInRadius(c, r, [&](CWatchEntity& o) { w.insert(o.GetId()); });
+					for( int j = 0; j < N; ++j )
+						if( DistanceSq(es[j]->GetPos(), c) <= r * r ) { bruteAll.insert(j + 1); if( watcher[j] ) bruteW.insert(j + 1); }
+					if( all != bruteAll || w != bruteW ) { std::printf("  radius mismatch\n"); ++g_failed; return; }
+				}
+			};
+		verify();
+
+		std::uniform_real_distribution<float> step(-9.0f, 9.0f);
+		for( int n = 0; n < 4000; ++n )
+		{
+			CWatchEntity* e = es[rng() % N];
+			Vec2 np = (n % 13 == 0) ? Vec2{ pos(rng), pos(rng) }
+			: Vec2{ (std::min)((std::max)(e->GetPos().x + step(rng), 0.0f), 999.0f), (std::min)((std::max)(e->GetPos().y + step(rng), 0.0f), 999.0f) };
+			CHECK(zone.Teleport(e->GetId(), np));
+			if( n % 400 == 0 ) verify();
+		}
+		verify();
+
+		// 제거 후에도 같은 규칙을 유지한다
+		for( int i = 0; i < N; i += 3 )
+		{
+			CHECK(zone.RemoveEntity(es[i]->GetId()));
+			es[i] = nullptr;
+		}
+		for( int i = 0; i < N; ++i )
+		{
+			if( es[i] == nullptr ) continue;
+			for( uint64 id : es[i]->seen )
+				if( es[id - 1] == nullptr ) { std::printf("  removed entity still seen\n"); ++g_failed; return; }
+		}
+	}
+
 	static void TestAoiRandom(float hyst, int view)
 	{
 		std::printf("[AOI random hyst=%.2f view=%d]\n", hyst, view);
@@ -724,6 +865,10 @@ namespace
 		TestZonePostStopRace();
 		TestZoneShutdownWindow();
 		TestTypedFieldZone();
+		TestAoiWatchers();
+		TestAoiWatchersRandom(0.1f, 1);
+		TestAoiWatchersRandom(0.1f, 2);
+		TestAoiWatchersRandom(0.0f, 2);
 		TestAoiRandom(0.0f, 1);
 		TestAoiRandom(0.1f, 1);
 		TestAoiRandom(0.2f, 2);

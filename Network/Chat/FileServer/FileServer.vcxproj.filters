@@ -468,6 +468,9 @@
     <ClInclude Include="..\ChatCommon\ChatServerKeys.h">
       <Filter>ChatCommon</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\MainArgParser.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Job\JobQueue.inl">

@@ -739,6 +739,12 @@ public:
 	void RelayToRemote(const std::vector<std::array<BYTE, kPublicIdBytes>>& remoteIds, const void* data, uint16 size,
 		const std::array<BYTE, kPublicIdBytes>* sender = nullptr);
 
+	// @brief 차단/차단 해제를 이 계정의 모든 세션에 반영합니다 — 이 프로세스의 세션 전부와 다른 채널에 접속한 세션들.
+	// @details 차단 필터는 수신 서버가 수신자 세션의 차단 목록으로 적용한다. 같은 계정이 여러 세션이나 여러 채널에
+	//          로그인해 있으면 요청한 세션만 갱신해서는 다른 세션이 계속 차단한 사용자의 메시지를 받으므로 모두 갱신한다.
+	//          다른 채널에는 BlockAdd/BlockRemove 프레임으로 알린다(Pub/Sub이라 놓치면 그 세션은 다음 로그인 때 DB에서 바로잡힌다).
+	void PropagateBlockChange(const std::array<BYTE, kPublicIdBytes>& blocker, const std::array<BYTE, kPublicIdBytes>& blocked, bool block);
+
 	// @brief ids 각각이 어느 채널에든 접속 중인지 비동기로 알려줍니다(로컬 세션 우선, 없으면 Redis 조회).
 	// @param onReady ids와 같은 순서의 접속 여부. 조회할 대상이 없으면 호출한 스레드에서 바로, 아니면 JobQueue 스레드에서 호출된다.
 	void ResolveOnline(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids,
@@ -750,6 +756,18 @@ private:
 	void OnRelayMessage(const std::string& payload);
 	void RefreshRelayPeers();
 	void BroadcastShutdownPresence();
+
+	// @brief 친구 관계가 바뀐 계정들의 친구 id 캐시를 다른 채널에서도 무효화하도록 알립니다(비동기, 응답을 기다리지 않음).
+	// @details 캐시 항목은 그 계정이 접속한 프로세스에만 있으므로, 어느 채널에 있는지 조회하지 않고 다른 채널 토픽
+	//          전체에 프레임 하나를 발행한다(친구 관계 변경은 드물고 프레임은 계정 id 몇 개뿐). 이 프로세스의 캐시는
+	//          호출부가 InvalidateFriendCache()로 직접 지운다. 전달 계층이 꺼져 있거나 다른 채널이 없으면 아무것도 하지 않는다.
+	void BroadcastFriendCacheInvalidation(const std::vector<std::array<BYTE, kPublicIdBytes>>& accounts);
+
+	// @brief blocker 계정의 이 프로세스 세션 전부의 차단 목록에 blocked를 추가(block=true)하거나 제거합니다.
+	void ApplyBlockChange(const std::array<BYTE, kPublicIdBytes>& blocker, const std::array<BYTE, kPublicIdBytes>& blocked, bool block);
+
+	// @brief 차단/해제를 다른 채널 토픽 전체에 발행합니다(PropagateBlockChange가 사용). 다른 채널이 없으면 아무것도 하지 않는다.
+	void BroadcastBlockChange(const std::array<BYTE, kPublicIdBytes>& blocker, const std::array<BYTE, kPublicIdBytes>& blocked, bool block);
 	void LookupChannels(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids,
 		std::function<void(const std::vector<std::string>& channels)> onReady);
 	std::vector<std::array<BYTE, kPublicIdBytes>> FilterOfflineCached(const std::vector<std::array<BYTE, kPublicIdBytes>>& ids);
@@ -767,6 +785,12 @@ private:
 	void StopMaintenance();
 	void MaintenanceLoop(int32 loginKeyIntervalSec);
 	void RefreshLoginKeys();
+
+	// 메시지 id 하한 — 마지막으로 발급한 id를 Redis(ChatServerKeys::BuildMessageIdFloorKey)에 기록해 두었다가
+	// 시작할 때 읽어 발급기에 반영한다. 재시작 사이에 시계가 뒤로 가도 이미 쓴 id가 반복되지 않게 한다.
+	// Load는 IOCP 워커가 응답을 처리해야 하므로 서비스 시작 뒤에 호출한다(Start()가 그 순서로 부른다).
+	void LoadMessageIdFloor();
+	void SaveMessageIdFloor();
 	void FlushRoomUserCounts();
 	void RunDueDelayedTasks();
 
@@ -927,8 +951,7 @@ private:
 	std::unordered_map<int64, SMessageOwnerRecord>	_messageOwners;
 	std::deque<int64>							_messageOwnerOrder;	// 삽입 순서 — 오래된 것부터 제거하기 위함
 	static constexpr int32 kRelayPeerRefreshMs = 1000;	// 다른 채널의 구독자 확인 주기(유지보수 스레드)
-	static constexpr int64 kMessageIdStride = 16;	// 발급 간격 — 하위 4비트는 채널 번호 자리(채널 간 id 중복 방지)
-	std::atomic<int64>							_nextMessageId{ 1 };	// Start()가 (현재 시각 ms << 10)으로 시드 — 재시작해도 Redis에 남은 기록의 id와 겹치지 않는다
+	ChatId::CMessageIdGenerator					_messageIdGenerator;	// 방 대화 메시지 id 발급기(Start()가 채널 번호·현재 시각으로 초기화)
 
 	// [설계 변경] 프로필 이미지 저장을 별도 파일 서버로 분리하면서, 이
 	// 서버는 더 이상 이미지 파일 자체를 갖고 있지 않는다 — IImageStorage/

@@ -90,6 +90,9 @@
     <ClCompile Include="ChatStressConfig.cpp" />
     <ClCompile Include="ChatStressStats.cpp" />
     <ClCompile Include="ChatStressReporter.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
+      <Filter>UtilCore\JSON</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -127,6 +130,12 @@
     </Filter>
     <Filter Include="ChatCommon\Protocol">
       <UniqueIdentifier>{1cc1559f-c4c2-466a-80b4-2bac1dc38862}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\ConfigFile">
+      <UniqueIdentifier>{dae93c37-e1e0-47f4-916d-62d1e0b12c71}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="UtilCore\JSON">
+      <UniqueIdentifier>{daf4626a-0f3a-4ca2-8040-d8f52225da12}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -284,10 +293,32 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Network\IOCP\IocpDefine.h">
       <Filter>UtilCore\Network\IOCP</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h">
+      <Filter>UtilCore\ConfigFile</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h">
+      <Filter>UtilCore\JSON</Filter>
+    </ClInclude>
+    <ClInclude Include="ChatStressOptions.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\MainArgParser.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl">
       <Filter>UtilCore\Containers\Map</Filter>
+    </None>
+    <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl">
+      <Filter>UtilCore\JSON</Filter>
     </None>
   </ItemGroup>
 </Project>

@@ -249,11 +249,13 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\MainArgParser.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="..\ChatCommon\ChatServerKeys.h" />
     <ClInclude Include="..\ChatCommon\FileServerKeys.h" />
     <ClInclude Include="..\ChatCommon\ImageRef.h" />
+    <ClInclude Include="..\ChatCommon\MessageIdGenerator.h" />
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacket.h" />
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacketTypes.h" />
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacketUtil.h" />
@@ -261,7 +263,6 @@
     <ClInclude Include="ChatPacketDispatcher.h" />
     <ClInclude Include="ChatRelayFrame.h" />
     <ClInclude Include="ChatServerConfig.h" />
-    <ClInclude Include="ChatServerKeys.h" />
     <ClInclude Include="ChatServerMain.h" />
     <ClInclude Include="ChatServerOptions.h" />
     <ClInclude Include="ChatSession.h" />

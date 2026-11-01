@@ -11,6 +11,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "XlsxToJson", "XlsxToJson\Xl
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ZoneCore.Tests", "ZoneCoreTests\ZoneCore.Tests.vcxproj", "{D98584D8-786F-4DFE-8CE2-A0B34BA9A62A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "BotClient", "BotClient\BotClient.vcxproj", "{39BA7878-0BB7-431F-BA40-49C177F16A7F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -51,6 +53,14 @@ Global
 		{D98584D8-786F-4DFE-8CE2-A0B34BA9A62A}.Release|x64.Build.0 = Release|x64
 		{D98584D8-786F-4DFE-8CE2-A0B34BA9A62A}.Release|x86.ActiveCfg = Release|x64
 		{D98584D8-786F-4DFE-8CE2-A0B34BA9A62A}.Release|x86.Build.0 = Release|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Debug|x64.ActiveCfg = Debug|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Debug|x64.Build.0 = Debug|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Debug|x86.ActiveCfg = Debug|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Debug|x86.Build.0 = Debug|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Release|x64.ActiveCfg = Release|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Release|x64.Build.0 = Release|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Release|x86.ActiveCfg = Release|x64
+		{39BA7878-0BB7-431F-BA40-49C177F16A7F}.Release|x86.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

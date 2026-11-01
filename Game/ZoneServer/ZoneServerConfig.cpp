@@ -32,17 +32,12 @@ CZoneServerConfig::CZoneServerConfig()
 	_fCellSize = defaults.cellSize;
 	_fSpawnX = defaults.spawnX;
 	_fSpawnY = defaults.spawnY;
-	_fPlayerSpeed = defaults.playerSpeed;
-	_nPlayerMaxHp = defaults.playerMaxHp;
-	_nPlayerAttack = defaults.playerAttack;
-	_nPlayerDefense = defaults.playerDefense;
-	_fAttackRange = defaults.attackRange;
-	_nAttackIntervalMs = defaults.attackIntervalMs;
 	_nRespawnDelayMs = defaults.respawnDelayMs;
 	_nRespawnInvulnMs = defaults.respawnInvulnMs;
 	_bAllowPvp = defaults.allowPvp;
 	_strGameDataDir = defaults.gameDataDir;
 	_nMonsterThinkIntervalMs = defaults.monsterThinkIntervalMs;
+	_nMaxMonsterCount = defaults.maxMonsterCount;
 }
 
 //***************************************************************************
@@ -99,18 +94,12 @@ bool CZoneServerConfig::Init(const TCHAR* tszConfigPath)
 	reader.Read(_T("CellSize"), _fCellSize);
 	reader.Read(_T("SpawnX"), _fSpawnX);
 	reader.Read(_T("SpawnY"), _fSpawnY);
-	reader.Read(_T("PlayerSpeed"), _fPlayerSpeed);
-
-	reader.Read(_T("PlayerMaxHp"), _nPlayerMaxHp, 1, INT32_MAX);
-	reader.Read(_T("PlayerAttack"), _nPlayerAttack, 0, INT32_MAX);
-	reader.Read(_T("PlayerDefense"), _nPlayerDefense, 0, INT32_MAX);
-	reader.Read(_T("AttackRange"), _fAttackRange, 0.1f, 10000.0f);
-	reader.Read(_T("AttackIntervalMs"), _nAttackIntervalMs, 1, UINT32_MAX);
 	reader.Read(_T("RespawnDelayMs"), _nRespawnDelayMs, 0, UINT32_MAX - 1);	// UINT32_MAX는 "리스폰 안 함" 예약값
 	reader.Read(_T("RespawnInvulnMs"), _nRespawnInvulnMs, 0, UINT32_MAX);
 	reader.Read(_T("AllowPvp"), _bAllowPvp);
 	reader.Read(_T("GameDataDir"), _strGameDataDir);
 	reader.Read(_T("MonsterThinkIntervalMs"), _nMonsterThinkIntervalMs, 1, 60000);
+	reader.Read(_T("MaxMonsterCount"), _nMaxMonsterCount, 1, static_cast<uint32>(CMonsterData::kMaxSpawnPerZone));
 
 	return reader.Validate();
 }
@@ -151,17 +140,12 @@ bool CZoneServerConfig::Save(const TCHAR* tszConfigPath) const
 	writer.Write(_T("CellSize"), _fCellSize);
 	writer.Write(_T("SpawnX"), _fSpawnX);
 	writer.Write(_T("SpawnY"), _fSpawnY);
-	writer.Write(_T("PlayerSpeed"), _fPlayerSpeed);
-	writer.Write(_T("PlayerMaxHp"), _nPlayerMaxHp);
-	writer.Write(_T("PlayerAttack"), _nPlayerAttack);
-	writer.Write(_T("PlayerDefense"), _nPlayerDefense);
-	writer.Write(_T("AttackRange"), _fAttackRange);
-	writer.Write(_T("AttackIntervalMs"), _nAttackIntervalMs);
 	writer.Write(_T("RespawnDelayMs"), _nRespawnDelayMs);
 	writer.Write(_T("RespawnInvulnMs"), _nRespawnInvulnMs);
 	writer.Write(_T("AllowPvp"), _bAllowPvp);
 	writer.Write(_T("GameDataDir"), _strGameDataDir);
 	writer.Write(_T("MonsterThinkIntervalMs"), _nMonsterThinkIntervalMs);
+	writer.Write(_T("MaxMonsterCount"), _nMaxMonsterCount);
 
 	return writer.Save(tszConfigPath);
 }
@@ -182,11 +166,8 @@ void CZoneServerConfig::PrintServerSettingInfo() const
 	LOG_INFO(_T("Bounds : (%.1f, %.1f) - (%.1f, %.1f)"), _fMinX, _fMinY, _fMaxX, _fMaxY);
 	LOG_INFO(_T("CellSize : %.1f"), _fCellSize);
 	LOG_INFO(_T("Spawn : (%.1f, %.1f)"), _fSpawnX, _fSpawnY);
-	LOG_INFO(_T("PlayerSpeed : %.1f"), _fPlayerSpeed);
-	LOG_INFO(_T("PlayerMaxHp : %d, Attack : %d, Defense : %d"), _nPlayerMaxHp, _nPlayerAttack, _nPlayerDefense);
-	LOG_INFO(_T("AttackRange : %.1f, AttackIntervalMs : %u"), _fAttackRange, _nAttackIntervalMs);
 	LOG_INFO(_T("RespawnDelayMs : %u, RespawnInvulnMs : %u, AllowPvp : %d"), _nRespawnDelayMs, _nRespawnInvulnMs, _bAllowPvp ? 1 : 0);
-	LOG_INFO(_T("GameDataDir : %s, MonsterThinkIntervalMs : %u"), _strGameDataDir.c_str(), _nMonsterThinkIntervalMs);
+	LOG_INFO(_T("GameDataDir : %s, MonsterThinkIntervalMs : %u, MaxMonsterCount : %u"), _strGameDataDir.c_str(), _nMonsterThinkIntervalMs, _nMaxMonsterCount);
 
 	LOG_INFO(_T("--------------- Connect ServerNode size : %d ---------------"), static_cast<int>(_serverNodeVec.size()));
 	for( uint32 i = 0; i < _serverNodeVec.size(); i++ )
@@ -228,15 +209,10 @@ void CZoneServerConfig::ToOptions(SZoneServerOptions& options) const
 	options.cellSize = _fCellSize;
 	options.spawnX = _fSpawnX;
 	options.spawnY = _fSpawnY;
-	options.playerSpeed = _fPlayerSpeed;
-	options.playerMaxHp = _nPlayerMaxHp;
-	options.playerAttack = _nPlayerAttack;
-	options.playerDefense = _nPlayerDefense;
-	options.attackRange = _fAttackRange;
-	options.attackIntervalMs = _nAttackIntervalMs;
 	options.respawnDelayMs = _nRespawnDelayMs;
 	options.respawnInvulnMs = _nRespawnInvulnMs;
 	options.allowPvp = _bAllowPvp;
 	options.gameDataDir = _strGameDataDir;
 	options.monsterThinkIntervalMs = _nMonsterThinkIntervalMs;
+	options.maxMonsterCount = _nMaxMonsterCount;
 }

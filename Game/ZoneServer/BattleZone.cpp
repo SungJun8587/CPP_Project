@@ -10,36 +10,35 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 //***************************************************************************
 // @brief 전투 존을 생성한다. 스레드는 Start() 호출 시 시작된다.
 // @param config      필드 존 설정
 // @param server      클라이언트 패킷 중계 경로를 가진 존 서버
 // @param spawnPos    입장 시 스폰 위치
-// @param playerSpeed 플레이어 기본 이동 속도 (units/sec)
-// @param playerStats 플레이어 전투 능력치
+// @param heroData    선택 가능한 영웅 데이터 (nullptr이면 내장 기본 영웅 하나)
 // @param monsterData   몬스터 데이터 (nullptr이면 몬스터 없음)
 // @param monsterConfig 몬스터 AI 튜닝값
 //***************************************************************************
-CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, float playerSpeed, const SCombatStats& playerStats,
+CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, std::shared_ptr<const CHeroData> heroData,
 	std::shared_ptr<const CMonsterData> monsterData, const SMonsterSystemConfig& monsterConfig)
 	: CFieldZone<>(config)
 	, _server(server)
 	, _spawnPos(spawnPos)
-	, _playerSpeed(playerSpeed)
+	, _heroes(heroData != nullptr ? std::move(heroData) : CHeroData::MakeDefault())
 	, _monsters(std::make_unique<CMonsterSystem>(*this, std::move(monsterData), monsterConfig))
-	, _playerStats(playerStats)
 	, _playerCount(0)
 {
 	_recipients.reserve(256);
 }
 
 //***************************************************************************
-// @brief 플레이어 설정과 몬스터 데이터가 이 존 설정(영역, AOI 시야, 사거리)과 맞는지 검사합니다. Start() 전에 호출합니다.
-//        - 플레이어 이동 속도가 유한하고 0보다 큼, 입장 위치가 존 영역 안
+// @brief 영웅/몬스터 데이터가 이 존 설정(영역, AOI 시야, 사거리)과 맞는지 검사합니다. Start() 전에 호출합니다.
+//        - 영웅 데이터의 값 범위(CHeroData::Validate), 입장 위치가 존 영역 안
 //          (벗어나면 입장 응답은 성공으로 보낸 뒤 AddEntity가 실패해 추방 통지로 정정하는 경로를 매번 타게 된다)
-//        - 플레이어 공격 판정 거리 <= AOI 최소 보장 시야. 상대(몬스터)의 최고 속도를 반영한다
-//        - 몬스터 데이터 검사(CMonsterSystem::Validate). 상대(플레이어)의 속도를 반영한다
+//        - 모든 영웅의 공격 판정 거리 <= AOI 최소 보장 시야. 상대(몬스터)의 최고 속도를 반영한다
+//        - 몬스터 데이터 검사(CMonsterSystem::Validate). 상대(영웅)의 최고 속도를 반영한다
 // @param error [out] 오류 설명
 // @return 문제가 없으면 true
 //***************************************************************************
@@ -47,11 +46,8 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 {
 	const FieldZoneConfig& fc = GetFieldConfig();
 
-	if( !(std::isfinite(_playerSpeed) && _playerSpeed > 0.0f) )
-	{
-		error = "player speed must be a finite value > 0";
+	if( !_heroes->Validate(error) )
 		return false;
-	}
 
 	if( !(_spawnPos.x >= fc.minX && _spawnPos.x <= fc.maxX && _spawnPos.y >= fc.minY && _spawnPos.y <= fc.maxY) )
 	{
@@ -59,13 +55,20 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 		return false;
 	}
 
-	if( !IsAttackRangeSupported(_playerStats.attackRange, (std::max)(_playerSpeed, _monsters->GetMaxSpawnSpeed())) )
+	const float monsterSpeed = _monsters->GetMaxSpawnSpeed();
+	for( const auto& pair : _heroes->GetHeroes() )
 	{
-		error = "player attack reach exceeds the guaranteed AOI view range";
-		return false;
+		const SHeroTemplate& hero = pair.second;
+		if( !IsAttackRangeSupported(hero.stats.attackRange, (std::max)(hero.speed, monsterSpeed)) )
+		{
+			char buf[160];
+			std::snprintf(buf, sizeof(buf), "hero %u: attack reach exceeds the guaranteed AOI view range", hero.id);
+			error = buf;
+			return false;
+		}
 	}
 
-	return _monsters->Validate(error, _playerSpeed);
+	return _monsters->Validate(error, _heroes->GetMaxSpeed());
 }
 
 //***************************************************************************
@@ -92,8 +95,9 @@ CBattleZone::~CBattleZone()
 //          같은 연결로 나가는 패킷은 순서가 보장된다.
 // @param clientSessionId Gateway 클라이언트 세션 ID
 // @param charId          입장하는 캐릭터 ID
+// @param heroId          선택한 영웅 ID. 0이면 기본 영웅(ID가 가장 작은 영웅). 없는 ID면 입장을 거부한다
 //***************************************************************************
-void CBattleZone::HandleEnter(uint64 clientSessionId, uint64 charId)
+void CBattleZone::HandleEnter(uint64 clientSessionId, uint64 charId, uint32 heroId)
 {
 	ZoneEnterResPacket res{};
 	InitZonePacket(res, EZoneServerPacketType::ZoneEnterRes);
@@ -112,6 +116,15 @@ void CBattleZone::HandleEnter(uint64 clientSessionId, uint64 charId)
 		return;
 	}
 
+	const SHeroTemplate* hero = _heroes->Resolve(heroId);
+	if( hero == nullptr )
+	{
+		res.success = 0;
+		res.reason = static_cast<uint8>(EZoneEnterResult::InvalidHero);
+		_server->SendToGateway(&res, res.size);
+		return;
+	}
+
 	if( FindEntity(charId) != nullptr || _sessionToEntity.find(clientSessionId) != _sessionToEntity.end() )
 	{
 		res.success = 0;
@@ -124,10 +137,10 @@ void CBattleZone::HandleEnter(uint64 clientSessionId, uint64 charId)
 	res.reason = static_cast<uint8>(EZoneEnterResult::Ok);
 	_server->SendToGateway(&res, res.size);
 
-	std::unique_ptr<CZonePlayer> player = std::make_unique<CZonePlayer>(charId, clientSessionId, this);
+	std::unique_ptr<CZonePlayer> player = std::make_unique<CZonePlayer>(charId, clientSessionId, this, hero->id);
 	player->SetSpawnPos(_spawnPos);
-	player->SetSpeed(_playerSpeed);
-	player->SetCombatStats(_playerStats);
+	player->SetSpeed(hero->speed);
+	player->SetCombatStats(hero->stats);
 
 	CZoneEntity* added = AddEntity(std::move(player));
 	if( added == nullptr )
@@ -237,7 +250,10 @@ void CBattleZone::SendSpawn(CZonePlayer& to, CZoneEntity& about)
 	notify.hp = about.GetHp();
 	notify.maxHp = about.GetCombatStats().maxHp;
 	notify.dead = about.IsAlive() ? 0 : 1;
-	notify.templateId = _monsters->IsAiMonster(about) ? static_cast<const CMonster&>(about).GetTemplate().id : 0;
+	if( about.GetType() == EntityType::Player )
+		notify.templateId = static_cast<const CZonePlayer&>(about).GetHeroId();
+	else
+		notify.templateId = _monsters->IsAiMonster(about) ? static_cast<const CMonster&>(about).GetTemplate().id : 0;
 
 	SendToEntity(to, &notify, notify.size);
 }
@@ -508,7 +524,7 @@ void CBattleZone::BroadcastAround(CZoneEntity& entity, const void* data, uint16 
 	_recipients.clear();
 
 	AddRecipient(entity);
-	ForEachInAoi(entity, [this](CZoneEntity& other)
+	ForEachWatcherInAoi(entity, [this](CZoneEntity& other)
 		{
 			AddRecipient(other);
 		});
@@ -531,7 +547,7 @@ void CBattleZone::BroadcastCombat(CZoneEntity& victim, CZoneEntity* other, const
 	AddRecipient(victim);
 
 	bool otherVisited = (other == nullptr || other == &victim);		// 자기 자신이 상대면 이미 수신자다
-	ForEachInAoi(victim, [this, other, &otherVisited](CZoneEntity& neighbor)
+	ForEachWatcherInAoi(victim, [this, other, &otherVisited](CZoneEntity& neighbor)
 		{
 			if( &neighbor == other )
 				otherVisited = true;

@@ -1,7 +1,7 @@
 ﻿// 전투 퍼즈: 무작위 입장/퇴장/이동/공격/피해/리스폰/순간이동을 섞어 놓고 매 연산 후 불변식을 검사한다.
 #include "pch.h"
 #include "FieldZone.h"
-#include "test_common.h"
+#include "TestCommon.h"
 
 #include <future>
 #include <map>

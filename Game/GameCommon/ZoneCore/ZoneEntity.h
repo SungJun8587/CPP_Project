@@ -185,6 +185,15 @@ protected:
 	virtual void OnAoiEnter(CZoneEntity& other);
 	virtual void OnAoiLeave(CZoneEntity& other);
 
+	//***************************************************************************
+	// @brief AOI 관찰자인지 반환합니다. 존에 등록(AddEntity)할 때 한 번 읽습니다.
+	// @details 두 엔티티 중 하나라도 관찰자일 때만 서로에게 OnAoiEnter/OnAoiLeave가 전달된다.
+	//          기본은 true(모든 통지를 받음)이다. 다른 엔티티의 등장/퇴장에 반응할 필요가 없는 쪽(밀집한 몬스터 등)은
+	//          false로 재정의하면 서로 간의 통지와 순회 비용이 사라진다. 단, 관찰자인 상대(플레이어)와의 통지는 그대로 받는다.
+	// @return 관찰자이면 true
+	//***************************************************************************
+	virtual bool IsAoiWatcher() const { return true; }
+
 private:
 	template <typename T> friend class CGridAOI;
 	friend class CFieldZoneBase;

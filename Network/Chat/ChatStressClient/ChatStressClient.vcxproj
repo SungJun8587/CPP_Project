@@ -48,7 +48,7 @@
     <OutDir>$(SolutionDir)Bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>Bin\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)64D</TargetName>
-    <IncludePath>K:\GitHub\CPP\Library\UtilCore;K:\GitHub\CPP\Library\ExternalLib\openssl-master\include;$(ProjectDir);$(IncludePath)</IncludePath>
+    <IncludePath>K:\GitHub\CPP\Library\UtilCore;K:\GitHub\CPP\Library\ExternalLib\openssl-master\include;K:\GitHub\CPP\Library\ExternalLib\rapidjson-master\include;$(ProjectDir);$(IncludePath)</IncludePath>
     <LibraryPath>K:\GitHub\CPP\Library\ExternalLib\Bin\$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -56,7 +56,7 @@
     <OutDir>$(SolutionDir)Bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>Bin\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>$(ProjectName)64</TargetName>
-    <IncludePath>K:\GitHub\CPP\Library\UtilCore;K:\GitHub\CPP\Library\ExternalLib\openssl-master\include;$(ProjectDir);$(IncludePath)</IncludePath>
+    <IncludePath>K:\GitHub\CPP\Library\UtilCore;K:\GitHub\CPP\Library\ExternalLib\openssl-master\include;K:\GitHub\CPP\Library\ExternalLib\rapidjson-master\include;$(ProjectDir);$(IncludePath)</IncludePath>
     <LibraryPath>K:\GitHub\CPP\Library\ExternalLib\Bin\$(Platform)\$(Configuration);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -95,6 +95,7 @@
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseGlobal.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\BaseTLS.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.cpp" />
+    <ClCompile Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Allocator.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\Memory.cpp" />
     <ClCompile Include="..\..\..\..\Library\UtilCore\Memory\MemoryPool.cpp" />
@@ -137,9 +138,14 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseMacro.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseRedefineDataType.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\BaseTLS.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldCommon.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\ConfigFieldSpec.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldReader.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\ConfigFile\JSONConfigFieldWriter.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Containers\Stack\LockFreeSlotStack.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Crypto\CryptoUtil.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Allocator.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Containers.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Memory\Memory.h" />
@@ -176,6 +182,7 @@
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\FixedBufUtil.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\Log.h" />
+    <ClInclude Include="..\..\..\..\Library\UtilCore\Util\MainArgParser.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacket.h" />
@@ -183,6 +190,7 @@
     <ClInclude Include="..\ChatCommon\Protocol\ChatPacketUtil.h" />
     <ClInclude Include="ChatStressAccounts.h" />
     <ClInclude Include="ChatStressConfig.h" />
+    <ClInclude Include="ChatStressOptions.h" />
     <ClInclude Include="ChatStressReporter.h" />
     <ClInclude Include="ChatStressScheduler.h" />
     <ClInclude Include="ChatStressSession.h" />
@@ -191,6 +199,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\..\Library\UtilCore\Containers\Map\ClusterSpinUnorderedMap.inl" />
+    <None Include="..\..\..\..\Library\UtilCore\JSON\RapidJSONUtil.inl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

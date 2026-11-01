@@ -38,6 +38,7 @@ using namespace std;
 #include <BaseMacro.h>
 
 #include <Util/ConsoleUtil.h>
+#include <Util/MainArgParser.h>
 #include <Util/CommonUtil.h>
 #include <Util/DateTimeUtil.h>
 #include <Util/Log.h>

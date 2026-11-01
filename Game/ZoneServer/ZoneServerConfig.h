@@ -21,10 +21,12 @@
 //     ServerNode      -> 접속할 Gateway 목록. 첫 번째 원소가 Gateway의 존 서버용 포트(IP/Port)다.
 // 존 시뮬레이션 값은 이 클래스 고유 필드다.
 //     ZoneId / ZoneKind / Capacity / TickIntervalMs
-//     MinX / MinY / MaxX / MaxY / CellSize / SpawnX / SpawnY / PlayerSpeed
-//     PlayerMaxHp / PlayerAttack / PlayerDefense / AttackRange / AttackIntervalMs / RespawnDelayMs / RespawnInvulnMs / AllowPvp
-//     GameDataDir / MonsterThinkIntervalMs  (몬스터/스폰 데이터 폴더와 AI 사고 주기)
-// AttackRange는 (사거리 + 위치 허용 오차 + 이동 지연 보정)이 AOI 최소 보장 시야 이내여야 하며, CZoneServerMain::Start()가 구동 시 검사한다.
+//     MinX / MinY / MaxX / MaxY / CellSize / SpawnX / SpawnY
+//     RespawnDelayMs / RespawnInvulnMs / AllowPvp
+// 플레이어의 체력/공격력/방어력/사거리/공격 간격/이동 속도는 게임 데이터의 Hero 시트(영웅)가 정하므로 설정 파일에 두지 않는다.
+// 이전 버전의 PlayerSpeed / PlayerMaxHp / PlayerAttack / PlayerDefense / AttackRange / AttackIntervalMs 키가 남아 있으면 무시하고 경고만 남긴다.
+//     GameDataDir / MonsterThinkIntervalMs / MaxMonsterCount  (몬스터/스폰 데이터 폴더, AI 사고 주기, 존당 몬스터 총 마릿수 상한)
+// 영웅의 사거리는 (사거리 + 위치 허용 오차 + 이동 지연 보정)이 AOI 최소 보장 시야 이내여야 하며, CZoneServerMain::Start()가 구동 시 검사한다.
 // 이 서버는 리스너가 없으므로 베이스의 IP/Port/MaxSessionCount는 읽지 않는다.
 // 키가 없으면 SZoneServerOptions의 기본값을 유지한다.
 // Save()는 기존 파일이 있으면 먼저 읽어 와서 이 클래스가 모르는 키와 키 순서를 보존한 채
@@ -57,17 +59,12 @@ private:
 	float		_fCellSize;
 	float		_fSpawnX;
 	float		_fSpawnY;
-	float		_fPlayerSpeed;
-	int32		_nPlayerMaxHp;
-	int32		_nPlayerAttack;
-	int32		_nPlayerDefense;
-	float		_fAttackRange;
-	uint32		_nAttackIntervalMs;
 	uint32		_nRespawnDelayMs;
 	uint32		_nRespawnInvulnMs;
 	bool		_bAllowPvp;
 	_tstring	_strGameDataDir;
 	uint32		_nMonsterThinkIntervalMs;
+	uint32		_nMaxMonsterCount;
 };
 
 #endif // ndef ZONESERVERCONFIG_H

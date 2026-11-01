@@ -23,12 +23,16 @@
 // - thinkIntervalMs : 몬스터 한 마리의 사고 주기(ms). 틱 간격 이상이어야 의미가 있다. 작을수록 반응이 빠르고 비용이 는다
 // - repathDistance  : 추적 중 대상이 이만큼 움직여야 이동 명령을 다시 내린다(이동 브로드캐스트 억제)
 // - engageRatio     : 사거리의 이 비율 안에 들어오면 이동을 멈추고 공격한다 (0 초과 1 이하)
+// - maxMonsters     : 이 존에 스폰할 수 있는 몬스터 총 마릿수 상한. 스폰 테이블 합계가 넘으면 Validate()가 거부한다.
+//                     존 한 개의 틱 비용은 마릿수에 비례하므로 서버 용량에 맞춰 운영 설정으로 정한다.
+//                     CMonsterData::kMaxSpawnPerZone(데이터 자체의 절대 상한)을 넘는 값은 의미가 없다
 //***************************************************************************
 struct SMonsterSystemConfig
 {
 	uint32	thinkIntervalMs = 100;		// 사고 주기(ms)
 	float	repathDistance = 1.5f;		// 재경로 거리
 	float	engageRatio = 0.9f;			// 교전 거리 비율
+	uint32	maxMonsters = static_cast<uint32>(CMonsterData::kMaxSpawnPerZone);	// 존당 몬스터 총 마릿수 상한
 };
 
 //***************************************************************************

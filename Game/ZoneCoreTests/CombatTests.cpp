@@ -1,7 +1,7 @@
 ﻿// 전투(기본 공격/피해/사망/리스폰) 단위 테스트 - 스텁 환경
 #include "pch.h"
 #include "FieldZone.h"
-#include "test_common.h"
+#include "TestCommon.h"
 
 #include <atomic>
 #include <chrono>

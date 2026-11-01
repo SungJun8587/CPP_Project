@@ -1,4 +1,8 @@
 @ECHO OFF
+Bin\x64\Release\XlsxToJson64.exe "K:\GitHub\CPP\Project\Game\GameData\GameData.xlsx" --out "K:\GitHub\CPP\Project\Game\GameData"
+EXIT /B
+
+:: ---- 아래는 설명(주석)이며 EXIT /B 이후라 실행되지 않는다. 한글 주석이 cmd 파싱에 영향을 주지 않도록 실행 줄 뒤에 둔다. ----
 :: XlsxToJson.exe [엑셀 파일] --out [출력 폴더] [--sheets 시트이름 ...]
 :: [설명]
 ::  - 기획 데이터 엑셀(.xlsx)의 시트를 시트별 JSON 파일로 변환(시트 이름이 곧 파일 이름, Monster 시트 -> Monster.json)
@@ -9,4 +13,3 @@
 ::      - 1. 엑셀 파일 : K:\GitHub\CPP\Project\Game\GameData\GameData.xlsx
 ::      - 2. --out 출력 폴더 : K:\GitHub\CPP\Project\Game\GameData
 ::      - 3. --sheets 변환할 시트 이름(생략 시 _로 시작하지 않는 모든 시트) : Monster Spawn
-Bin\x64\Release\XlsxToJson64.exe "K:\GitHub\CPP\Project\Game\GameData\GameData.xlsx" --out "K:\GitHub\CPP\Project\Game\GameData"

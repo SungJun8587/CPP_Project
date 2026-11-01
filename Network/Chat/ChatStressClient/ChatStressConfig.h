@@ -1,11 +1,11 @@
 ﻿
 //***************************************************************************
-// ChatStressConfig.h : interface for the ChatStressConfig struct and the run-option functions.
+// ChatStressConfig.h : interface for the CChatStressConfig class and the run-option functions.
 //
 //***************************************************************************
 
-#ifndef UC_CHATSTRESSCONFIG_H
-#define UC_CHATSTRESSCONFIG_H
+#ifndef CHATSTRESSCONFIG_H
+#define CHATSTRESSCONFIG_H
 
 #include <atomic>
 #include <string>
@@ -16,33 +16,69 @@
 #include <cwchar>
 #include <random>
 
+#include "ChatStressOptions.h"
+
 //***************************************************************************
-// @brief IOCP 스트레스 테스트 클라이언트의 실행 옵션
-// @details 명령행 인자(ParseArgs)로 채워지며 실행 중에는 읽기 전용으로 쓴다.
-//          전역 인스턴스 g_cfg 하나만 사용한다.
+// @brief 스트레스 클라이언트 설정 정보 관리 클래스.
+// @details 채팅 서버의 CChatServerConfig와 같은 형태다. 읽기는 CJSONConfigFieldReader
+//          (타입/범위 검증), 쓰기는 CJSONConfigFieldWriter를 쓴다. 로드한 값은
+//          ToOptions()로 SChatStressOptions에 옮겨 담아 쓴다.
+//          키 이름은 SChatStressOptions 필드 이름의 PascalCase다.
 //***************************************************************************
-struct ChatStressConfig
+class CChatStressConfig
 {
-	_tstring	host = _T("127.0.0.1");	// 접속할 서버 주소
-	uint16		port = 9000;			// 접속할 서버 포트
-	int			clients = 100;			// 가상 클라이언트(=CChatClientSession과 같은 종류의 IOCP 세션) 수
-	int			workers = 0;			// IOCP 워커 스레드 수, 0=자동(하드웨어 코어 수)
-	int			schedThreads = 2;		// 주기 송신(채팅/목록/…)을 돌리는 스케줄러 스레드 수
-	int			durationSec = 60;		// 0=무한(Ctrl+C)
-	double		rampPerSec = 50;		// 초당 신규 접속 수. 0 이하이면 Start() 한 번에 전부 접속(burst)
-	int			chatIntervalMs = 1000;	// 0=채팅 안 함
-	int			listIntervalMs = 5000;	// 0=방 목록 조회 안 함
-	int			memberIntervalMs = 0;	// 0=방 멤버 목록 조회 안 함(방 입장 시에만 의미)
-	int			countIntervalMs = 0;	// 0=동접자 조회 안 함
-	int			roomId = 0;				// 0=로비 유지, >0=로그인 후 그 방 입장
-	int			roomSpread = 1;			// >1이면 roomId..roomId+spread-1에 round-robin 분산
-	int			msgBytes = 32;			// 채팅 본문 길이
-	int			pageSize = 20;			// 목록 조회 요청의 pageSize
-	std::string	prefix = "S";			// 신규 가입 닉네임 접두어(닉네임 = prefix + 태그 + 번호, 16자 이내)
-	_tstring	accountsFile;			// 지정하면 계정(public_id+token)을 저장/재사용 -> 재실행 시 신규 가입 대신 재접속
+public:
+	CChatStressConfig();
+	virtual ~CChatStressConfig();
+
+	//***************************************************************************
+	// @brief JSON 설정 파일로부터 실행 옵션을 읽어와 초기화합니다.
+	// @param tszConfigPath JSON 설정 파일 경로
+	// @return 모든 필드가 타입/범위 검증을 통과하면 true, 파일을 못 읽거나 하나라도 위반하면 false
+	// @details 파일에 없는 키는 기본값(SChatStressOptions)을 유지한다.
+	//***************************************************************************
+	bool Init(const TCHAR* tszConfigPath);
+
+	//***************************************************************************
+	// @brief 현재 설정 값을 JSON 파일로 저장합니다.
+	// @param tszConfigPath 저장할 JSON 설정 파일 경로
+	// @return 성공 시 true, 실패 시 false(기존 파일은 그대로 남음)
+	// @details 기존 파일이 있으면 먼저 읽어 와서 이 클래스가 모르는 키와 키 순서를 보존한다.
+	//***************************************************************************
+	bool Save(const TCHAR* tszConfigPath);
+
+	//***************************************************************************
+	// @brief 로드된 설정 값을 실행 옵션으로 옮겨 담습니다.
+	// @details 접두어는 ASCII만 허용하므로 128 이상의 문자는 '_'로 치환한다.
+	//***************************************************************************
+	void ToOptions(SChatStressOptions& options) const;
+
+	//***************************************************************************
+	// @brief 로드된 설정 정보를 로그로 출력합니다.
+	//***************************************************************************
+	void PrintSettingInfo();
+
+private:
+	_tstring	_host;
+	uint16		_port;
+	int32		_clients;
+	int32		_workers;
+	int32		_schedThreads;
+	int32		_durationSec;
+	double		_rampPerSec;
+	int32		_chatIntervalMs;
+	int32		_listIntervalMs;
+	int32		_memberIntervalMs;
+	int32		_countIntervalMs;
+	int32		_roomId;
+	int32		_roomSpread;
+	int32		_msgBytes;
+	int32		_pageSize;
+	_tstring	_prefix;
+	_tstring	_accountsFile;
 };
 
-extern ChatStressConfig		g_cfg;		// 실행 옵션(전역)
+extern SChatStressOptions	g_cfg;		// 실행 옵션(전역)
 extern std::atomic<bool>	g_stop;		// true이면 모든 스레드가 종료 절차로 들어간다
 extern std::string			g_runTag;	// 닉네임/RTT 마커에 쓰이는 4자리 태그
 
@@ -50,4 +86,4 @@ void	PrintUsage();
 bool	ParseArgs(int argc, wchar_t** argv, int& exitCode);
 void	GenerateRunTag();
 
-#endif // ndef UC_CHATSTRESSCONFIG_H
+#endif // ndef CHATSTRESSCONFIG_H

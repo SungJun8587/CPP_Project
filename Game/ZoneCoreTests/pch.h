@@ -38,6 +38,7 @@ using namespace std;
 #include <BaseMacro.h>
 
 #include <Util/ConsoleUtil.h>
+#include <Util/MainArgParser.h>
 #include <Util/CommonUtil.h>
 #include <Util/Log.h>
 #include <Util/ScopeExit.h>
@@ -71,7 +72,6 @@ using namespace std;
 
 #include "../GameCommon/ZoneCommon/ZonePacketTypes.h"
 #include "../GameCommon/ZoneCommon/ZonePacket.h"
-#include "../GameCommon/ZoneCommon/ArgParser.h"
 #include "../GameCommon/ZoneCore/FieldZone.h"
 #include "../GameCommon/ZoneCore/ZoneEntity.h"
 #include "../GameCommon/ZoneCore/MonsterData.h"

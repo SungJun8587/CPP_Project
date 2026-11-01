@@ -2,7 +2,7 @@
 #include "pch.h"
 #include "FieldZone.h"
 #include "MonsterSystem.h"
-#include "test_common.h"
+#include "TestCommon.h"
 
 #include <cmath>
 #include <cstdio>
@@ -150,6 +150,25 @@ namespace
 		CHECK(z.sys->Validate(err, 10.0f));
 		CHECK(!z.sys->Validate(err, 40.0f));			// 상대가 더 빠르면 150 > 140
 		CHECK(z.sys->GetMaxSpawnSpeed() == 10.0f);
+	}
+
+	static void TestMaxMonsterLimit()
+	{
+		std::printf("[Monster validate: configured spawn limit]\n");
+		auto data = Data(Tmpl(1), 30, 500, 500, 5);
+		SMonsterSystemConfig c; c.thinkIntervalMs = 20;
+		std::string err;
+		{
+			MonZone z(Cfg()); c.maxMonsters = 30;
+			z.sys = std::make_unique<CMonsterSystem>(z, data, c);
+			CHECK(z.sys->Validate(err));				// 합계가 상한과 같으면 통과
+		}
+		{
+			MonZone z(Cfg()); c.maxMonsters = 29;
+			z.sys = std::make_unique<CMonsterSystem>(z, data, c);
+			CHECK(!z.sys->Validate(err));				// 하나라도 넘으면 거부
+			CHECK(err.find("limit") != std::string::npos);
+		}
 	}
 
 	static void TestRemoveActiveMonster()
@@ -347,6 +366,7 @@ namespace
 		TestTargetDiesAndDeactivate();
 		TestMany();
 		TestValidateOpponentSpeed();
+		TestMaxMonsterLimit();
 		TestRemoveActiveMonster();
 		std::printf(g_failed ? "\nFAILED: %d\n" : "\nALL PASSED\n", g_failed);
 		return g_failed ? 1 : 0;

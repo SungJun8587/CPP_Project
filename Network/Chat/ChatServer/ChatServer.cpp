@@ -8,6 +8,7 @@
 #include "ChatServerMain.h"
 #include "DbServiceManager.h"
 #include <ServerConnectInfo.h>
+#include <Util/MainArgParser.h>
 #include <iostream>
 
 namespace
@@ -69,7 +70,31 @@ void MainClose()
 	CSocketUtils::Clear();
 }
 
-int main()
+//***************************************************************************
+// @brief 명령행 인자 사용법을 콘솔에 출력합니다.
+//***************************************************************************
+static void PrintUsage()
+{
+	std::cout <<
+		"usage: ChatServer [options]\n"
+		"  --config <file>       JSON config file (Config\\chatserver_config_mysql.json)\n"
+		"  --name <str>          server name\n"
+		"  --group <n>           server group id\n"
+		"  --channel <n>         server channel id, 0..1023 (must differ per instance)\n"
+		"  --ip <addr>           bind address\n"
+		"  --port <n>            bind port\n"
+		"  --max-sessions <n>    max concurrent sessions\n"
+		"  --workers <n>         IOCP worker threads, 0=auto\n"
+		"options given here override the config file.\n";
+}
+
+//***************************************************************************
+// @brief ChatServer 진입점
+// @param argc 명령행 인자 개수
+// @param argv 명령행 인자. "--key value" 또는 "--key=value" 형식이며 설정 파일 값을 덮어쓴다(--help로 목록 확인).
+// @return 프로세스 종료 코드(0=정상, -1=초기화/시작 실패)
+//***************************************************************************
+int wmain(int argc, TCHAR* argv[])
 {
 	// 1. Debug 빌드에서의 CRT 메모리 누수 감지 옵션 설정
 #ifdef	_MSC_VER
@@ -78,6 +103,14 @@ int main()
 
 	// 2. 콘솔 유니코드/UTF-8 환경 및 기본 프레임워크 초기화
 	InitUtf8Console();
+
+	// 2-1. 명령행 인자 파싱 — --help는 아무것도 초기화하기 전에 처리한다.
+	const CMainArgParser args(argc, argv);
+	if( args.Has(_T("help")) )
+	{
+		PrintUsage();
+		return 0;
+	}
 
 	// 3. Winsock 라이브러리(WSAStartup) 및 IOCP 확장 함수 포인터를 초기화
 	CSocketUtils::Init();
@@ -95,14 +128,29 @@ int main()
 
 	// 6. 서버 설정 파일(JSON) 로드
 	// 6-1. 설정 파일 경로 지정
-	TCHAR tszConfigPath[FULLPATH_STRLEN];
-	_sntprintf_s(tszConfigPath, FULLPATH_STRLEN, _TRUNCATE, _T("Config\\chatserver_config_mysql.json"));
+	// 설정 파일 경로 — 기본값은 아래이며 --config로 바꿀 수 있다.
+	_tstring configPath = _T("Config\\chatserver_config_mysql.json");
+	if( false == args.ReadString(_T("config"), configPath) )
+	{
+		PrintUsage();
+		MainClose();
+		return -1;
+	}
+	const TCHAR* tszConfigPath = configPath.c_str();
 
 	// 6-2. 설정 파일 파싱 — 실패 시 여기까지 초기화된 자원(BaseGlobal 등)을
 	//      MainClose()로 정리하고 종료
 	if( false == CHAT_SERVER_CONFIG->Init(tszConfigPath) )
 	{
 		LOG_ERROR(_T("SERVER_CONFIG->Init Fail. (Path: %s)"), tszConfigPath);
+		MainClose();
+		return -1;
+	}
+
+	// 6-2-1. 명령행 인자로 설정 파일 값을 덮어쓴다(채널/포트처럼 인스턴스마다 다른 값).
+	if( false == CHAT_SERVER_CONFIG->ApplyArgs(args) )
+	{
+		PrintUsage();
 		MainClose();
 		return -1;
 	}

@@ -121,6 +121,43 @@ std::shared_ptr<CChatSession> CChatServerMain::FindOnlineSession(const std::arra
 }
 
 //***************************************************************************
+// @brief blocker 계정의 이 프로세스 세션 전부의 차단 목록에 blocked를 추가/제거합니다.
+//***************************************************************************
+void CChatServerMain::ApplyBlockChange(const std::array<BYTE, kPublicIdBytes>& blocker, const std::array<BYTE, kPublicIdBytes>& blocked, bool block)
+{
+	std::vector<std::shared_ptr<CChatSession>> sessions;
+	{
+		std::lock_guard<std::mutex> lock(_onlineMutex);
+		auto it = _onlineSessions.find(PublicIdToHex(blocker));
+		if( it == _onlineSessions.end() )
+			return;
+		for( const auto& w : it->second )
+		{
+			if( auto s = w.lock() )
+				sessions.push_back(std::move(s));
+		}
+	}
+
+	const std::string blockedHex = PublicIdToHex(blocked);
+	for( const auto& s : sessions )
+	{
+		if( block )
+			s->AddBlockedUser(blockedHex);
+		else
+			s->RemoveBlockedUser(blockedHex);
+	}
+}
+
+//***************************************************************************
+// @brief 차단/차단 해제를 이 프로세스의 같은 계정 세션 전부와 다른 채널에 반영합니다.
+//***************************************************************************
+void CChatServerMain::PropagateBlockChange(const std::array<BYTE, kPublicIdBytes>& blocker, const std::array<BYTE, kPublicIdBytes>& blocked, bool block)
+{
+	ApplyBlockChange(blocker, blocked, block);
+	BroadcastBlockChange(blocker, blocked, block);
+}
+
+//***************************************************************************
 // @brief 여러 publicId의 접속 세션을 락 한 번으로 찾습니다.
 // @details 키(16진 문자열) 생성은 락 밖에서 끝내서, 락을 잡는 시간은 해시 조회에만 쓴다.
 //***************************************************************************
@@ -259,16 +296,21 @@ void CChatServerMain::RequestFriendOp(
 			if( jobQueue == nullptr )
 				return;
 
-			// 친구 관계가 바뀐 연산이 성공했으면 양쪽 계정의 친구 id 캐시를 무효화한다
+			// 친구 관계가 바뀐 연산이 성공했으면 양쪽 계정의 친구 id 캐시를 (다른 채널 포함) 무효화한다
 			// (콜백보다 먼저 — 콜백 안의 후속 조회가 오래된 캐시를 보지 않도록).
 			if( result.result == EFriendResult::Ok &&
 				(op == EFriendOp::Accept || op == EFriendOp::Remove || op == EFriendOp::Block ||
 					(op == EFriendOp::SendRequest && result.autoAccepted)) )
 			{
-				InvalidateFriendCache(actorId);
+				std::vector<std::array<BYTE, kPublicIdBytes>> affected{ actorId };
 				if( hasTarget )
-					InvalidateFriendCache(requestedTarget);
-				InvalidateFriendCache(result.target.publicId);
+					affected.push_back(requestedTarget);
+				affected.push_back(result.target.publicId);
+				for( const auto& id : affected )
+					InvalidateFriendCache(id);
+
+				// 다른 채널에 접속한 양쪽 계정의 캐시도 지운다(캐시는 접속한 프로세스에만 있다).
+				BroadcastFriendCacheInvalidation(affected);
 			}
 
 			// image_ref가 상대 경로로 저장돼 있을 수 있으므로 표시용 URL로 복원한다

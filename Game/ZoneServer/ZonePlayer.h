@@ -24,7 +24,7 @@ class CBattleZone;
 class CZonePlayer : public CZoneEntity
 {
 public:
-	CZonePlayer(uint64 charId, uint64 clientSessionId, CBattleZone* zone);
+	CZonePlayer(uint64 charId, uint64 clientSessionId, CBattleZone* zone, uint32 heroId);
 	virtual ~CZonePlayer() = default;
 
 	//***************************************************************************
@@ -32,6 +32,12 @@ public:
 	// @return Gateway가 부여한 클라이언트 세션 ID
 	//***************************************************************************
 	uint64 GetClientSessionId() const { return _clientSessionId; }
+
+	//***************************************************************************
+	// @brief 이 플레이어가 입장할 때 선택한 영웅 ID를 반환합니다. 전투 능력치와 이동 속도는 이 영웅의 데이터로 정해진다.
+	// @return 영웅 ID
+	//***************************************************************************
+	uint32 GetHeroId() const { return _heroId; }
 
 	//***************************************************************************
 	// @brief 퇴장 중으로 표시합니다. 존에서 제거하기 직전에 호출하며, 이후 이 플레이어의 클라이언트로 패킷을 보내지 않습니다.
@@ -50,6 +56,7 @@ protected:
 
 private:
 	uint64			_clientSessionId;	// Gateway 클라이언트 세션 ID (패킷 전송 대상 식별)
+	uint32			_heroId;			// 선택한 영웅 ID
 	CBattleZone* _zone;				// 소속 존 (존이 엔티티보다 오래 살아있음이 보장됨)
 	bool			_leaving;			// 퇴장 중 여부 (true면 클라이언트로 패킷을 보내지 않음)
 };

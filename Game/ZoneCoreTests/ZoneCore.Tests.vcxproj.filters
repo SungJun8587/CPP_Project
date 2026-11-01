@@ -5,25 +5,25 @@
     <ClCompile Include="TestMain.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="tests.cpp">
+    <ClCompile Include="Tests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="combat_tests.cpp">
+    <ClCompile Include="CombatTests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="monster_tests.cpp">
+    <ClCompile Include="MonsterTests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="fuzz_combat.cpp">
+    <ClCompile Include="FuzzCombat.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="fuzz_monster.cpp">
+    <ClCompile Include="FuzzMonster.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="game_data_tests.cpp">
+    <ClCompile Include="GameDataTests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
-    <ClCompile Include="zone_config_tests.cpp">
+    <ClCompile Include="ZoneConfigTests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp">
@@ -92,10 +92,13 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp">
       <Filter>UtilCore\Util</Filter>
     </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\HeroData.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
-    <ClInclude Include="test_common.h">
+    <ClInclude Include="TestCommon.h">
       <Filter>Tests</Filter>
     </ClInclude>
     <ClInclude Include="TestSuites.h">
@@ -127,9 +130,6 @@
     </ClInclude>
     <ClInclude Include="..\GameCommon\ZoneCore\ZoneMath.h">
       <Filter>GameCommon\ZoneCore</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\ZoneCommon\ArgParser.h">
-      <Filter>GameCommon\ZoneCommon</Filter>
     </ClInclude>
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h">
       <Filter>GameCommon\ZoneCommon</Filter>
@@ -264,6 +264,12 @@
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\HeroData.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>

@@ -1,0 +1,15 @@
+{
+  "Host": "127.0.0.1",
+  "Port": 7000,
+  "Bots": 10,
+  "ZoneId": 1,
+  "Heroes": "0",
+  "CharIdBase": 100000,
+  "RampMs": 20,
+  "TickMs": 50,
+  "MoveIntervalMs": 300,
+  "AttackIntervalMs": 400,
+  "WorkerThreadCnt": 2,
+  "StatsSec": 5,
+  "DurationSec": 0
+}
