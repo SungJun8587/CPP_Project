@@ -85,6 +85,12 @@
     <ClCompile Include="..\..\..\Library\UtilCore\JSON\RapidJSONUtil.cpp">
       <Filter>UtilCore\JSON</Filter>
     </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BlockMap.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BlockMapFile.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -259,6 +265,12 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\BlockMap.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\BlockMapFile.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">
@@ -302,6 +314,9 @@
     </Filter>
     <Filter Include="UtilCore\Containers\Queue">
       <UniqueIdentifier>{c40d6216-69f7-4f39-bde3-d01829035c02}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GameCommon\ZoneCore">
+      <UniqueIdentifier>{42b3bd75-a99c-49d7-9f9b-bd5aa2cab336}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

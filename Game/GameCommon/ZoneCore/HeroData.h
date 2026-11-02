@@ -12,8 +12,10 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
-#include "../GameCommon/ZoneCore/ZoneEntity.h"
+#include "SkillData.h"
+#include "ZoneEntity.h"
 
 //***************************************************************************
 // @struct SHeroTemplate
@@ -27,6 +29,7 @@ struct SHeroTemplate
 	std::string		name;						// 이름 (UTF-8, 로그/디버깅용)
 	SCombatStats	stats;						// 전투 능력치
 	float			speed = 6.0f;				// 이동 속도 (units/sec)
+	std::vector<uint32>	skills;					// 사용할 수 있는 스킬 ID (최대 kMaxHeroSkills). CHeroData::AssignSkill로 채운다
 };
 
 //***************************************************************************
@@ -40,6 +43,8 @@ class CHeroData
 {
 public:
 	bool AddHero(const SHeroTemplate& hero);
+	bool AddSkill(const SSkillTemplate& skill);
+	bool AssignSkill(uint32 heroId, uint32 skillId);
 	bool Validate(std::string& error) const;
 
 	static std::shared_ptr<const CHeroData> MakeDefault();
@@ -59,6 +64,31 @@ public:
 	// @brief 영웅을 선택하지 않은 입장에 쓰는 기본 영웅(ID가 가장 작은 영웅)을 반환합니다.
 	// @return 기본 영웅, 영웅이 하나도 없으면 nullptr
 	//***************************************************************************
+	//***************************************************************************
+	// @brief 스킬을 ID로 찾습니다.
+	// @return 스킬, 없으면 nullptr
+	//***************************************************************************
+	const SSkillTemplate* FindSkill(uint32 id) const
+	{
+		auto it = _skills.find(id);
+		return it != _skills.end() ? &it->second : nullptr;
+	}
+
+	//***************************************************************************
+	// @brief 영웅이 그 스킬을 쓸 수 있는지 확인하고 스킬을 돌려줍니다.
+	// @return 스킬, 영웅이 가진 스킬이 아니면 nullptr
+	//***************************************************************************
+	const SSkillTemplate* FindHeroSkill(const SHeroTemplate& hero, uint32 skillId) const
+	{
+		for( const uint32 id : hero.skills )
+			if( id == skillId )
+				return FindSkill(id);
+		return nullptr;
+	}
+
+	size_t GetSkillCount() const { return _skills.size(); }
+	const std::map<uint32, SSkillTemplate>& GetSkills() const { return _skills; }
+
 	const SHeroTemplate* GetDefaultHero() const { return _heroes.empty() ? nullptr : &_heroes.begin()->second; }
 
 	//***************************************************************************
@@ -92,6 +122,7 @@ public:
 	}
 
 private:
+	std::map<uint32, SSkillTemplate>	_skills;	// 스킬 ID -> 스킬
 	std::map<uint32, SHeroTemplate>	_heroes;	// 영웅 ID -> 영웅 (정렬되어 있어 첫 원소가 기본 영웅)
 };
 

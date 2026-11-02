@@ -1,0 +1,70 @@
+{
+  "Skill": [
+    {
+      "Id": 1,
+      "Name": "강타",
+      "Shape": "Single",
+      "DamagePercent": 250,
+      "FlatDamage": 0,
+      "Range": 3.0,
+      "Radius": 0.0,
+      "CooldownMs": 4000,
+      "MaxTargets": 1
+    },
+    {
+      "Id": 2,
+      "Name": "회전베기",
+      "Shape": "Area",
+      "DamagePercent": 150,
+      "FlatDamage": 0,
+      "Range": 3.0,
+      "Radius": 4.0,
+      "CooldownMs": 7000,
+      "MaxTargets": 6
+    },
+    {
+      "Id": 3,
+      "Name": "정밀사격",
+      "Shape": "Single",
+      "DamagePercent": 300,
+      "FlatDamage": 0,
+      "Range": 14.0,
+      "Radius": 0.0,
+      "CooldownMs": 5000,
+      "MaxTargets": 1
+    },
+    {
+      "Id": 4,
+      "Name": "화살비",
+      "Shape": "Area",
+      "DamagePercent": 120,
+      "FlatDamage": 0,
+      "Range": 12.0,
+      "Radius": 5.0,
+      "CooldownMs": 8000,
+      "MaxTargets": 8
+    },
+    {
+      "Id": 5,
+      "Name": "파이어볼",
+      "Shape": "Single",
+      "DamagePercent": 350,
+      "FlatDamage": 0,
+      "Range": 10.0,
+      "Radius": 0.0,
+      "CooldownMs": 4000,
+      "MaxTargets": 1
+    },
+    {
+      "Id": 6,
+      "Name": "폭발",
+      "Shape": "Area",
+      "DamagePercent": 200,
+      "FlatDamage": 10,
+      "Range": 9.0,
+      "Radius": 6.0,
+      "CooldownMs": 9000,
+      "MaxTargets": 12
+    }
+  ]
+}

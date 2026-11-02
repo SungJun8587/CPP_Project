@@ -7,6 +7,7 @@
 #ifndef FIELDZONEBASE_H
 #define FIELDZONEBASE_H
 
+#include <algorithm>
 #include <memory>
 #include <unordered_map>
 #include <utility>
@@ -14,7 +15,9 @@
 #include <BaseRedefineDataType.h>
 #include <Memory/Containers.h>
 
+#include "BlockMap.h"
 #include "GridAOI.h"
+#include "SkillData.h"
 #include "Zone.h"
 #include "ZoneEntity.h"
 
@@ -35,6 +38,7 @@ enum class MoveResult : uint8
 	PositionMismatch,	// 클라이언트 보고 위치가 서버 위치와 허용 오차 이상 차이
 	Throttled,			// 요청 간격이 minMoveIntervalMs보다 짧아 무시됨 (보정 통지 없음)
 	Dead,				// 사망한 엔티티는 리스폰하기 전까지 이동할 수 없음
+	Blocked,			// 장애물에 막혀 한 걸음도 갈 수 없음 (목적지까지 일부만 갈 수 있으면 막히기 직전까지로 줄여 Ok)
 };
 
 //***************************************************************************
@@ -52,6 +56,21 @@ enum class AttackResult : uint8
 	OutOfRange,			// 사거리 밖
 	Cooldown,			// 공격 쿨다운 중 (거부 통지 없음)
 	Throttled,			// 같은 틱에 이미 공격 요청을 접수함 (거부 통지 없음)
+	NoLineOfSight,		// 사거리 안이지만 둘 사이를 장애물이 막고 있음
+};
+
+//***************************************************************************
+// @brief 스킬 시전 처리 결과.
+//***************************************************************************
+enum class SkillResult : uint8
+{
+	Ok,					// 시전 성공 (피해 적용됨, 맞은 대상이 0이어도 시전은 성공)
+	CasterDead,			// 시전자가 사망 상태
+	Cooldown,			// 스킬 재사용 대기 중
+	OutOfRange,			// 사거리 밖 (Single은 대상이 없는 경우 포함)
+	NoLineOfSight,		// 사거리 안이지만 장애물이 가로막음
+	InvalidTarget,		// 공격할 수 없는 대상 (사망, 자기 자신, PvP 금지, 무적 등)
+	Throttled,			// 같은 틱에 이미 공격/스킬 요청을 접수함 (거부 통지 없음)
 };
 
 //***************************************************************************
@@ -71,6 +90,7 @@ enum class AttackResult : uint8
 // - allowPvp          : 플레이어끼리 공격 가능 여부
 // - minDamage         : 최소 피해량(1 이상). 방어력이 공격력 이상이어도 이 값만큼은 들어간다
 // - respawnInvulnMs   : 리스폰 직후 무적 시간(ms). 스폰 캠핑 방지. 본인이 공격하면 즉시 해제된다. 0이면 없음
+// - blockMap          : 장애물 차단 맵(nullptr이면 장애물 없음). 존 영역과 같은 범위로 구성해야 하며 존 생성 후 바꾸지 않는다
 //***************************************************************************
 struct FieldZoneConfig
 {
@@ -89,6 +109,7 @@ struct FieldZoneConfig
 	bool allowPvp = true;				// 플레이어 간 공격 허용
 	int32 minDamage = 1;				// 최소 피해량
 	uint32 respawnInvulnMs = 3000;		// 리스폰 직후 무적 시간(ms)
+	std::shared_ptr<const CBlockMap> blockMap;	// 장애물 차단 맵 (읽기 전용 공유, nullptr이면 없음)
 };
 
 class CMonsterSystem;
@@ -122,6 +143,45 @@ public:
 	//***************************************************************************
 	const FieldZoneConfig& GetFieldConfig() const { return _fieldConfig; }
 
+	//***************************************************************************
+	// @brief 좌표가 존 영역 안인지 확인합니다. NaN은 false입니다.
+	// @param pos 확인할 좌표
+	// @return 영역 안이면 true
+	//***************************************************************************
+	bool IsInBounds(const Vec2& pos) const
+	{
+		return pos.x >= _fieldConfig.minX && pos.x <= _fieldConfig.maxX
+			&& pos.y >= _fieldConfig.minY && pos.y <= _fieldConfig.maxY;
+	}
+
+	//***************************************************************************
+	// @brief 좌표가 장애물(차단 셀) 안인지 확인합니다. 차단 맵이 없으면 항상 false입니다. 영역 검사는 하지 않습니다.
+	// @param pos 확인할 좌표
+	// @return 차단되어 있으면 true
+	//***************************************************************************
+	const CBlockMap* GetBlockMap() const { return _fieldConfig.blockMap.get(); }
+	bool IsBlocked(const Vec2& pos) const { return _fieldConfig.blockMap != nullptr && _fieldConfig.blockMap->IsBlocked(pos); }
+
+	//***************************************************************************
+	// @brief 엔티티를 놓을 수 있는 좌표인지 확인합니다. (영역 안이고 장애물이 아님) 스폰/순간이동/리스폰 위치 검증의 공용 기준입니다.
+	// @param pos 확인할 좌표
+	// @return 놓을 수 있으면 true
+	//***************************************************************************
+	bool IsWalkable(const Vec2& pos) const { return IsInBounds(pos) && !IsBlocked(pos); }
+
+	//***************************************************************************
+	// @brief 좌표를 존 영역 안으로 보정합니다. 장애물은 고려하지 않습니다.
+	// @param pos 보정할 좌표
+	// @return 영역 안의 좌표
+	//***************************************************************************
+	Vec2 ClampToBounds(const Vec2& pos) const
+	{
+		Vec2 p = pos;
+		p.x = (std::min)((std::max)(p.x, _fieldConfig.minX), _fieldConfig.maxX);
+		p.y = (std::min)((std::max)(p.y, _fieldConfig.minY), _fieldConfig.maxY);
+		return p;
+	}
+
 	// ── 엔티티 관리 (존 스레드 전용) ──────────────────────
 	bool RemoveEntity(uint64 id);
 	CZoneEntity* FindEntity(uint64 id) const;
@@ -137,6 +197,7 @@ public:
 	AttackResult RequestAttack(uint64 attackerId, uint64 targetId);
 	AttackResult RequestAttack(CZoneEntity& attacker, uint64 targetId);
 	bool DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 amount);
+	SkillResult CastSkill(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint64& readyAtMs);
 	bool Heal(CZoneEntity& entity, int32 amount);
 	bool Respawn(uint64 id);
 	bool IsInvulnerable(const CZoneEntity& entity) const;
@@ -234,6 +295,8 @@ protected:
 	virtual void HandleRespawned(CZoneEntity& entity);
 	virtual void HandleHealed(CZoneEntity& entity, int32 amount);
 	virtual void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason);
+	virtual void HandleSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount);
+	virtual void HandleSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason);
 
 	// 전투 정책. 파생 클래스가 재정의한다.
 	virtual bool CanAttack(const CZoneEntity& attacker, const CZoneEntity& target) const;
@@ -243,7 +306,7 @@ protected:
 	virtual uint32 GetRespawnInvulnMs(const CZoneEntity& entity) const;
 
 private:
-	bool IsInBounds(const Vec2& pos) const;
+	bool ResolveDest(const Vec2& from, const Vec2& dest, Vec2& out) const;
 	void UpdateMovement(uint32 dtMs);
 	void OrderMove(CZoneEntity& entity, const Vec2& dest);
 	void BeginMoving(CZoneEntity* entity);

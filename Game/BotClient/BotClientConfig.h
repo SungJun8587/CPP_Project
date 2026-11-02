@@ -21,7 +21,7 @@
 //          로드한 값은 ToOptions()로 SBotClientOptions에 옮겨 담아 쓴다.
 //          키 이름은 SBotClientOptions 필드 이름의 PascalCase다
 //          (Host/Port/Bots/ZoneId/Heroes/CharIdBase/RampMs/TickMs/MoveIntervalMs/
-//           AttackIntervalMs/WorkerThreadCnt/StatsSec/DurationSec).
+//           AttackIntervalMs/SkillId/SkillIntervalMs/WorkerThreadCnt/StatsSec/DurationSec/BlockFile/AreaMinX/AreaMinY/AreaMaxX/AreaMaxY).
 //          Heroes는 쉼표로 구분한 영웅 ID 문자열이다(예: "1,2,3").
 //***************************************************************************
 class CBotClientConfig
@@ -67,9 +67,16 @@ private:
 	int32		_tickMs;
 	int32		_moveIntervalMs;
 	int32		_attackIntervalMs;
+	int32		_skillId;
+	int32		_skillIntervalMs;
 	int32		_workerThreadCnt;
 	int32		_statsSec;
 	int32		_durationSec;
+	_tstring	_blockFile;
+	float		_areaMinX;
+	float		_areaMinY;
+	float		_areaMaxX;
+	float		_areaMaxY;
 };
 
 extern SBotClientOptions	g_cfg;		// 실행 옵션(전역)

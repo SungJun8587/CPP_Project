@@ -108,6 +108,8 @@ protected:
 	virtual void OnEntityRespawned(TEntity& entity) { (void)entity; }
 	virtual void OnEntityHealed(TEntity& entity, int32 amount) { (void)entity; (void)amount; }
 	virtual void OnAttackRejected(TEntity& attacker, uint64 targetId, AttackResult reason) { (void)attacker; (void)targetId; (void)reason; }
+	virtual void OnSkillCast(TEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount) { (void)caster; (void)skill; (void)targetId; (void)center; (void)hitCount; }
+	virtual void OnSkillRejected(TEntity& caster, const SSkillTemplate& skill, SkillResult reason) { (void)caster; (void)skill; (void)reason; }
 
 private:
 	void HandleEntityRemoved(CZoneEntity& entity) final { OnEntityRemoved(static_cast<TEntity&>(entity)); }
@@ -120,6 +122,8 @@ private:
 	void HandleRespawned(CZoneEntity& entity) final { OnEntityRespawned(static_cast<TEntity&>(entity)); }
 	void HandleHealed(CZoneEntity& entity, int32 amount) final { OnEntityHealed(static_cast<TEntity&>(entity), amount); }
 	void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) final { OnAttackRejected(static_cast<TEntity&>(attacker), targetId, reason); }
+	void HandleSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount) final { OnSkillCast(static_cast<TEntity&>(caster), skill, targetId, center, hitCount); }
+	void HandleSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason) final { OnSkillRejected(static_cast<TEntity&>(caster), skill, reason); }
 };
 
 #endif // ndef FIELDZONE_H

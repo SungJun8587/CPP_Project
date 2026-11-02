@@ -2,8 +2,8 @@
 //
 // 사용법:  ZoneCore.Tests [--fuzz] [--seeds N] [--gamedata <dir>] [suite ...]
 //
-//   suite : zone, combat, monster, gamedata, config, fuzzcombat, fuzzmonster, all
-//   suite를 주지 않으면 단위 테스트(zone, combat, monster, gamedata, config)만 실행한다.
+//   suite : zone, combat, monster, gamedata, blockmap, skill, config, fuzzcombat, fuzzmonster, all
+//   suite를 주지 않으면 단위 테스트(zone, combat, monster, gamedata, blockmap, skill, config)만 실행한다.
 //   --fuzz       랜덤 연산 테스트(fuzzcombat, fuzzmonster)도 함께 실행한다. (오래 걸린다)
 //   --seeds N    fuzzcombat의 시드 수 (기본 6)
 //   --gamedata   샘플 GameData 폴더 (기본 GameData, 작업 디렉터리 기준)
@@ -69,7 +69,7 @@ int _tmain(int argc, TCHAR* argv[])
 			dataDir = argv[++i];
 		else if( arg.size() >= 2 && arg[0] == _T('-') && arg[1] == _T('-') )
 		{
-			std::fprintf(stderr, "usage: ZoneCore.Tests [--fuzz] [--seeds N] [--gamedata <dir>] [zone|combat|monster|gamedata|config|fuzzcombat|fuzzmonster|all ...]\n");
+			std::fprintf(stderr, "usage: ZoneCore.Tests [--fuzz] [--seeds N] [--gamedata <dir>] [zone|combat|monster|gamedata|blockmap|skill|config|fuzzcombat|fuzzmonster|all ...]\n");
 			return 2;
 		}
 		else
@@ -82,6 +82,8 @@ int _tmain(int argc, TCHAR* argv[])
 		{ "combat",		false,	[] { return RunCombatTests(); } },
 		{ "monster",	false,	[] { return RunMonsterTests(); } },
 		{ "gamedata",	false,	[&] { return RunGameDataTests(dataDir); } },
+		{ "blockmap",	false,	[] { return RunBlockMapTests(); } },
+		{ "skill",		false,	[] { return RunSkillTests(); } },
 		{ "config",		false,	[] { return RunZoneConfigTests(); } },
 		{ "fuzzcombat",	true,	[&] { return RunCombatFuzz(seeds); } },
 		{ "fuzzmonster",true,	[] { return RunMonsterFuzz(); } },

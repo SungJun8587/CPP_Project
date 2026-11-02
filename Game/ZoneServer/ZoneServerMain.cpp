@@ -60,9 +60,9 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 	spawnPos.y = _options.spawnY;
 
 	// 기획 데이터(영웅/몬스터/스폰). 폴더가 지정됐는데 읽기/검증에 실패하면 구동하지 않는다(데이터 없이 조용히 뜨는 것이 더 위험).
-	// 폴더가 비어 있으면 몬스터 없이, 영웅은 존이 내장 기본 영웅 하나를 쓴다.
-	std::shared_ptr<const CMonsterData> monsterData;
+	// 폴더가 비어 있으면 몬스터 없이, 내장 기본 영웅 하나로 구동한다.
 	std::shared_ptr<const CHeroData> heroData;
+	std::shared_ptr<const CMonsterData> monsterData;
 	if( !_options.gameDataDir.empty() )
 	{
 		heroData = CGameDataLoader::LoadHeroes(_options.gameDataDir);
@@ -74,9 +74,20 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 		}
 	}
 
+	// 장애물(Block.json). 파일이 없으면 장애물 없이 구동하고, 있는데 형식이 틀리면 구동하지 않는다.
+	if( !_options.gameDataDir.empty() )
+	{
+		std::shared_ptr<const CBlockMap> blockMap;
+		if( !CGameDataLoader::LoadBlockMap(_options.gameDataDir, _options.zoneId, zoneConfig.minX, zoneConfig.minY, zoneConfig.maxX, zoneConfig.maxY, blockMap) )
+		{
+			LOG_ERROR(_T("[CZoneServerMain] block map load failed. dir=%s"), _options.gameDataDir.c_str());
+			return false;
+		}
+		zoneConfig.blockMap = std::move(blockMap);
+	}
+
 	SMonsterSystemConfig monsterConfig;
 	monsterConfig.thinkIntervalMs = _options.monsterThinkIntervalMs;
-	monsterConfig.maxMonsters = _options.maxMonsterCount;
 
 	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, std::move(heroData), std::move(monsterData), monsterConfig);
 	if( !_zone->IsValid() )
@@ -86,8 +97,7 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 		return false;
 	}
 
-	// 영웅/몬스터 데이터는 존 영역/AOI 시야와 맞아야 한다(선공 거리, 사거리). 사거리가 시야보다 길면 보이지 않는 대상을
-	// 공격할 수 있고 피해 통지도 시야 밖으로 나가므로, 맞지 않으면 구동하지 않는다.
+	// 영웅/몬스터 데이터는 존 영역/AOI 시야와 맞아야 한다(공격 사거리, 선공 거리, 입장 위치). 맞지 않으면 구동하지 않는다.
 	{
 		std::string error;
 		if( !_zone->ValidateMonsters(error) )

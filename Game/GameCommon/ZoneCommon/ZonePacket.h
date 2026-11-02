@@ -326,6 +326,40 @@ struct ZcAttackRejectNotifyPacket : PacketHeader
 };
 
 //***************************************************************************
+// @brief 스킬 시전 요청 (Client -> Zone). 시전자는 세션으로 식별된다.
+//        Single 스킬은 targetId를, Area 스킬은 (x, y) 중심 좌표를 쓴다. 쓰지 않는 쪽은 서버가 무시한다.
+//***************************************************************************
+struct ZcSkillReqPacket : PacketHeader
+{
+	uint32	skillId;
+	uint64	targetId;		// Single의 대상 엔티티 ID
+	float	x;				// Area의 중심 X
+	float	y;				// Area의 중심 Y
+};
+
+//***************************************************************************
+// @brief 스킬 시전 알림 (Zone -> Client). 시전자 주변 전원에게 전송된다. 맞은 대상의 피해는 ZcDamageNotify로 이어진다.
+//***************************************************************************
+struct ZcSkillNotifyPacket : PacketHeader
+{
+	uint64	casterId;
+	uint32	skillId;
+	uint64	targetId;		// Single의 대상, Area는 0
+	float	x;				// 효과 중심 (Single은 대상 위치)
+	float	y;
+	uint32	hitCount;		// 맞은 대상 수
+};
+
+//***************************************************************************
+// @brief 스킬 요청 거부 알림 (Zone -> Client). 요청한 본인에게만 전송된다.
+//***************************************************************************
+struct ZcSkillRejectNotifyPacket : PacketHeader
+{
+	uint32	skillId;		// 요청에 실렸던 스킬 ID
+	uint8	reason;			// ESkillRejectReason
+};
+
+//***************************************************************************
 // @brief 체력 회복 알림 (Zone -> Client). 엔티티 주변 플레이어 전원에게 전송된다.
 //***************************************************************************
 struct ZcHealNotifyPacket : PacketHeader

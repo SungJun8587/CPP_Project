@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <vector>
 
 //***************************************************************************
 // @brief 필드 존을 생성하고 AOI 격자를 구성합니다. 스레드는 Start() 호출 시 시작됩니다.
@@ -57,7 +58,7 @@ CZoneEntity* CFieldZoneBase::AddEntity(std::unique_ptr<CZoneEntity> entity)
 {
 	assert(CanTouchZoneState());
 
-	if( !_valid || !entity || !IsInBounds(entity->_pos) )
+	if( !_valid || !entity || !IsWalkable(entity->_pos) )
 		return nullptr;
 
 	const uint64 id = entity->GetId();
@@ -150,6 +151,8 @@ MoveResult CFieldZoneBase::RequestMove(uint64 id, const Vec2& clientPos, const V
 //        - 속도는 서버 스탯을 사용하므로 스피드핵은 의미가 없다.
 //        - 클라이언트 보고 위치가 서버 위치와 허용 오차(기본값 + 속도*지연) 이상 어긋나면
 //          거부하고 HandleMoveRejected()로 보정 통지를 보낸다. (텔레포트 핵 차단)
+//        - 직선 경로가 장애물(차단 맵)에 막히면 막히기 직전 지점을 목적지로 삼는다. 한 걸음도 갈 수 없으면 거부하고 보정 통지를 보낸다.
+//          길 찾기는 하지 않으므로 우회는 클라이언트가 경유 지점을 나눠 요청한다.
 //        - 이미 같은 목적지로 이동 중이면 아무것도 하지 않는다(중복 브로드캐스트 방지).
 //        이미 이동 중이면 목적지만 갱신한다. 존 스레드에서만 호출해야 하며, entity는 이 존에 속해야 한다.
 // @param entity    이동 요청 엔티티 (이 존에 등록된 엔티티)
@@ -194,7 +197,15 @@ MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPo
 		return MoveResult::PositionMismatch;
 	}
 
-	OrderMove(entity, dest);
+	// 장애물이 있으면 목적지를 막히기 직전 지점으로 줄인다. 한 걸음도 못 가면 거부하고 서버 위치로 보정한다.
+	Vec2 resolved;
+	if( !ResolveDest(entity._pos, dest, resolved) )
+	{
+		HandleMoveRejected(entity, MoveResult::Blocked);
+		return MoveResult::Blocked;
+	}
+
+	OrderMove(entity, resolved);
 	return MoveResult::Ok;
 }
 
@@ -231,7 +242,8 @@ void CFieldZoneBase::OrderMove(CZoneEntity& entity, const Vec2& dest)
 //        이동 갱신 중에는 호출할 수 없고 존 스레드에서만 호출해야 한다.
 // @param entity 이동시킬 엔티티 (이 존에 등록된 엔티티)
 // @param dest   목적지
-// @return 이동을 시작했거나 이미 그 목적지로 이동 중이면 true, 사망/이동 불가/영역 밖이면 false
+//        직선 경로가 장애물에 막히면 막히기 직전 지점까지만 간다(RequestMove와 같은 규칙).
+// @return 이동을 시작했거나 이미 그 목적지로 이동 중이면 true, 사망/이동 불가/영역 밖/한 걸음도 갈 수 없으면 false
 //***************************************************************************
 bool CFieldZoneBase::MoveEntity(CZoneEntity& entity, const Vec2& dest)
 {
@@ -242,7 +254,11 @@ bool CFieldZoneBase::MoveEntity(CZoneEntity& entity, const Vec2& dest)
 	if( entity._dead || !(entity._speed > 0.0f) || !IsInBounds(dest) )
 		return false;
 
-	OrderMove(entity, dest);
+	Vec2 resolved;
+	if( !ResolveDest(entity._pos, dest, resolved) )
+		return false;
+
+	OrderMove(entity, resolved);
 	return true;
 }
 
@@ -271,7 +287,7 @@ bool CFieldZoneBase::StopMove(uint64 id)
 //        존 스레드에서만 호출해야 합니다.
 // @param id  엔티티 ID
 // @param pos 이동할 좌표
-// @return 성공 시 true, 엔티티가 없거나 영역 밖이면 false
+// @return 성공 시 true, 엔티티가 없거나 영역 밖이거나 장애물 안이면 false
 //***************************************************************************
 bool CFieldZoneBase::Teleport(uint64 id, const Vec2& pos)
 {
@@ -289,13 +305,13 @@ bool CFieldZoneBase::Teleport(uint64 id, const Vec2& pos)
 // @param entity 대상 엔티티
 // @param pos    이동할 좌표
 // @param notify true면 이동 중단/순간이동 훅을 호출한다. 리스폰은 별도 훅으로 알리므로 false를 쓴다
-// @return 성공 시 true, 영역 밖이면 false
+// @return 성공 시 true, 영역 밖이거나 장애물 안이면 false
 //***************************************************************************
 bool CFieldZoneBase::MoveTo(CZoneEntity* entity, const Vec2& pos, bool notify)
 {
 	assert(!_updatingMovement && "CFieldZoneBase::MoveTo called during movement update");
 
-	if( !IsInBounds(pos) )
+	if( !IsWalkable(pos) )
 		return false;
 
 	const bool wasMoving = entity->_moving;
@@ -414,7 +430,7 @@ AttackResult CFieldZoneBase::RequestAttack(uint64 attackerId, uint64 targetId)
 // @brief 클라이언트의 기본 공격 요청을 서버 권위로 검증하고 피해를 적용합니다.
 //        검증 순서(앞 단계가 싸고 클라이언트가 위조하기 쉬운 값부터 거른다):
 //        1) 같은 틱의 중복 요청은 조용히 무시한다(Throttled) - 요청 폭주 방지
-//        2) 공격자 생존 -> 3) 쿨다운 -> 4) 대상 조회 -> 5) 사거리 -> 6) 대상 생존 -> 7) 공격 가능 대상(CanAttack) -> 8) 무적
+//        2) 공격자 생존 -> 3) 쿨다운 -> 4) 대상 조회 -> 5) 사거리 -> 6) 시선(장애물) -> 7) 대상 생존 -> 8) 공격 가능 대상(CanAttack) -> 9) 무적
 //        사거리 검사를 대상 상태 검사보다 앞에 둬서, 멀리 있는 엔티티의 존재/생사 여부가 응답으로 새지 않게 한다.
 //        (대상이 없는 경우와 사거리 밖은 클라이언트에 같은 사유로 통지된다.)
 //        쿨다운은 틱 한 개만큼 여유를 둬서 틱 경계 지터로 정상 요청이 거절되지 않게 하며, 다음 공격 시각을
@@ -468,6 +484,13 @@ AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetI
 	{
 		HandleAttackRejected(attacker, targetId, AttackResult::OutOfRange);
 		return AttackResult::OutOfRange;
+	}
+
+	// 사거리 안이어도 장애물 너머로는 공격할 수 없다. 사거리 검사 뒤에 두어 먼 대상에는 비용을 쓰지 않고, 존재 여부도 새지 않는다.
+	if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(attacker._pos, target->_pos) )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::NoLineOfSight);
+		return AttackResult::NoLineOfSight;
 	}
 
 	if( target->_dead )
@@ -539,6 +562,115 @@ bool CFieldZoneBase::DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 
 		Kill(victim, source);
 
 	return true;
+}
+
+//***************************************************************************
+// @brief 스킬을 시전하고 피해를 적용합니다. 검증 순서는 RequestAttack과 같은 원칙(싸고 위조하기 쉬운 값부터)이다.
+//        1) 같은 틱의 공격/스킬 요청 중복은 조용히 무시(Throttled, 기본 공격과 같은 게이트를 쓴다)
+//        2) 시전자 생존 -> 3) 재사용 대기 -> 4) 사거리(Single은 대상 위치, Area는 지정한 중심) -> 5) 시선(장애물)
+//        -> 6) Single은 대상이 생존/공격 가능/무적 아님. 대상이 없는 경우와 사거리 밖은 같은 사유(엔티티 존재 여부 비노출).
+//        Area는 중심에서 radius 안의 공격 가능한 엔티티를 모으되, 중심에서 장애물에 가린 대상은 뺀다.
+//        모인 대상이 maxTargets를 넘으면 중심에 가까운 순(같으면 ID 순)으로 자른다. 대상이 0이어도 시전은 성공하고 재사용 대기가 시작된다.
+//        시전 알림(HandleSkillCast)을 피해 알림보다 먼저 보낸다. 거부된 요청(Throttled 제외)은 HandleSkillRejected로 알리고
+//        재사용 대기를 소모하지 않는다. 성공하면 시전자 본인의 무적은 해제된다.
+//        존 스레드에서만 호출해야 하며, caster는 이 존에 속해야 한다.
+// @param caster    시전자
+// @param skill     스킬 (시전자가 쓸 수 있는지는 호출자가 확인)
+// @param targetId  Single의 대상 ID (Area는 무시)
+// @param center    Area의 중심 좌표 (Single은 무시)
+// @param readyAtMs [in,out] 이 시전자의 이 스킬을 다시 쓸 수 있는 존 논리 시각. 성공하면 갱신된다
+// @return 처리 결과
+//***************************************************************************
+SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint64& readyAtMs)
+{
+	assert(CanTouchZoneState());
+	assert(caster._inZone);
+	assert(!_updatingMovement && "CFieldZoneBase::CastSkill called during movement update");
+
+	const uint64 nowMs = GetNowMs();
+	if( !caster._attackGate.TryPass(nowMs, 1) )
+		return SkillResult::Throttled;
+
+	auto reject = [&](SkillResult reason)
+		{
+			HandleSkillRejected(caster, skill, reason);
+			return reason;
+		};
+
+	if( caster._dead )
+		return reject(SkillResult::CasterDead);
+
+	if( nowMs + GetTickIntervalMs() < readyAtMs )
+		return reject(SkillResult::Cooldown);
+
+	const bool single = skill.shape == ESkillShape::Single;
+	CZoneEntity* target = nullptr;
+	Vec2 mid;
+	float moveSpeed = caster._moving ? caster._speed : 0.0f;
+	if( single )
+	{
+		target = FindEntity(targetId);
+		if( target == nullptr )
+			return reject(SkillResult::OutOfRange);
+		mid = target->_pos;
+		if( target->_moving )
+			moveSpeed += target->_speed;
+	}
+	else
+	{
+		if( !std::isfinite(center.x) || !std::isfinite(center.y) || !IsInBounds(center) )
+			return reject(SkillResult::OutOfRange);
+		mid = center;
+	}
+
+	const float reach = skill.range + _fieldConfig.posToleranceBase + moveSpeed * static_cast<float>(_fieldConfig.maxLatencyMs) * 0.001f;
+	if( !(DistanceSq(caster._pos, mid) <= reach * reach) )
+		return reject(SkillResult::OutOfRange);
+
+	if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(caster._pos, mid) )
+		return reject(SkillResult::NoLineOfSight);
+
+	struct SHit { float distSq; uint64 id; };
+	std::vector<SHit> hits;
+	if( single )
+	{
+		if( target->_dead || !CanAttack(caster, *target) || IsInvulnerable(*target) )
+			return reject(SkillResult::InvalidTarget);
+		hits.push_back({ 0.0f, target->GetId() });
+	}
+	else
+	{
+		ForEachInRadius(mid, skill.radius, [&](CZoneEntity& e)
+			{
+				if( &e == &caster || e._dead || !CanAttack(caster, e) || IsInvulnerable(e) )
+					return;
+				if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(mid, e._pos) )
+					return;		// 폭발이 벽에 가려진 대상에게는 닿지 않는다
+				hits.push_back({ DistanceSq(mid, e._pos), e.GetId() });
+			});
+
+		std::sort(hits.begin(), hits.end(), [](const SHit& a, const SHit& b)
+			{
+				return a.distSq != b.distSq ? a.distSq < b.distSq : a.id < b.id;
+			});
+		if( hits.size() > skill.maxTargets )
+			hits.resize(skill.maxTargets);
+	}
+
+	readyAtMs = (readyAtMs > nowMs ? readyAtMs : nowMs) + skill.cooldownMs;
+	caster._invulnerableUntilMs = 0;
+
+	HandleSkillCast(caster, skill, single ? targetId : 0, mid, static_cast<uint32>(hits.size()));
+
+	for( const SHit& hit : hits )
+	{
+		CZoneEntity* victim = FindEntity(hit.id);
+		if( victim == nullptr || victim->_dead )
+			continue;		// 앞선 피해의 훅에서 사망/퇴장한 경우
+		DealDamage(*victim, &caster, CalcSkillDamage(skill, caster._stats.attack, victim->_stats.defense, _fieldConfig.minDamage));
+	}
+
+	return SkillResult::Ok;
 }
 
 //***************************************************************************
@@ -769,6 +901,28 @@ void CFieldZoneBase::HandleAttackRejected(CZoneEntity& attacker, uint64 targetId
 }
 
 //***************************************************************************
+// @brief 스킬 시전 성공 훅의 기본 구현. 아무것도 하지 않습니다.
+//***************************************************************************
+void CFieldZoneBase::HandleSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount)
+{
+	(void)caster;
+	(void)skill;
+	(void)targetId;
+	(void)center;
+	(void)hitCount;
+}
+
+//***************************************************************************
+// @brief 스킬 시전 거부 훅의 기본 구현. 아무것도 하지 않습니다.
+//***************************************************************************
+void CFieldZoneBase::HandleSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason)
+{
+	(void)caster;
+	(void)skill;
+	(void)reason;
+}
+
+//***************************************************************************
 // @brief 부활 위치를 정하는 기본 정책입니다. SetSpawnPos()로 정한 위치를 그대로 씁니다.
 //        재정의하여 스폰 반경 안의 무작위 지점 등을 돌려줍니다. 영역 밖 좌표를 돌려주면 제자리에서 부활합니다.
 // @param entity 부활하는 엔티티
@@ -801,14 +955,26 @@ void CFieldZoneBase::HandleHealed(CZoneEntity& entity, int32 amount)
 }
 
 //***************************************************************************
-// @brief 좌표가 존 영역 안인지 확인합니다. NaN은 false입니다.
-// @param pos 확인할 좌표
-// @return 영역 안이면 true
+// @brief 이동 목적지를 장애물에 맞춰 보정합니다. 직선 경로가 차단 셀을 지나면 막히기 직전 지점으로 줄입니다.
+// @param from 현재 위치
+// @param dest 요청 목적지 (영역 안임이 검증된 상태)
+// @param out  [out] 실제 이동할 목적지
+// @return 이동할 수 있으면 true, 막혀서 거의 한 걸음도 갈 수 없으면 false
 //***************************************************************************
-bool CFieldZoneBase::IsInBounds(const Vec2& pos) const
+bool CFieldZoneBase::ResolveDest(const Vec2& from, const Vec2& dest, Vec2& out) const
 {
-	return pos.x >= _fieldConfig.minX && pos.x <= _fieldConfig.maxX
-		&& pos.y >= _fieldConfig.minY && pos.y <= _fieldConfig.maxY;
+	out = dest;
+	if( _fieldConfig.blockMap == nullptr )
+		return true;
+
+	bool hit = false;
+	out = _fieldConfig.blockMap->ClampMove(from, dest, &hit);
+	if( !hit )
+		return true;
+
+	// 줄어든 목적지가 현재 위치와 거의 같으면 벽에 붙어 있는 것이다. 미세한 이동 통지를 쏟아내지 않도록 거부한다.
+	constexpr float kMinBlockedMove = 0.05f;
+	return DistanceSq(out, from) >= kMinBlockedMove * kMinBlockedMove;
 }
 
 //***************************************************************************

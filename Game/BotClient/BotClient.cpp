@@ -136,6 +136,10 @@ namespace
 		total.throttled += s.throttled;			total.sendFailed += s.sendFailed;
 		total.unknownPackets += s.unknownPackets;
 		total.moveReqs += s.moveReqs;			total.attackReqs += s.attackReqs;
+		total.skillReqs += s.skillReqs;			total.skillCasts += s.skillCasts;
+		total.skillHits += s.skillHits;
+		for( size_t i = 0; i < 8; ++i )
+			total.skillRejects[i] += s.skillRejects[i];
 		for( int i = 0; i < 8; ++i )
 		{
 			total.attackRejects[i] += s.attackRejects[i];
@@ -199,9 +203,25 @@ int _tmain(int argc, wchar_t* argv[])
 	const uint32 tickMs = static_cast<uint32>(g_cfg.tickMs);
 	const uint32 moveMs = static_cast<uint32>(g_cfg.moveIntervalMs);
 	const uint32 attackMs = static_cast<uint32>(g_cfg.attackIntervalMs);
+	const uint32 skillId = static_cast<uint32>(g_cfg.skillId);
+	const uint32 skillMs = static_cast<uint32>(g_cfg.skillIntervalMs);
 	const uint32 workers = static_cast<uint32>(g_cfg.workerCount);
 	const uint32 statsSec = static_cast<uint32>(g_cfg.statsSec);
 	const uint32 durationSec = static_cast<uint32>(g_cfg.durationSec);
+
+	// 장애물 맵(선택). 서버가 읽는 Block.json과 같은 파일을 읽어 모든 봇이 공유한다.
+	std::shared_ptr<const CBlockMap> blockMap;
+	if( !g_cfg.blockFile.empty() )
+	{
+		if( !LoadBlockMapFile(g_cfg.blockFile, zoneId, g_cfg.areaMinX, g_cfg.areaMinY, g_cfg.areaMaxX, g_cfg.areaMaxY, CBlockMap::kDefaultCellSize, blockMap) )
+		{
+			LOG_ERROR(_T("block map load failed. file=%s"), g_cfg.blockFile.c_str());
+			MainClose();
+			return -1;
+		}
+		if( blockMap == nullptr )
+			LOG_WARNING(_T("no obstacles for zone %u in %s"), zoneId, g_cfg.blockFile.c_str());
+	}
 
 	// 봇 슬롯 준비 (연결 전에 모두 만들어 둔다 — 세션 콜백이 슬롯을 참조한다)
 	std::vector<std::unique_ptr<SBotSlot>> slots;
@@ -215,6 +235,9 @@ int _tmain(int argc, wchar_t* argv[])
 		cfg.loginDelayMs = i * rampMs;
 		cfg.moveIntervalMs = moveMs;
 		cfg.attackIntervalMs = attackMs;
+		cfg.skillId = skillId;
+		cfg.skillIntervalMs = skillMs;
+		cfg.blockMap = blockMap;
 
 		auto slot = std::make_unique<SBotSlot>();
 		SBotSlot* raw = slot.get();
@@ -329,6 +352,12 @@ int _tmain(int argc, wchar_t* argv[])
 				U(total.posCorrects[(int)ECorrectPosReason::PositionMismatch]), U(total.posCorrects[(int)ECorrectPosReason::OutOfBounds]),
 				U(total.posCorrects[(int)ECorrectPosReason::Immobile]), U(total.posCorrects[(int)ECorrectPosReason::Teleported]),
 				U(total.posCorrects[(int)ECorrectPosReason::Dead]));
+			if( g_cfg.skillId != 0 )
+				std::printf("      skill req=%llu cast=%llu hit=%llu | reject unknown/dead/cooldown/range/los/invalid=%llu/%llu/%llu/%llu/%llu/%llu\n",
+					U(total.skillReqs), U(total.skillCasts), U(total.skillHits),
+					U(total.skillRejects[(int)ESkillRejectReason::UnknownSkill]), U(total.skillRejects[(int)ESkillRejectReason::CasterDead]),
+					U(total.skillRejects[(int)ESkillRejectReason::Cooldown]), U(total.skillRejects[(int)ESkillRejectReason::OutOfRange]),
+					U(total.skillRejects[(int)ESkillRejectReason::NoLineOfSight]), U(total.skillRejects[(int)ESkillRejectReason::InvalidTarget]));
 			std::printf("      throttled=%llu sendfail=%llu unknown=%llu | attack->damage latency ms p50/p95/p99/max=%u/%u/%u/%u (n=%zu)\n",
 				U(total.throttled), U(total.sendFailed), U(total.unknownPackets),
 				Percentile(latency, 0.50), Percentile(latency, 0.95), Percentile(latency, 0.99), latency.empty() ? 0u : latency.back(), latency.size());

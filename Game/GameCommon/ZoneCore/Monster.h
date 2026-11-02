@@ -106,6 +106,8 @@ private:
 	uint64					_nextThinkMs;		// 다음 사고 시각 (존 논리 시간)
 	uint64					_targetId;			// 현재 추적/공격 대상 (0이면 없음)
 	Vec2					_lastTargetPos;		// 마지막으로 이동 명령을 내릴 때의 대상 위치 (재경로 판단용)
+	uint64					_noAggroUntilMs;	// 이 시각 전에는 근접 선공으로 새 대상을 잡지 않는다 (닿을 수 없는 대상에 대한 어그로-복귀 반복 억제)
+	uint64					_noPathUntilMs;		// 이 시각 전에는 경로탐색을 다시 하지 않는다 (경로 없음이 반복되는 비용 억제)
 	SAggroEntry				_aggro[kMaxAggro];	// 어그로 표
 	size_t					_aggroCount;		// 어그로 표 항목 수
 };

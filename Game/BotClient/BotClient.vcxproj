@@ -119,6 +119,8 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\Log.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\BlockMap.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\BlockMapFile.cpp" />
     <ClCompile Include="BotClient.cpp" />
     <ClCompile Include="BotClientConfig.cpp" />
     <ClCompile Include="pch.cpp">
@@ -183,6 +185,8 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\BlockMap.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\BlockMapFile.h" />
     <ClInclude Include="BotBrain.h" />
     <ClInclude Include="BotClientConfig.h" />
     <ClInclude Include="BotClientOptions.h" />

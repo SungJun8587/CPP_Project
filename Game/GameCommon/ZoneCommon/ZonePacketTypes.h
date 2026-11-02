@@ -111,6 +111,7 @@ enum class ECorrectPosReason : uint8_t
 	Immobile = 3,			// 이동할 수 없는 상태
 	Teleported = 4,			// 서버가 순간이동시킴
 	Dead = 5,				// 사망 상태에서는 이동할 수 없음
+	Blocked = 6,			// 장애물에 막혀 이동할 수 없음
 };
 
 //***************************************************************************
@@ -124,6 +125,20 @@ enum class EAttackRejectReason : uint8_t
 	TargetDead = 3,			// 대상이 이미 사망 상태
 	InvalidTarget = 4,		// 공격할 수 없는 대상 (자기 자신, PvP 금지 등)
 	TargetInvulnerable = 5,	// 대상이 무적 상태
+	NoLineOfSight = 6,		// 사거리 안이지만 장애물이 가로막음
+};
+
+//***************************************************************************
+// @brief 스킬 요청 거부 사유 (ZcSkillRejectNotify.reason)
+//***************************************************************************
+enum class ESkillRejectReason : uint8_t
+{
+	UnknownSkill = 1,		// 없는 스킬이거나 내 영웅이 쓸 수 없는 스킬
+	CasterDead = 2,			// 내가 사망 상태
+	Cooldown = 3,			// 재사용 대기 중
+	OutOfRange = 4,			// 대상이 없거나 사거리 밖 (엔티티 존재 여부가 새지 않도록 구분하지 않는다)
+	NoLineOfSight = 5,		// 사거리 안이지만 장애물이 가로막음
+	InvalidTarget = 6,		// 공격할 수 없는 대상 (사망, 자기 자신, PvP 금지, 무적 등)
 };
 
 //***************************************************************************
@@ -174,6 +189,9 @@ enum class EZoneClientPacketType : uint16_t
 	ZcRespawnNotify = 2010,		// Zone -> Client, 엔티티 부활(리스폰 위치/체력)
 	ZcAttackRejectNotify = 2011,// Zone -> Client, 내 공격 요청 거부 사유
 	ZcHealNotify = 2012,		// Zone -> Client, 체력 회복(몬스터 복귀 회복 등)
+	ZcSkillReq = 2013,			// Client -> Zone, 스킬 시전 요청(스킬 ID + 대상 또는 지점)
+	ZcSkillNotify = 2014,		// Zone -> Client, 스킬 시전(시전자 주변 전원에게. 피해는 ZcDamageNotify로 따로 간다)
+	ZcSkillRejectNotify = 2015,	// Zone -> Client, 내 스킬 요청 거부 사유
 };
 
 #endif // ndef ZONEPACKETTYPES_H

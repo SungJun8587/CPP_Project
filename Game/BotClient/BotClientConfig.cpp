@@ -7,6 +7,7 @@
 #include "pch.h"
 #include "BotClientConfig.h"
 
+#include <cmath>
 #include <limits>
 
 #include <Util/MainArgParser.h>
@@ -26,6 +27,8 @@ namespace
 	constexpr int32 kMaxInt = (std::numeric_limits<int32>::max)();
 	// 캐릭터 ID 시작값 상한. 몬스터 ID 대역(최상위 비트)을 침범하지 않도록 int32 범위로 제한한다.
 	constexpr int32 kMaxCharIdBase = kMaxInt;
+	// 존 영역 좌표 절대값 상한
+	constexpr float kMaxArea = 1.0e7f;
 
 	//***************************************************************************
 	// @brief 영웅 목록 문자열이 "숫자(,숫자)*" 형식인지 검사합니다. 공백은 허용합니다.
@@ -41,6 +44,45 @@ namespace
 				return false;
 		}
 		return hasDigit;
+	}
+
+	//***************************************************************************
+	// @brief --area "x0,y0,x1,y1"을 읽어 옵션의 존 영역에 채웁니다. 인자가 없으면 그대로 두고 true입니다.
+	//***************************************************************************
+	bool ReadArea(const CMainArgParser& args, SBotClientOptions& options)
+	{
+		_tstring text;
+		if( !args.ReadString(_T("area"), text) )
+			return false;
+		if( text.empty() )
+			return true;
+
+		double v[4] = {};
+		size_t pos = 0;
+		for( int i = 0; i < 4; ++i )
+		{
+			const size_t comma = text.find(_T(','), pos);
+			if( (i < 3) != (comma != _tstring::npos) )
+			{
+				LOG_ERROR(_T("[Arg] --area must be \"x0,y0,x1,y1\". value=%s"), text.c_str());
+				return false;
+			}
+			const _tstring part = text.substr(pos, comma == _tstring::npos ? _tstring::npos : comma - pos);
+			TCHAR* end = nullptr;
+			v[i] = _tcstod(part.c_str(), &end);
+			if( part.empty() || end == nullptr || *end != _T('\0') || !(std::fabs(v[i]) <= static_cast<double>(kMaxArea)) )
+			{
+				LOG_ERROR(_T("[Arg] --area must be \"x0,y0,x1,y1\" with numbers within +-%g. value=%s"), static_cast<double>(kMaxArea), text.c_str());
+				return false;
+			}
+			pos = comma + 1;
+		}
+
+		options.areaMinX = static_cast<float>(v[0]);
+		options.areaMinY = static_cast<float>(v[1]);
+		options.areaMaxX = static_cast<float>(v[2]);
+		options.areaMaxY = static_cast<float>(v[3]);
+		return true;
 	}
 }
 
@@ -63,9 +105,13 @@ void PrintUsage()
 		"  --tick-ms <n>         bot decision tick (50)\n"
 		"  --move-ms <n>         min interval between move requests (300)\n"
 		"  --attack-ms <n>       interval between attack requests (400)\n"
+		"  --skill <id>          skill id to cast on the target (0 = none)\n"
+		"  --skill-ms <n>        interval between skill requests (1500)\n"
 		"  --workers <n>         IOCP worker threads (2)\n"
 		"  --stats-sec <n>       stats print interval (5)\n"
 		"  --duration <sec>      run time, 0=until Ctrl+C (0)\n"
+		"  --block-file <file>   Block.json used by the server; bots avoid targets behind obstacles (none)\n"
+		"  --area <x0,y0,x1,y1>  zone bounds, must match the server (0,0,1000,1000)\n"
 		"  --help                show this usage\n");
 }
 
@@ -89,9 +135,16 @@ CBotClientConfig::CBotClientConfig()
 	_tickMs = defaults.tickMs;
 	_moveIntervalMs = defaults.moveIntervalMs;
 	_attackIntervalMs = defaults.attackIntervalMs;
+	_skillId = defaults.skillId;
+	_skillIntervalMs = defaults.skillIntervalMs;
 	_workerThreadCnt = defaults.workerCount;
 	_statsSec = defaults.statsSec;
 	_durationSec = defaults.durationSec;
+	_blockFile = defaults.blockFile;
+	_areaMinX = defaults.areaMinX;
+	_areaMinY = defaults.areaMinY;
+	_areaMaxX = defaults.areaMaxX;
+	_areaMaxY = defaults.areaMaxY;
 }
 
 //***************************************************************************
@@ -131,10 +184,18 @@ bool CBotClientConfig::Init(const TCHAR* tszConfigPath)
 	reader.Read(_T("TickMs"), _tickMs, 1, kMaxInt);
 	reader.Read(_T("MoveIntervalMs"), _moveIntervalMs, 0, kMaxInt);
 	reader.Read(_T("AttackIntervalMs"), _attackIntervalMs, 0, kMaxInt);
+	reader.Read(_T("SkillId"), _skillId, 0, kMaxInt);
+	reader.Read(_T("SkillIntervalMs"), _skillIntervalMs, 0, kMaxInt);
 
 	reader.Read(_T("WorkerThreadCnt"), _workerThreadCnt, 1, 1024);
 	reader.Read(_T("StatsSec"), _statsSec, 1, kMaxInt);
 	reader.Read(_T("DurationSec"), _durationSec, 0, kMaxInt);		// 0이면 무한
+
+	reader.Read(_T("BlockFile"), _blockFile);
+	reader.Read(_T("AreaMinX"), _areaMinX, -kMaxArea, kMaxArea);
+	reader.Read(_T("AreaMinY"), _areaMinY, -kMaxArea, kMaxArea);
+	reader.Read(_T("AreaMaxX"), _areaMaxX, -kMaxArea, kMaxArea);
+	reader.Read(_T("AreaMaxY"), _areaMaxY, -kMaxArea, kMaxArea);
 
 	if( !reader.Validate() )
 		return false;
@@ -142,6 +203,12 @@ bool CBotClientConfig::Init(const TCHAR* tszConfigPath)
 	if( !IsValidHeroList(_heroes) )
 	{
 		LOG_ERROR(_T("[Config] Heroes must be comma-separated numbers (e.g. \"1,2,3\"). value=%s"), _heroes.c_str());
+		return false;
+	}
+
+	if( !(_areaMaxX > _areaMinX && _areaMaxY > _areaMinY) )
+	{
+		LOG_ERROR(_T("[Config] Area must satisfy AreaMaxX > AreaMinX and AreaMaxY > AreaMinY."));
 		return false;
 	}
 
@@ -173,10 +240,18 @@ bool CBotClientConfig::Save(const TCHAR* tszConfigPath)
 	writer.Write(_T("TickMs"), _tickMs);
 	writer.Write(_T("MoveIntervalMs"), _moveIntervalMs);
 	writer.Write(_T("AttackIntervalMs"), _attackIntervalMs);
+	writer.Write(_T("SkillId"), _skillId);
+	writer.Write(_T("SkillIntervalMs"), _skillIntervalMs);
 
 	writer.Write(_T("WorkerThreadCnt"), _workerThreadCnt);
 	writer.Write(_T("StatsSec"), _statsSec);
 	writer.Write(_T("DurationSec"), _durationSec);
+
+	writer.Write(_T("BlockFile"), _blockFile);
+	writer.Write(_T("AreaMinX"), _areaMinX);
+	writer.Write(_T("AreaMinY"), _areaMinY);
+	writer.Write(_T("AreaMaxX"), _areaMaxX);
+	writer.Write(_T("AreaMaxY"), _areaMaxY);
 
 	return writer.Save(tszConfigPath);
 }
@@ -198,10 +273,18 @@ void CBotClientConfig::ToOptions(SBotClientOptions& options) const
 	options.tickMs = _tickMs;
 	options.moveIntervalMs = _moveIntervalMs;
 	options.attackIntervalMs = _attackIntervalMs;
+	options.skillId = _skillId;
+	options.skillIntervalMs = _skillIntervalMs;
 
 	options.workerCount = _workerThreadCnt;
 	options.statsSec = _statsSec;
 	options.durationSec = _durationSec;
+
+	options.blockFile = _blockFile;
+	options.areaMinX = _areaMinX;
+	options.areaMinY = _areaMinY;
+	options.areaMaxX = _areaMaxX;
+	options.areaMaxY = _areaMaxY;
 }
 
 //***************************************************************************
@@ -221,9 +304,13 @@ void CBotClientConfig::PrintSettingInfo()
 	LOG_INFO(_T("TickMs : %d"), _tickMs);
 	LOG_INFO(_T("MoveIntervalMs : %d"), _moveIntervalMs);
 	LOG_INFO(_T("AttackIntervalMs : %d"), _attackIntervalMs);
+	LOG_INFO(_T("SkillId          : %d"), _skillId);
+	LOG_INFO(_T("SkillIntervalMs  : %d"), _skillIntervalMs);
 	LOG_INFO(_T("WorkerThreadCnt : %d"), _workerThreadCnt);
 	LOG_INFO(_T("StatsSec : %d"), _statsSec);
 	LOG_INFO(_T("DurationSec : %d"), _durationSec);
+	LOG_INFO(_T("BlockFile : %s"), _blockFile.c_str());
+	LOG_INFO(_T("Area : %g,%g ~ %g,%g"), _areaMinX, _areaMinY, _areaMaxX, _areaMaxY);
 	LOG_INFO(_T("--------------- [End Print] ---------------"));
 	LOG_INFO(_T("###################################################################"));
 }
@@ -298,9 +385,19 @@ bool ParseArgs(int argc, wchar_t** argv, int& exitCode)
 	ok &= args.ReadInt(_T("tick-ms"), g_cfg.tickMs, 1, kMaxInt);
 	ok &= args.ReadInt(_T("move-ms"), g_cfg.moveIntervalMs, 0, kMaxInt);
 	ok &= args.ReadInt(_T("attack-ms"), g_cfg.attackIntervalMs, 0, kMaxInt);
+	ok &= args.ReadInt(_T("skill"), g_cfg.skillId, 0, kMaxInt);
+	ok &= args.ReadInt(_T("skill-ms"), g_cfg.skillIntervalMs, 0, kMaxInt);
 	ok &= args.ReadInt(_T("workers"), g_cfg.workerCount, 1, 1024);
 	ok &= args.ReadInt(_T("stats-sec"), g_cfg.statsSec, 1, kMaxInt);
 	ok &= args.ReadInt(_T("duration"), g_cfg.durationSec, 0, kMaxInt);		// 0이면 무한
+	ok &= args.ReadString(_T("block-file"), g_cfg.blockFile);
+	ok &= ReadArea(args, g_cfg);
+
+	if( ok && !(g_cfg.areaMaxX > g_cfg.areaMinX && g_cfg.areaMaxY > g_cfg.areaMinY) )
+	{
+		LOG_ERROR(_T("[Arg] --area must satisfy x1 > x0 and y1 > y0."));
+		ok = false;
+	}
 
 	if( ok && !IsValidHeroList(g_cfg.heroes) )
 	{

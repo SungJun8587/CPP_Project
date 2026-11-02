@@ -28,6 +28,9 @@ CMonster::CMonster(uint64 id, const SMonsterTemplate& tmpl, CMonsterSystem* syst
 	, _activeIdx(0)
 	, _nextThinkMs(0)
 	, _targetId(0)
+	, _lastTargetPos{}
+	, _noAggroUntilMs(0)
+	, _noPathUntilMs(0)
 	, _aggroCount(0)
 {
 	SetCombatStats(tmpl.stats);

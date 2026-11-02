@@ -7,6 +7,8 @@
 #ifndef ZONEPLAYER_H
 #define ZONEPLAYER_H
 
+#include <unordered_map>
+
 #include "../GameCommon/ZoneCore/ZoneEntity.h"
 
 class CBattleZone;
@@ -50,6 +52,12 @@ public:
 	//***************************************************************************
 	bool IsLeaving() const { return _leaving; }
 
+	//***************************************************************************
+	// @brief 스킬의 재사용 가능 시각 슬롯을 반환합니다. 처음 쓰는 스킬이면 0(즉시 가능)으로 만들어진다.
+	//        슬롯 수는 영웅이 가진 스킬 수(kMaxHeroSkills)로 묶이므로, 보유 여부를 확인한 스킬에만 호출해야 한다.
+	//***************************************************************************
+	uint64& SkillReadyAt(uint32 skillId) { return _skillReadyMs[skillId]; }
+
 protected:
 	virtual void	OnAoiEnter(CZoneEntity& other) override;
 	virtual void	OnAoiLeave(CZoneEntity& other) override;
@@ -59,6 +67,7 @@ private:
 	uint32			_heroId;			// 선택한 영웅 ID
 	CBattleZone* _zone;				// 소속 존 (존이 엔티티보다 오래 살아있음이 보장됨)
 	bool			_leaving;			// 퇴장 중 여부 (true면 클라이언트로 패킷을 보내지 않음)
+	std::unordered_map<uint32, uint64>	_skillReadyMs;	// 스킬 ID -> 다시 쓸 수 있는 존 논리 시각
 };
 
 #endif // ndef ZONEPLAYER_H

@@ -72,6 +72,7 @@ using namespace std;
 
 #include "../GameCommon/ZoneCommon/ZonePacketTypes.h"
 #include "../GameCommon/ZoneCommon/ZonePacket.h"
+#include "../GameCommon/ZoneCore/BlockMapFile.h"
 #include "BotBrain.h"
 #include "BotClientOptions.h"
 #include "BotClientConfig.h"

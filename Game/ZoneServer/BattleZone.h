@@ -67,12 +67,16 @@ protected:
 	virtual void OnEntityRespawned(CZoneEntity& entity) override;
 	virtual void OnEntityHealed(CZoneEntity& entity, int32 amount) override;
 	virtual void OnAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) override;
+	virtual void OnSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount) override;
+	virtual void OnSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason) override;
 	virtual void OnUpdate(uint32 dtMs) override;
 	virtual uint32 GetRespawnDelayMs(const CZoneEntity& victim) const override;
 	virtual Vec2 GetRespawnPos(const CZoneEntity& entity) const override;
 
 private:
 	void SendToEntity(CZoneEntity& target, const void* data, uint16 size);
+	void HandleSkillReq(CZoneEntity& entity, const PacketHeader* header);
+	void SendSkillReject(CZoneEntity& to, uint32 skillId, ESkillRejectReason reason);
 	bool HasNoObserver(const CZoneEntity& entity) const;
 	void AddRecipient(CZoneEntity& target);
 	void FlushRecipients(const void* data, uint16 size);

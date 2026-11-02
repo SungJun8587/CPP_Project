@@ -11,12 +11,14 @@
 #define BOTBRAIN_H
 
 #include "../GameCommon/ZoneCommon/ZonePacket.h"
+#include "../GameCommon/ZoneCore/BlockMap.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -32,12 +34,15 @@ struct SBotConfig
 	uint32	loginDelayMs = 0;			// 연결 후 로그인 요청까지 대기 (접속 램프업용)
 	uint32	moveIntervalMs = 300;		// 이동 요청 최소 간격
 	uint32	attackIntervalMs = 400;		// 공격 요청 간격 (서버 쿨다운보다 짧으면 서버가 조용히 무시한다)
+	uint32	skillId = 0;				// 0이면 스킬을 쓰지 않는다. 이 영웅이 보유한 스킬 ID여야 한다(없으면 서버가 거부하고 봇은 스킬을 끈다)
+	uint32	skillIntervalMs = 1500;		// 스킬 요청 간격 (서버 쿨다운보다 짧으면 Cooldown 거부가 늘 뿐이다)
 	float	approachDist = 1.5f;		// 이 거리 이내로 붙으면 공격 (사거리 밖 거부를 받으면 자동으로 줄어든다)
 	float	wanderRadius = 30.0f;		// 대상이 없을 때 스폰 위치 기준 배회 반경
 	uint32	wanderIntervalMs = 2000;	// 배회 목적지 갱신 간격
 	uint32	moveAckTimeoutMs = 1000;	// 이동 요청 후 서버 통지를 기다리는 최대 시간
 	uint32	maxPacketsPerSec = 60;		// 송신 상한 (Gateway 세션 제한 120/s보다 낮게)
 	uint32	seed = 0;					// 0이면 charId로 시드
+	std::shared_ptr<const CBlockMap> blockMap;	// 장애물 맵(nullptr이면 장애물 없음). 서버와 같은 Block.json으로 만들어 모든 봇이 공유한다
 };
 
 //***************************************************************************
@@ -67,6 +72,10 @@ struct SBotStats
 	uint64	unknownPackets = 0;
 	uint64	moveReqs = 0;
 	uint64	attackReqs = 0;
+	uint64	skillReqs = 0;
+	uint64	skillCasts = 0;			// 내 스킬 시전 통지 수
+	uint64	skillHits = 0;			// 내 스킬 시전 통지의 hitCount 합
+	uint64	skillRejects[8] = {};	// ESkillRejectReason 별
 	uint64	attackRejects[8] = {};	// EAttackRejectReason 별
 	uint64	posCorrects[8] = {};	// ECorrectPosReason 별
 	uint64	damageDealt = 0;		// 내가 준 피해 합
@@ -173,6 +182,12 @@ public:
 		case (uint16)EZoneClientPacketType::ZcHealNotify:
 			Count(_stats.zcRecv, h->type, kClientBase);
 			return With<ZcHealNotifyPacket>(h, [&](auto& p) { OnHeal(p); });
+		case (uint16)EZoneClientPacketType::ZcSkillNotify:
+			Count(_stats.zcRecv, h->type, kClientBase);
+			return With<ZcSkillNotifyPacket>(h, [&](auto& p) { OnSkill(p); });
+		case (uint16)EZoneClientPacketType::ZcSkillRejectNotify:
+			Count(_stats.zcRecv, h->type, kClientBase);
+			return With<ZcSkillRejectNotifyPacket>(h, [&](auto& p) { OnSkillReject(p); });
 		default:
 			++_stats.unknownPackets;
 			return true;
@@ -485,6 +500,23 @@ private:
 		}
 	}
 
+	void OnSkill(const ZcSkillNotifyPacket& p)
+	{
+		if( p.casterId != _cfg.charId )
+			return;
+		++_stats.skillCasts;
+		_stats.skillHits += p.hitCount;
+	}
+
+	void OnSkillReject(const ZcSkillRejectNotifyPacket& p)
+	{
+		if( p.reason < 8 )
+			++_stats.skillRejects[p.reason];
+		// 이 영웅이 쓸 수 없는 스킬이면 반복해도 소용없다.
+		if( p.reason == static_cast<uint8>(ESkillRejectReason::UnknownSkill) )
+			_skillDisabled = true;
+	}
+
 	void OnAttackReject(const ZcAttackRejectNotifyPacket& p)
 	{
 		if( p.reason < 8 )
@@ -503,6 +535,9 @@ private:
 		case EAttackRejectReason::TargetInvulnerable:
 		case EAttackRejectReason::InvalidTarget:
 			_targetId = 0;	// 다른 대상을 고른다
+			break;
+		case EAttackRejectReason::NoLineOfSight:
+			_repathAtMs = 0;	// 위치 추정이 어긋난 것이므로 바로 경로를 다시 본다
 			break;
 		default:
 			break;
@@ -528,24 +563,77 @@ private:
 			_targetId = 0;
 	}
 
+	// 장애물 맵이 있을 때 (ax,ay) -> (bx,by) 직선이 막히지 않는지. 막힌 직선은 서버가 중간에서 자르므로, 막혀 있으면 FindPath의 경유점으로 돌아간다.
+	bool IsClear(float ax, float ay, float bx, float by) const
+	{
+		return _cfg.blockMap == nullptr || _cfg.blockMap->IsSegmentClear(Vec2{ ax, ay }, Vec2{ bx, by });
+	}
+
 	void PickTarget(uint64 nowMs)
 	{
 		float sx, sy;
 		PosAt(_self, nowMs, sx, sy);
 
+		// 직선이 트인 가장 가까운 대상을 먼저 고른다. 없으면 길을 찾을 수 있는지 시도해 볼 가장 가까운 대상을 고른다(Fight가 경로를 찾고,
+		// 닿을 수 없으면 한동안 제외한다).
 		float best = std::numeric_limits<float>::max();
-		uint64 bestId = 0;
+		float bestBlocked = std::numeric_limits<float>::max();
+		uint64 bestId = 0, bestBlockedId = 0;
 		for( const auto& kv : _ents )
 		{
 			const SEnt& e = kv.second;
-			if( e.type == kWireEntityPlayer || e.dead )
+			if( e.type == kWireEntityPlayer || e.dead || IsUnreachable(kv.first, nowMs) )
 				continue;
 			float ex, ey;
 			PosAt(e, nowMs, ex, ey);
 			const float d = (ex - sx) * (ex - sx) + (ey - sy) * (ey - sy);
-			if( d < best ) { best = d; bestId = kv.first; }
+			if( IsClear(sx, sy, ex, ey) )
+			{
+				if( d < best ) { best = d; bestId = kv.first; }
+			}
+			else if( d < bestBlocked )
+			{
+				bestBlocked = d; bestBlockedId = kv.first;
+			}
 		}
-		_targetId = bestId;
+		_targetId = bestId != 0 ? bestId : bestBlockedId;
+	}
+
+	// 길을 찾지 못한 대상은 잠시 제외한다. 닿을 수 없는 대상을 계속 고르고 탐색하는 낭비를 막는다.
+	bool IsUnreachable(uint64 id, uint64 nowMs)
+	{
+		const auto it = _unreachableUntil.find(id);
+		if( it == _unreachableUntil.end() )
+			return false;
+		if( nowMs >= it->second )
+		{
+			_unreachableUntil.erase(it);
+			return false;
+		}
+		return true;
+	}
+
+	void MarkUnreachable(uint64 id, uint64 nowMs)
+	{
+		if( _unreachableUntil.size() >= 256 )
+			_unreachableUntil.clear();		// 사라진 엔티티의 항목이 쌓이지 않게 상한을 둔다
+		_unreachableUntil[id] = nowMs + kUnreachableMs;
+	}
+
+	// 직선이 막힌 대상에게 가기 위해 우회 경로의 첫 경유점으로 이동한다. 길이 없으면 대상을 포기한다.
+	void StepAround(float sx, float sy, float tx, float ty, uint64 nowMs)
+	{
+		if( _self.moving && nowMs < _repathAtMs )
+			return;		// 경유점으로 이동 중. 도착하거나 주기가 지나면 다시 본다
+		_repathAtMs = nowMs + kRepathMs;
+
+		if( !_cfg.blockMap->FindPath(Vec2{ sx, sy }, Vec2{ tx, ty }, _path) || _path.empty() )
+		{
+			MarkUnreachable(_targetId, nowMs);
+			_targetId = 0;
+			return;
+		}
+		MoveTo(sx, sy, _path.front().x, _path.front().y, nowMs, 0.5f);
 	}
 
 	void Fight(uint64 nowMs)
@@ -558,12 +646,36 @@ private:
 		const float dx = tx - sx, dy = ty - sy;
 		const float dist = std::sqrt(dx * dx + dy * dy);
 
+		// 대상과 나 사이에 장애물이 있으면 돌아간다(서버도 같은 이유로 벽 너머 공격을 거부한다).
+		if( !IsClear(sx, sy, tx, ty) )
+		{
+			StepAround(sx, sy, tx, ty, nowMs);
+			return;
+		}
+
 		if( dist > _approachDist )
 		{
 			// 대상 바로 앞(접근 거리의 80% 지점)까지 이동
 			const float k = (dist - _approachDist * 0.8f) / dist;
 			MoveTo(sx, sy, sx + dx * k, sy + dy * k, nowMs, 1.5f);
 			return;
+		}
+
+		// 스킬: 간격이 지났으면 기본 공격 대신 대상 위치로 시전한다.
+		if( _cfg.skillId != 0 && !_skillDisabled && nowMs - _lastSkillMs >= _cfg.skillIntervalMs )
+		{
+			ZcSkillReqPacket sreq{};
+			InitZonePacket(sreq, EZoneClientPacketType::ZcSkillReq);
+			sreq.skillId = _cfg.skillId;
+			sreq.targetId = _targetId;
+			sreq.x = tx;
+			sreq.y = ty;
+			if( Send(&sreq, sreq.size, nowMs) )
+			{
+				_lastSkillMs = nowMs;
+				++_stats.skillReqs;
+				return;
+			}
 		}
 
 		if( nowMs - _lastAttackMs >= _cfg.attackIntervalMs )
@@ -592,7 +704,17 @@ private:
 		std::uniform_real_distribution<float> d(-_cfg.wanderRadius, _cfg.wanderRadius);
 		float sx, sy;
 		PosAt(_self, nowMs, sx, sy);
-		MoveTo(sx, sy, std::max(1.0f, _homeX + d(_rng)), std::max(1.0f, _homeY + d(_rng)), nowMs, 0.0f);
+
+		// 장애물이 있으면 직선이 막히지 않는 지점을 몇 번 골라 본다. 못 찾으면 이번 주기는 쉰다.
+		for( int tries = 0; tries < 8; ++tries )
+		{
+			const float wx = std::max(1.0f, _homeX + d(_rng));
+			const float wy = std::max(1.0f, _homeY + d(_rng));
+			if( _cfg.blockMap != nullptr && (_cfg.blockMap->IsBlocked(Vec2{ wx, wy }) || !IsClear(sx, sy, wx, wy)) )
+				continue;
+			MoveTo(sx, sy, wx, wy, nowMs, 0.0f);
+			return;
+		}
 	}
 
 	// 이동 요청. 직전 요청의 서버 통지를 기다리는 중이면 보내지 않는다(내 위치 추정이 서버와 어긋나는 것을 막는다).
@@ -638,9 +760,16 @@ private:
 	float				_homeX = 0, _homeY = 0;
 
 	uint64				_targetId = 0;
+	static constexpr uint64 kUnreachableMs = 5000;	// 길을 못 찾은 대상을 제외하는 시간
+	static constexpr uint64 kRepathMs = 300;		// 우회 중 경로를 다시 보는 최소 주기
+	std::unordered_map<uint64, uint64> _unreachableUntil;	// 대상 ID -> 제외 해제 시각
+	std::vector<Vec2>	_path;						// 경로탐색 작업 공간
+	uint64				_repathAtMs = 0;
 	float				_approachDist = 1.5f;
 	uint64				_lastMoveMs = 0;
 	uint64				_lastAttackMs = 0;
+	uint64				_lastSkillMs = 0;
+	bool				_skillDisabled = false;
 	uint64				_lastWanderMs = 0;
 	bool				_awaitMoveAck = false;
 

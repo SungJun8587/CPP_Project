@@ -23,6 +23,9 @@
 // - thinkIntervalMs : 몬스터 한 마리의 사고 주기(ms). 틱 간격 이상이어야 의미가 있다. 작을수록 반응이 빠르고 비용이 는다
 // - repathDistance  : 추적 중 대상이 이만큼 움직여야 이동 명령을 다시 내린다(이동 브로드캐스트 억제)
 // - engageRatio     : 사거리의 이 비율 안에 들어오면 이동을 멈추고 공격한다 (0 초과 1 이하)
+// - pathMaxNodes    : 우회 경로탐색 한 번에 펼칠 수 있는 셀 수 상한. 도달 불가 대상에서의 비용 상한이다
+// - pathSearchesPerTick : 한 틱에 할 수 있는 경로탐색 횟수. 많은 몬스터가 동시에 탐색해 틱이 튀는 것을 막는다
+// - pathRetryMs     : 경로를 못 찾은 몬스터가 다시 탐색하기까지, 닿을 수 없는 대상을 포기한 뒤 다시 선공하기까지 기다리는 시간(ms)
 // - maxMonsters     : 이 존에 스폰할 수 있는 몬스터 총 마릿수 상한. 스폰 테이블 합계가 넘으면 Validate()가 거부한다.
 //                     존 한 개의 틱 비용은 마릿수에 비례하므로 서버 용량에 맞춰 운영 설정으로 정한다.
 //                     CMonsterData::kMaxSpawnPerZone(데이터 자체의 절대 상한)을 넘는 값은 의미가 없다
@@ -32,6 +35,9 @@ struct SMonsterSystemConfig
 	uint32	thinkIntervalMs = 100;		// 사고 주기(ms)
 	float	repathDistance = 1.5f;		// 재경로 거리
 	float	engageRatio = 0.9f;			// 교전 거리 비율
+	uint32	pathMaxNodes = 8192;		// 경로탐색 셀 수 상한 (CBlockMap::kDefaultPathNodes)
+	uint32	pathSearchesPerTick = 4;	// 틱(Update 호출) 한 번에 할 수 있는 경로탐색 수. 넘으면 다음 사고로 미룬다
+	uint32	pathRetryMs = 2000;			// 경로 없음 뒤 재탐색 대기(ms)
 	uint32	maxMonsters = static_cast<uint32>(CMonsterData::kMaxSpawnPerZone);	// 존당 몬스터 총 마릿수 상한
 };
 
@@ -85,10 +91,12 @@ private:
 	void ThinkChase(CMonster& monster, uint64 nowMs);
 	void ThinkReturn(CMonster& monster);
 	void EnterReturn(CMonster& monster);
+	bool StepToward(CMonster& monster, const Vec2& goal);
+	void GiveUpTarget(CMonster& monster, CZoneEntity& target, uint64 nowMs);
 	CZoneEntity* PickTarget(CMonster& monster);
 	CZoneEntity* FindAggroCandidate(CMonster& monster);
 	Vec2 RandomPointInDisc(const Vec2& center, float radius) const;
-	Vec2 ClampToZone(const Vec2& pos) const;
+	Vec2 PickFreePoint(const Vec2& center, float radius) const;
 
 	CFieldZoneBase& _zone;			// 대상 존
 	std::shared_ptr<const CMonsterData>	_data;			// 몬스터 데이터 (템플릿 수명 보장)
@@ -97,6 +105,8 @@ private:
 	uint64								_serial;		// 몬스터 ID 발급 번호
 	size_t								_monsterCount;	// 존에 있는 AI 몬스터 수
 	std::vector<CMonster*>				_active;		// AI 활성 몬스터 목록
+	uint32								_pathBudget = 0;	// 이번 틱에 남은 경로탐색 횟수
+	std::vector<Vec2>					_pathScratch;	// 경로탐색 결과 작업 공간 (존 스레드 전용)
 };
 
 #endif // ndef MONSTERSYSTEM_H

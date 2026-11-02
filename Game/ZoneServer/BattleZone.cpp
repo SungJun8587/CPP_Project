@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// BattleZone.cpp: implementation of the CBattleZone class.
+// BattleZone.cpp : implementation of the CBattleZone class.
 //
 //***************************************************************************
 
@@ -44,14 +44,18 @@ CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server,
 //***************************************************************************
 bool CBattleZone::ValidateMonsters(std::string& error) const
 {
-	const FieldZoneConfig& fc = GetFieldConfig();
-
 	if( !_heroes->Validate(error) )
 		return false;
 
-	if( !(_spawnPos.x >= fc.minX && _spawnPos.x <= fc.maxX && _spawnPos.y >= fc.minY && _spawnPos.y <= fc.maxY) )
+	if( !IsInBounds(_spawnPos) )
 	{
 		error = "player spawn position is outside the zone bounds";
+		return false;
+	}
+
+	if( IsBlocked(_spawnPos) )
+	{
+		error = "player spawn position is inside an obstacle";
 		return false;
 	}
 
@@ -65,6 +69,23 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 			std::snprintf(buf, sizeof(buf), "hero %u: attack reach exceeds the guaranteed AOI view range", hero.id);
 			error = buf;
 			return false;
+		}
+	}
+
+	// 스킬은 시전 거리와 효과 반경을 더한 범위까지 영향을 주므로, 그 전체가 AOI 보장 시야 안이어야 한다.
+	for( const auto& pair : _heroes->GetHeroes() )
+	{
+		const SHeroTemplate& hero = pair.second;
+		for( const uint32 skillId : hero.skills )
+		{
+			const SSkillTemplate* skill = _heroes->FindSkill(skillId);
+			if( skill != nullptr && !IsAttackRangeSupported(skill->range + skill->radius, (std::max)(hero.speed, monsterSpeed)) )
+			{
+				char buf[160];
+				std::snprintf(buf, sizeof(buf), "hero %u skill %u: range + radius exceeds the guaranteed AOI view range", hero.id, skill->id);
+				error = buf;
+				return false;
+			}
 		}
 	}
 
@@ -225,9 +246,91 @@ void CBattleZone::HandleClientPacket(uint64 clientSessionId, const PacketHeader*
 		break;
 	}
 
+	case EZoneClientPacketType::ZcSkillReq:
+		HandleSkillReq(*it->second, header);
+		break;
+
 	default:
 		break;
 	}
+}
+
+//***************************************************************************
+// @brief 스킬 시전 요청을 처리합니다. 영웅이 가진 스킬인지 확인한 뒤 CastSkill에 맡긴다.
+//        요청의 좌표/ID는 모두 클라이언트 값이므로 서버가 사거리/시선/대상 상태를 검증한다.
+// @param entity 시전자 (세션으로 찾은 플레이어)
+// @param header ZcSkillReqPacket
+//***************************************************************************
+void CBattleZone::HandleSkillReq(CZoneEntity& entity, const PacketHeader* header)
+{
+	if( header->size < sizeof(ZcSkillReqPacket) )
+		return;
+
+	const ZcSkillReqPacket* req = static_cast<const ZcSkillReqPacket*>(header);
+	const uint32 skillId = req->skillId;
+	const uint64 targetId = req->targetId;
+	Vec2 center;
+	center.x = req->x;
+	center.y = req->y;
+
+	CZonePlayer& player = static_cast<CZonePlayer&>(entity);
+	const SHeroTemplate* hero = _heroes->Resolve(player.GetHeroId());
+	const SSkillTemplate* skill = hero != nullptr ? _heroes->FindHeroSkill(*hero, skillId) : nullptr;
+	if( skill == nullptr )
+	{
+		SendSkillReject(player, skillId, ESkillRejectReason::UnknownSkill);
+		return;
+	}
+
+	CastSkill(player, *skill, targetId, center, player.SkillReadyAt(skillId));
+}
+
+//***************************************************************************
+// @brief 스킬 시전 성공을 시전자 주변 전원에게 알린다. 피해는 ZcDamageNotify로 이어진다.
+//***************************************************************************
+void CBattleZone::OnSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount)
+{
+	ZcSkillNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcSkillNotify);
+	notify.casterId = caster.GetId();
+	notify.skillId = skill.id;
+	notify.targetId = targetId;
+	notify.x = center.x;
+	notify.y = center.y;
+	notify.hitCount = hitCount;
+
+	BroadcastAround(caster, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 스킬 시전 거부를 요청한 본인에게 알린다.
+//***************************************************************************
+void CBattleZone::OnSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason)
+{
+	ESkillRejectReason code = ESkillRejectReason::InvalidTarget;
+	switch( reason )
+	{
+	case SkillResult::CasterDead:		code = ESkillRejectReason::CasterDead; break;
+	case SkillResult::Cooldown:			code = ESkillRejectReason::Cooldown; break;
+	case SkillResult::OutOfRange:		code = ESkillRejectReason::OutOfRange; break;
+	case SkillResult::NoLineOfSight:	code = ESkillRejectReason::NoLineOfSight; break;
+	default:							break;
+	}
+
+	SendSkillReject(caster, skill.id, code);
+}
+
+//***************************************************************************
+// @brief 스킬 요청 거부 패킷을 요청한 플레이어에게만 보낸다.
+//***************************************************************************
+void CBattleZone::SendSkillReject(CZoneEntity& to, uint32 skillId, ESkillRejectReason reason)
+{
+	ZcSkillRejectNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcSkillRejectNotify);
+	notify.skillId = skillId;
+	notify.reason = static_cast<uint8>(reason);
+
+	SendToEntity(to, &notify, notify.size);
 }
 
 //***************************************************************************
@@ -354,6 +457,7 @@ void CBattleZone::OnMoveRejected(CZoneEntity& entity, MoveResult reason)
 	case MoveResult::OutOfBounds:		correct.reason = static_cast<uint8>(ECorrectPosReason::OutOfBounds); break;
 	case MoveResult::Immobile:			correct.reason = static_cast<uint8>(ECorrectPosReason::Immobile); break;
 	case MoveResult::Dead:				correct.reason = static_cast<uint8>(ECorrectPosReason::Dead); break;
+	case MoveResult::Blocked:			correct.reason = static_cast<uint8>(ECorrectPosReason::Blocked); break;
 	default:							correct.reason = static_cast<uint8>(ECorrectPosReason::PositionMismatch); break;
 	}
 
@@ -484,6 +588,7 @@ void CBattleZone::OnAttackRejected(CZoneEntity& attacker, uint64 targetId, Attac
 	case AttackResult::AttackerDead:	notify.reason = static_cast<uint8>(EAttackRejectReason::AttackerDead); break;
 	case AttackResult::TargetDead:		notify.reason = static_cast<uint8>(EAttackRejectReason::TargetDead); break;
 	case AttackResult::TargetInvulnerable:	notify.reason = static_cast<uint8>(EAttackRejectReason::TargetInvulnerable); break;
+	case AttackResult::NoLineOfSight:	notify.reason = static_cast<uint8>(EAttackRejectReason::NoLineOfSight); break;
 	default:							notify.reason = static_cast<uint8>(EAttackRejectReason::InvalidTarget); break;
 	}
 

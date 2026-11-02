@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include "GameDataLoader.h"
+#include "../GameCommon/ZoneCore/BlockMapFile.h"
 #include <ConfigFile/JSONConfigFieldReader.h>
 
 #include <algorithm>
@@ -200,6 +201,104 @@ namespace
 	};
 
 	//***************************************************************************
+	// @brief Skill.json의 한 행.
+	//***************************************************************************
+	struct SSkillRow
+	{
+		uint32		id = 0;
+		_tstring	name;
+		_tstring	shape;
+		uint32		damagePercent = 0;
+		int32		flatDamage = 0;
+		double		range = 0;
+		double		radius = 0;
+		uint32		cooldownMs = 0;
+		uint32		maxTargets = 0;
+
+		static constexpr const TCHAR* kFile = _T("Skill.json");
+		static constexpr const TCHAR* kTable = _T("Skill");
+
+		static std::initializer_list<SFieldSpec> Specs()
+		{
+			static const std::initializer_list<SFieldSpec> specs =
+			{
+				{ _T("Id"), EFieldType::UInt, 1, kU32Max },
+				{ _T("Name"), EFieldType::String },
+				{ _T("Shape"), EFieldType::String },
+				{ _T("DamagePercent"), EFieldType::UInt, 0, kU32Max },
+				{ _T("FlatDamage"), EFieldType::Int, 0, kI32Max },
+				{ _T("Range"), EFieldType::Number },
+				{ _T("Radius"), EFieldType::Number },
+				{ _T("CooldownMs"), EFieldType::UInt, 1, kU32Max },
+				{ _T("MaxTargets"), EFieldType::UInt, 1, kU32Max },
+			};
+			return specs;
+		}
+
+		void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
+		{
+			value.SetObject();
+			value.AddMember(_T("Id"), id, allocator);
+			value.AddMember(_T("Name"), _tValue(name.c_str(), allocator), allocator);
+			value.AddMember(_T("Shape"), _tValue(shape.c_str(), allocator), allocator);
+			value.AddMember(_T("DamagePercent"), damagePercent, allocator);
+			value.AddMember(_T("FlatDamage"), flatDamage, allocator);
+			value.AddMember(_T("Range"), range, allocator);
+			value.AddMember(_T("Radius"), radius, allocator);
+			value.AddMember(_T("CooldownMs"), cooldownMs, allocator);
+			value.AddMember(_T("MaxTargets"), maxTargets, allocator);
+		}
+
+		void FromJSON(const _tValue& value)
+		{
+			id = value[_T("Id")].GetUint();
+			name = value[_T("Name")].GetString();
+			shape = value[_T("Shape")].GetString();
+			damagePercent = value[_T("DamagePercent")].GetUint();
+			flatDamage = value[_T("FlatDamage")].GetInt();
+			range = value[_T("Range")].GetDouble();
+			radius = value[_T("Radius")].GetDouble();
+			cooldownMs = value[_T("CooldownMs")].GetUint();
+			maxTargets = value[_T("MaxTargets")].GetUint();
+		}
+	};
+
+	//***************************************************************************
+	// @brief HeroSkill.json의 한 행. 영웅이 쓸 수 있는 스킬을 연결한다.
+	//***************************************************************************
+	struct SHeroSkillRow
+	{
+		uint32		heroId = 0;
+		uint32		skillId = 0;
+
+		static constexpr const TCHAR* kFile = _T("HeroSkill.json");
+		static constexpr const TCHAR* kTable = _T("HeroSkill");
+
+		static std::initializer_list<SFieldSpec> Specs()
+		{
+			static const std::initializer_list<SFieldSpec> specs =
+			{
+				{ _T("HeroId"), EFieldType::UInt, 1, kU32Max },
+				{ _T("SkillId"), EFieldType::UInt, 1, kU32Max },
+			};
+			return specs;
+		}
+
+		void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
+		{
+			value.SetObject();
+			value.AddMember(_T("HeroId"), heroId, allocator);
+			value.AddMember(_T("SkillId"), skillId, allocator);
+		}
+
+		void FromJSON(const _tValue& value)
+		{
+			heroId = value[_T("HeroId")].GetUint();
+			skillId = value[_T("SkillId")].GetUint();
+		}
+	};
+
+	//***************************************************************************
 	// @brief <dir>/TRow::kFile JSON을 열어 TRow::kTable 키의 행 배열을 읽는다. 파일/키가 없으면 실패한다.
 	//        (기획 데이터가 통째로 빠진 배포 실수를 빈 테이블로 넘기지 않기 위함)
 	// @details 행 타입이 파일 이름, 테이블 키, 필드 규칙(Specs)을 함께 가지므로 새 테이블은 행 타입만 추가하면 된다.
@@ -268,6 +367,63 @@ std::shared_ptr<const CHeroData> CGameDataLoader::LoadHeroes(const _tstring& dir
 		}
 	}
 
+	// 스킬(선택). 파일이 없으면 스킬 없이 구동하고, 있는데 형식이 틀리면 구동하지 않는다.
+	const std::filesystem::path skillFile = std::filesystem::path(dir) / SSkillRow::kFile;
+	if( std::filesystem::exists(skillFile) )
+	{
+		std::vector<SSkillRow> skillRows;
+		if( !ReadTable(std::filesystem::path(dir), skillRows) )
+			return nullptr;
+
+		for( const SSkillRow& r : skillRows )
+		{
+			SSkillTemplate s;
+			s.id = r.id;
+			s.name = TStringToString(r.name.c_str());
+			if( r.shape == _T("Single") )
+				s.shape = ESkillShape::Single;
+			else if( r.shape == _T("Area") )
+				s.shape = ESkillShape::Area;
+			else
+			{
+				LOG_ERROR(_T("[GameData] skill %u: Shape must be \"Single\" or \"Area\". value=%s"), r.id, r.shape.c_str());
+				return nullptr;
+			}
+			s.damagePercent = r.damagePercent;
+			s.flatDamage = r.flatDamage;
+			s.range = static_cast<float>(r.range);
+			s.radius = static_cast<float>(r.radius);
+			s.cooldownMs = r.cooldownMs;
+			s.maxTargets = r.maxTargets;
+
+			if( !data->AddSkill(s) )
+			{
+				LOG_ERROR(_T("[GameData] duplicate skill id. id=%u"), r.id);
+				return nullptr;
+			}
+		}
+
+		const std::filesystem::path linkFile = std::filesystem::path(dir) / SHeroSkillRow::kFile;
+		if( std::filesystem::exists(linkFile) )
+		{
+			std::vector<SHeroSkillRow> linkRows;
+			if( !ReadTable(std::filesystem::path(dir), linkRows) )
+				return nullptr;
+
+			for( const SHeroSkillRow& r : linkRows )
+			{
+				if( !data->AssignSkill(r.heroId, r.skillId) )
+				{
+					LOG_ERROR(_T("[GameData] hero-skill link rejected (unknown hero/skill, duplicate, or more than %u skills). heroId=%u, skillId=%u"),
+						kMaxHeroSkills, r.heroId, r.skillId);
+					return nullptr;
+				}
+			}
+		}
+		else
+			LOG_WARNING(_T("[GameData] %s has skills but %s is missing: no hero can use them."), SSkillRow::kFile, SHeroSkillRow::kFile);
+	}
+
 	std::string error;
 	if( !data->Validate(error) )
 	{
@@ -275,7 +431,7 @@ std::shared_ptr<const CHeroData> CGameDataLoader::LoadHeroes(const _tstring& dir
 		return nullptr;
 	}
 
-	LOG_INFO(_T("[GameData] loaded. heroes=%u"), static_cast<uint32>(data->GetHeroCount()));
+	LOG_INFO(_T("[GameData] loaded. heroes=%u, skills=%u"), static_cast<uint32>(data->GetHeroCount()), static_cast<uint32>(data->GetSkillCount()));
 	return data;
 }
 
@@ -341,4 +497,32 @@ std::shared_ptr<const CMonsterData> CGameDataLoader::LoadMonsters(const _tstring
 
 	LOG_INFO(_T("[GameData] loaded. monsters=%u, spawns=%u"), static_cast<uint32>(data->GetMonsterCount()), static_cast<uint32>(data->GetSpawns().size()));
 	return data;
+}
+
+//***************************************************************************
+// @brief 이 존의 장애물을 읽어 차단 맵을 만든다. 실제 읽기와 검증은 LoadBlockMapFile()이 한다(봇 클라이언트와 공유).
+// @details Block.json이 없으면 장애물 없는 존으로 보고 성공한다(Monster/Spawn/Hero와 달리 선택 데이터).
+//          파일이 있는데 형식이 틀리면 실패한다(장애물 없이 조용히 뜨는 것이 더 위험하다).
+// @param dir    기획 데이터 폴더 (Block.json)
+// @param zoneId 이 존의 ID (다른 존의 행은 검증만 하고 쓰지 않음)
+// @param minX   존 영역 최소 X
+// @param minY   존 영역 최소 Y
+// @param maxX   존 영역 최대 X
+// @param maxY   존 영역 최대 Y
+// @param out    [out] 차단 맵. 파일이 없거나 이 존의 행이 없으면 nullptr
+// @return 성공(파일이 없는 경우 포함) 시 true, 형식 오류/값 오류/셀 수 초과 시 false (원인은 로그)
+//***************************************************************************
+bool CGameDataLoader::LoadBlockMap(const _tstring& dir, uint32 zoneId, float minX, float minY, float maxX, float maxY,
+	std::shared_ptr<const CBlockMap>& out)
+{
+	out.reset();
+
+	const std::filesystem::path file = std::filesystem::path(dir) / _T("Block.json");
+	if( !std::filesystem::exists(file) )
+	{
+		LOG_INFO(_T("[GameData] Block.json not found. no obstacles. dir=%s"), dir.c_str());
+		return true;
+	}
+
+	return LoadBlockMapFile(file.native(), zoneId, minX, minY, maxX, maxY, kBlockCellSize, out);
 }

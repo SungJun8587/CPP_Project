@@ -63,7 +63,6 @@ bool CMonsterSystem::Validate(std::string& error, float opponentMaxSpeed) const
 	if( _data == nullptr )
 		return true;
 
-	const FieldZoneConfig& fc = _zone.GetFieldConfig();
 	const float viewRange = _zone.GetGuaranteedViewRange();
 	uint64 totalCount = 0;
 
@@ -88,9 +87,17 @@ bool CMonsterSystem::Validate(std::string& error, float opponentMaxSpeed) const
 			return false;
 		}
 
-		if( !(s.x >= fc.minX && s.x <= fc.maxX && s.y >= fc.minY && s.y <= fc.maxY) )
+		const Vec2 center{ s.x, s.y };
+		if( !_zone.IsInBounds(center) )
 		{
 			std::snprintf(buf, sizeof(buf), "zone %u: spawn of monster %u is outside the zone bounds", s.zoneId, s.monsterId);
+			error = buf;
+			return false;
+		}
+
+		if( _zone.IsBlocked(center) )
+		{
+			std::snprintf(buf, sizeof(buf), "zone %u: spawn center of monster %u is inside an obstacle", s.zoneId, s.monsterId);
 			error = buf;
 			return false;
 		}
@@ -163,7 +170,7 @@ uint32 CMonsterSystem::SpawnAll()
 
 		for( uint32 i = 0; i < s.count; ++i )
 		{
-			const Vec2 pos = ClampToZone(RandomPointInDisc(anchor, s.radius));
+			const Vec2 pos = PickFreePoint(anchor, s.radius);
 
 			std::unique_ptr<CMonster> monster = std::make_unique<CMonster>(kMonsterIdBase | ++_serial, *tmpl, this, anchor, s.radius);
 			monster->SetSpawnPos(pos);
@@ -187,6 +194,7 @@ uint32 CMonsterSystem::SpawnAll()
 void CMonsterSystem::Update()
 {
 	const uint64 nowMs = _zone.GetNowMs();
+	_pathBudget = _config.pathSearchesPerTick;
 
 	for( size_t i = 0; i < _active.size(); )
 	{
@@ -270,7 +278,7 @@ void CMonsterSystem::ThinkIdle(CMonster& monster, uint64 nowMs)
 {
 	CZoneEntity* target = PickTarget(monster);
 
-	if( target == nullptr && monster._tmpl->aggroRange > 0.0f )
+	if( target == nullptr && monster._tmpl->aggroRange > 0.0f && nowMs >= monster._noAggroUntilMs )
 	{
 		target = FindAggroCandidate(monster);
 		if( target != nullptr )
@@ -330,6 +338,11 @@ void CMonsterSystem::ThinkChase(CMonster& monster, uint64 nowMs)
 			case AttackResult::TargetInvulnerable:
 				monster.RemoveThreat(target->GetId());		// 공격할 수 없는 대상은 어그로에서 뺀다
 				break;
+			case AttackResult::NoLineOfSight:
+				// 사거리 안이지만 벽이 가로막고 있다. 시선이 트이는 곳으로 돌아가 보고, 갈 길이 없으면 포기한다.
+				if( !StepToward(monster, target->GetPos()) )
+					GiveUpTarget(monster, *target, nowMs);
+				break;
 			default:
 				break;
 			}
@@ -351,8 +364,14 @@ void CMonsterSystem::ThinkChase(CMonster& monster, uint64 nowMs)
 		dest.y += (monster.GetPos().y - dest.y) / dist * stand;
 	}
 
-	if( _zone.MoveEntity(monster, ClampToZone(dest)) )
+	dest = _zone.ClampToBounds(dest);
+	if( _zone.IsBlocked(dest) )
+		dest = target->GetPos();		// 사거리 안쪽 지점이 장애물 안이면 대상 위치로 향한다
+
+	if( StepToward(monster, dest) )
 		monster._lastTargetPos = target->GetPos();
+	else if( !monster.IsMoving() )
+		GiveUpTarget(monster, *target, nowMs);		// 다가갈 수 없는 대상(벽에 막힘). 이동 중 거부는 다음 사고에서 다시 본다.
 }
 
 //***************************************************************************
@@ -373,8 +392,8 @@ void CMonsterSystem::ThinkReturn(CMonster& monster)
 		return;
 	}
 
-	// 이동 명령이 거부되면(복귀 지점이 영역 밖 등 설정 오류) 순간이동으로 복귀를 마무리한다.
-	if( !_zone.MoveEntity(monster, monster._home) )
+	// 한 걸음(경유점)씩 복귀한다. 이동 명령이 거부되면(영역 밖 설정 오류, 길이 막힘) 순간이동으로 복귀를 마무리한다.
+	if( !StepToward(monster, monster._home) )
 		_zone.Teleport(monster.GetId(), monster._home);
 }
 
@@ -386,8 +405,49 @@ void CMonsterSystem::EnterReturn(CMonster& monster)
 	monster._state = EMonsterState::Return;
 	monster.ClearAggro();
 
-	if( !_zone.MoveEntity(monster, monster._home) )
+	if( !StepToward(monster, monster._home) )
 		_zone.Teleport(monster.GetId(), monster._home);
+}
+
+//***************************************************************************
+// @brief 닿을 수 없는 대상을 포기합니다. 어그로에서 빼고, 한동안 근접 선공으로 다시 잡지 않아
+//        같은 대상에 대한 추적-복귀 반복을 막습니다. (피해를 준 대상은 OnDamaged로 다시 위협이 쌓인다)
+//***************************************************************************
+void CMonsterSystem::GiveUpTarget(CMonster& monster, CZoneEntity& target, uint64 nowMs)
+{
+	monster.RemoveThreat(target.GetId());
+	monster._noAggroUntilMs = nowMs + _config.pathRetryMs;
+}
+
+//***************************************************************************
+// @brief 몬스터를 목표 쪽으로 한 걸음 보냅니다. 직선이 비어 있으면 목표로 곧장 가고, 막혀 있으면 우회 경로의
+//        첫 경유점으로 간다. 경유점에 도착해 멈추면 다음 사고에서 다시 호출되어 다음 경유점으로 이어진다(경로를 저장하지 않는다).
+//        경로가 없으면 pathRetryMs 동안은 탐색하지 않고 실패를 돌려준다.
+// @param monster 이동시킬 몬스터
+// @param goal    목표 지점 (이동 가능한 위치)
+// @return 이동 명령을 냈으면 true
+//***************************************************************************
+bool CMonsterSystem::StepToward(CMonster& monster, const Vec2& goal)
+{
+	const CBlockMap* blockMap = _zone.GetBlockMap();
+	if( blockMap == nullptr || blockMap->IsSegmentClear(monster.GetPos(), goal) )
+		return _zone.MoveEntity(monster, goal);
+
+	const uint64 nowMs = _zone.GetNowMs();
+	if( nowMs < monster._noPathUntilMs )
+		return false;
+
+	if( _pathBudget == 0 )
+		return true;		// 이번 틱 탐색 예산을 다 썼다. 제자리에서 다음 사고(주기 뒤)에 다시 시도한다
+	--_pathBudget;
+
+	if( !blockMap->FindPath(monster.GetPos(), goal, _pathScratch, _config.pathMaxNodes) || _pathScratch.empty() )
+	{
+		monster._noPathUntilMs = nowMs + _config.pathRetryMs;
+		return false;
+	}
+
+	return _zone.MoveEntity(monster, _pathScratch.front());
 }
 
 //***************************************************************************
@@ -574,7 +634,7 @@ bool CMonsterSystem::GetRespawnPos(const CZoneEntity& entity, Vec2& out) const
 		return false;
 
 	const CMonster& monster = static_cast<const CMonster&>(entity);
-	out = ClampToZone(RandomPointInDisc(monster.GetAnchor(), monster.GetSpawnRadius()));
+	out = PickFreePoint(monster.GetAnchor(), monster.GetSpawnRadius());
 	return true;
 }
 
@@ -602,16 +662,20 @@ Vec2 CMonsterSystem::RandomPointInDisc(const Vec2& center, float radius) const
 }
 
 //***************************************************************************
-// @brief 좌표를 존 영역 안으로 보정합니다.
-// @param pos 보정할 좌표
-// @return 영역 안의 좌표
+// @brief 스폰 중심 반경 안에서 장애물 밖인 무작위 지점을 고릅니다. 영역 안으로 보정하며, 여러 번 시도해도 못 찾으면 중심을 씁니다.
+//        중심은 Validate()에서 장애물 밖임을 확인하므로 항상 유효하다.
+// @param center 중심
+// @param radius 반경
+// @return 이동 가능한 지점
 //***************************************************************************
-Vec2 CMonsterSystem::ClampToZone(const Vec2& pos) const
+Vec2 CMonsterSystem::PickFreePoint(const Vec2& center, float radius) const
 {
-	const FieldZoneConfig& fc = _zone.GetFieldConfig();
-
-	Vec2 p = pos;
-	p.x = (std::min)((std::max)(p.x, fc.minX), fc.maxX);
-	p.y = (std::min)((std::max)(p.y, fc.minY), fc.maxY);
-	return p;
+	constexpr int kMaxTries = 16;
+	for( int i = 0; i < kMaxTries; ++i )
+	{
+		const Vec2 p = _zone.ClampToBounds(RandomPointInDisc(center, radius));
+		if( _zone.IsWalkable(p) )
+			return p;
+	}
+	return _zone.ClampToBounds(center);
 }

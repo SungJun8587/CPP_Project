@@ -95,6 +95,18 @@
     <ClCompile Include="..\GameCommon\ZoneCore\HeroData.cpp">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BlockMap.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BlockMapFile.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="BlockMapTests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="SkillTests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -271,6 +283,12 @@
     </ClInclude>
     <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h">
       <Filter>UtilCore\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\BlockMap.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\BlockMapFile.h">
+      <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

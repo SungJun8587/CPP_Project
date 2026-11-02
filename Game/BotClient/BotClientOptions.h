@@ -1,4 +1,5 @@
-﻿//***************************************************************************
+﻿
+//***************************************************************************
 // BotClientOptions.h : BotClient 구동 옵션
 //
 //***************************************************************************
@@ -22,9 +23,16 @@ struct SBotClientOptions
 	int32		tickMs = 50;			// 봇 행동 틱 주기(ms)
 	int32		moveIntervalMs = 300;	// 이동 요청 최소 간격(ms)
 	int32		attackIntervalMs = 400;	// 공격 요청 간격(ms)
+	int32		skillId = 0;			// 0이면 스킬 미사용. 영웅이 보유한 스킬 ID
+	int32		skillIntervalMs = 1500;	// 스킬 요청 간격(ms)
 	int32		workerCount = 2;		// IOCP 워커 스레드 수
 	int32		statsSec = 5;			// 통계 출력 주기(초)
 	int32		durationSec = 0;		// 실행 시간(초). 0이면 Ctrl+C까지
+	_tstring	blockFile;				// 장애물 파일(Block.json) 경로. 비우면 장애물을 고려하지 않는다. 서버가 읽는 파일과 같은 것을 쓴다
+	float		areaMinX = 0.0f;		// 존 영역(서버의 MinX/MinY/MaxX/MaxY와 같아야 함). 장애물 파일을 쓸 때만 의미가 있다
+	float		areaMinY = 0.0f;
+	float		areaMaxX = 1000.0f;
+	float		areaMaxY = 1000.0f;
 };
 
 #endif // ndef BOTCLIENTOPTIONS_H
