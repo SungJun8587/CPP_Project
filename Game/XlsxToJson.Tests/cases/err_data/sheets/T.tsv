@@ -1,0 +1,9 @@
+Id:uint[1..]	Hp:int[1..100]	K:EKind	Ratio:float	On:bool	Name:string	Big:int	N:uint
+0	5	Sword	1	TRUE	a	1	1
+2	101	Swrod	1	TRUE	a	1	1
+3	5.5	Bow	abc	TRUE	a	1	1
+4	5	Bow	1	maybe	a	1	1
+5	5	Bow	1	TRUE		1	1
+6	5	Bow	1	TRUE	a	3000000000	1
+7	5	Bow	1	TRUE	a	1	-1
+8	5		1	TRUE	a	1	1

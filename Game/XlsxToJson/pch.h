@@ -42,7 +42,10 @@
 #include <Excel/XlntDefine.h>
 #include <Excel/XlntWorkbookReader.h>
 
+#include "Utf8Literal.h"
 #include "ValueFormat.h"
 #include "SheetConverter.h"
+#include "DefinitionSheets.h"
+#include "RowGenerator.h"
 
 #endif // ndef PCH_H

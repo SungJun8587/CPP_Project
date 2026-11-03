@@ -1,0 +1,9 @@
+Id:uint[1..]	Name:string	Shape:ESkillShape	DamagePercent:uint	FlatDamage:int[0..]	Range:float	Radius:float	CooldownMs:uint[1..]	MaxTargets:uint[1..]	CastTimeMs:uint?	ProjectileSpeed:float?	StatusId:uint?
+# Shape: Single(대상 지정) / Area(좌표 중심 원형). 피해 = 공격력*DamagePercent/100 + FlatDamage - 방어력 (둘 다 0이면 피해 없음). CastTimeMs>0: 시전 시간(이동하면 취소). ProjectileSpeed>0: 투사체(착탄 시 판정). StatusId: Status 시트 ID(0=없음)											
+1	강타	Single	250	0	3	0	4000	1	0	0	4
+2	회전베기	Area	150	0	3	4	7000	6	0	0	0
+3	정밀사격	Single	300	0	14	0	5000	1	0	60	2
+4	화살비	Area	120	0	12	5	8000	8	600	0	0
+5	파이어볼	Single	350	0	10	0	4000	1	800	40	1
+6	폭발	Area	200	10	9	6	9000	12	1200	0	0
+7	전투 함성	Area	0	0	1	1	20000	1	0	0	3

@@ -1,0 +1,4 @@
+Id:uint[1..]	Name:string	MaxHp:int[1..]	Attack:int[0..]	Defense:int[0..]	AttackRange:float	AttackIntervalMs:uint[1..]	Speed:float
+1	전사	150	12	3	2.5	800	6
+2	궁수	100	15	1	12	1000	6.5
+3	마법사	80	24	0	8	1500	5.5

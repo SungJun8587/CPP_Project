@@ -126,6 +126,7 @@ enum class EAttackRejectReason : uint8_t
 	InvalidTarget = 4,		// 공격할 수 없는 대상 (자기 자신, PvP 금지 등)
 	TargetInvulnerable = 5,	// 대상이 무적 상태
 	NoLineOfSight = 6,		// 사거리 안이지만 장애물이 가로막음
+	Casting = 7,			// 스킬 시전 중에는 기본 공격을 할 수 없음
 };
 
 //***************************************************************************
@@ -139,6 +140,19 @@ enum class ESkillRejectReason : uint8_t
 	OutOfRange = 4,			// 대상이 없거나 사거리 밖 (엔티티 존재 여부가 새지 않도록 구분하지 않는다)
 	NoLineOfSight = 5,		// 사거리 안이지만 장애물이 가로막음
 	InvalidTarget = 6,		// 공격할 수 없는 대상 (사망, 자기 자신, PvP 금지, 무적 등)
+	Casting = 7,			// 이미 다른 스킬을 시전 중
+};
+
+//***************************************************************************
+// @brief 스킬 시전 취소 사유 (ZcSkillCancelNotify.reason)
+//***************************************************************************
+enum class ESkillCancelReason : uint8_t
+{
+	Moved = 1,				// 시전자가 이동했거나 순간이동함
+	Died = 2,				// 시전자가 사망함
+	InvalidTarget = 3,		// 완료 시점에 대상이 없어졌거나 사망/무적/공격 불가 상태가 됨
+	OutOfRange = 4,			// 완료 시점에 대상이 사거리 밖으로 벗어남
+	NoLineOfSight = 5,		// 완료 시점에 장애물이 가로막음
 };
 
 //***************************************************************************
@@ -192,6 +206,11 @@ enum class EZoneClientPacketType : uint16_t
 	ZcSkillReq = 2013,			// Client -> Zone, 스킬 시전 요청(스킬 ID + 대상 또는 지점)
 	ZcSkillNotify = 2014,		// Zone -> Client, 스킬 시전(시전자 주변 전원에게. 피해는 ZcDamageNotify로 따로 간다)
 	ZcSkillRejectNotify = 2015,	// Zone -> Client, 내 스킬 요청 거부 사유
+	ZcSkillCastNotify = 2016,	// Zone -> Client, 시전 시간이 있는 스킬의 시전 시작(시전자 주변 전원에게). 끝나면 ZcSkillNotify가 이어진다
+	ZcSkillCancelNotify = 2017,	// Zone -> Client, 시전 취소(시전자 주변 전원에게)
+	ZcProjectileNotify = 2018,	// Zone -> Client, 투사체 발사(시전자 주변 전원에게). 착탄은 ZcSkillImpactNotify
+	ZcSkillImpactNotify = 2019,	// Zone -> Client, 투사체 착탄(시전자 주변 전원에게). 피해는 ZcDamageNotify로 따로 간다
+	ZcStatusNotify = 2020,		// Zone -> Client, 상태 효과 적용/갱신/해제(엔티티 주변 전원에게)
 };
 
 #endif // ndef ZONEPACKETTYPES_H

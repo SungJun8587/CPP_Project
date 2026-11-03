@@ -1,0 +1,10 @@
+변환 실패 (9건):
+A!1열 헤더 'Id': 'Name:type' 형식이어야 합니다
+A!2열 헤더 'Name:text': 타입은 int, uint, float, string, bool 또는 Enum 시트에 정의한 enum 이름이어야 합니다 ('text')
+A!3열 헤더 'Hp:float[0..1]': 범위 [min..max]는 int, uint에만 쓸 수 있습니다
+A!5열 헤더 'A:int': 필드명 중복
+A!6열 헤더 'B:int[5..1]': 범위의 min이 max보다 큽니다
+A!7열 헤더 'C:int[1..2': 범위는 [min..max] 형식이어야 합니다
+A!8열 헤더 'D:uint[-1..5]': 범위가 uint의 표현 범위(0..4294967295)를 벗어났습니다
+A!9열 헤더 ':int': 필드명이 비어 있습니다
+A!10열 헤더 'E:Nope': 타입은 int, uint, float, string, bool 또는 Enum 시트에 정의한 enum 이름이어야 합니다 ('Nope')

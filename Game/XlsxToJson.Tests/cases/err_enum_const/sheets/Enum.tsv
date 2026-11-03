@@ -1,0 +1,10 @@
+Enum	Name	Value	Base	Comment
+EOne	X	1	uint8	
+EOne	X	2		
+EOne	Y	1		
+EOne	Z	300		
+ETwo	int	0		
+EThree	Q	0	uint64	
+EFour	P	0	uint8	
+EFour	R		uint16	
+bad name	M	0		

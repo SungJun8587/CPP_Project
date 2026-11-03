@@ -107,6 +107,9 @@
     <ClCompile Include="SkillTests.cpp">
       <Filter>Tests</Filter>
     </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneSkill.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -288,6 +291,9 @@
       <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
     <ClInclude Include="..\GameCommon\ZoneCore\BlockMapFile.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\SkillData.h">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
   </ItemGroup>

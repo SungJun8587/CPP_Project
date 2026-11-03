@@ -1,0 +1,29 @@
+{
+  "Item": [
+    {
+      "Id": 1,
+      "Name": "칼",
+      "Color": "Red",
+      "Flag": "A",
+      "Weight": 1.5,
+      "Active": true,
+      "Delta": -3
+    },
+    {
+      "Id": 2,
+      "Name": "방패",
+      "Color": "Blue",
+      "Weight": 0.1,
+      "Active": false
+    },
+    {
+      "Id": 3,
+      "Name": "007",
+      "Color": "Alpha",
+      "Flag": "High",
+      "Weight": 1000.0,
+      "Active": true,
+      "Delta": 100
+    }
+  ]
+}

@@ -138,8 +138,14 @@ namespace
 		total.moveReqs += s.moveReqs;			total.attackReqs += s.attackReqs;
 		total.skillReqs += s.skillReqs;			total.skillCasts += s.skillCasts;
 		total.skillHits += s.skillHits;
+		total.castStarts += s.castStarts;		total.projectiles += s.projectiles;
+		total.impacts += s.impacts;				total.impactHits += s.impactHits;
+		total.statusApplied += s.statusApplied;	total.statusEnded += s.statusEnded;
 		for( size_t i = 0; i < 8; ++i )
+		{
 			total.skillRejects[i] += s.skillRejects[i];
+			total.castCancels[i] += s.castCancels[i];
+		}
 		for( int i = 0; i < 8; ++i )
 		{
 			total.attackRejects[i] += s.attackRejects[i];
@@ -358,6 +364,12 @@ int _tmain(int argc, wchar_t* argv[])
 					U(total.skillRejects[(int)ESkillRejectReason::UnknownSkill]), U(total.skillRejects[(int)ESkillRejectReason::CasterDead]),
 					U(total.skillRejects[(int)ESkillRejectReason::Cooldown]), U(total.skillRejects[(int)ESkillRejectReason::OutOfRange]),
 					U(total.skillRejects[(int)ESkillRejectReason::NoLineOfSight]), U(total.skillRejects[(int)ESkillRejectReason::InvalidTarget]));
+			if( g_cfg.skillId != 0 )
+				std::printf("      cast start=%llu cancel moved/died/target/range/los=%llu/%llu/%llu/%llu/%llu | projectile=%llu impact=%llu hit=%llu | status on/off=%llu/%llu | reject casting=%llu\n",
+					U(total.castStarts), U(total.castCancels[(int)ESkillCancelReason::Moved]), U(total.castCancels[(int)ESkillCancelReason::Died]),
+					U(total.castCancels[(int)ESkillCancelReason::InvalidTarget]), U(total.castCancels[(int)ESkillCancelReason::OutOfRange]),
+					U(total.castCancels[(int)ESkillCancelReason::NoLineOfSight]), U(total.projectiles), U(total.impacts), U(total.impactHits),
+					U(total.statusApplied), U(total.statusEnded), U(total.skillRejects[(int)ESkillRejectReason::Casting]));
 			std::printf("      throttled=%llu sendfail=%llu unknown=%llu | attack->damage latency ms p50/p95/p99/max=%u/%u/%u/%u (n=%zu)\n",
 				U(total.throttled), U(total.sendFailed), U(total.unknownPackets),
 				Percentile(latency, 0.50), Percentile(latency, 0.95), Percentile(latency, 0.99), latency.empty() ? 0u : latency.back(), latency.size());

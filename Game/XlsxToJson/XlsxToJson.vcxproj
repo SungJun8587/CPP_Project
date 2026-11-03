@@ -96,6 +96,8 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Excel\XlntWorkbookReader.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
+    <ClCompile Include="DefinitionSheets.cpp" />
+    <ClCompile Include="RowGenerator.cpp" />
     <ClCompile Include="SheetConverter.cpp" />
     <ClCompile Include="ValueFormat.cpp" />
     <ClCompile Include="XlsxToJson.cpp" />
@@ -114,7 +116,11 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="DefinitionSheets.h" />
+    <ClInclude Include="RowGenerator.h" />
+    <ClInclude Include="RowSchema.h" />
     <ClInclude Include="SheetConverter.h" />
+    <ClInclude Include="Utf8Literal.h" />
     <ClInclude Include="ValueFormat.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>

@@ -25,6 +25,11 @@ CZoneEntity::CZoneEntity(uint64 id, EntityType type)
 	, _nextAttackMs(0)
 	, _invulnerableUntilMs(0)
 	, _respawnTimerId(0)
+	, _baseSpeed(0.0f)
+	, _attackPct(0)
+	, _defensePct(0)
+	, _speedPct(0)
+	, _statusIdx(kInvalidIndex)
 	, _movingIdx(kInvalidIndex)
 {
 }

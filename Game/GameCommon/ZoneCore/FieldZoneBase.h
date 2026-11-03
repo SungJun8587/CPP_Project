@@ -11,6 +11,7 @@
 #include <memory>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <BaseRedefineDataType.h>
 #include <Memory/Containers.h>
@@ -57,6 +58,7 @@ enum class AttackResult : uint8
 	Cooldown,			// 공격 쿨다운 중 (거부 통지 없음)
 	Throttled,			// 같은 틱에 이미 공격 요청을 접수함 (거부 통지 없음)
 	NoLineOfSight,		// 사거리 안이지만 둘 사이를 장애물이 막고 있음
+	Casting,			// 스킬 시전 중에는 기본 공격을 할 수 없음
 };
 
 //***************************************************************************
@@ -71,6 +73,28 @@ enum class SkillResult : uint8
 	NoLineOfSight,		// 사거리 안이지만 장애물이 가로막음
 	InvalidTarget,		// 공격할 수 없는 대상 (사망, 자기 자신, PvP 금지, 무적 등)
 	Throttled,			// 같은 틱에 이미 공격/스킬 요청을 접수함 (거부 통지 없음)
+	Casting,			// 이미 다른 스킬을 시전 중
+};
+
+//***************************************************************************
+// @brief 시전 시간이 있는 스킬이 시전 도중 취소된 사유.
+//***************************************************************************
+enum class SkillCancelReason : uint8
+{
+	Moved,				// 시전자가 이동했거나 순간이동함
+	Died,				// 시전자가 사망함
+	InvalidTarget,		// 완료 시점에 대상이 없어졌거나 사망/무적/공격 불가 상태가 됨
+	OutOfRange,			// 완료 시점에 대상이 사거리 밖으로 벗어남
+	NoLineOfSight,		// 완료 시점에 장애물이 가로막음
+};
+
+//***************************************************************************
+// @brief 상태 효과가 끝난 사유.
+//***************************************************************************
+enum class StatusEndReason : uint8
+{
+	Expired,			// 지속시간이 다함
+	Died,				// 걸려 있던 엔티티가 사망함
 };
 
 //***************************************************************************
@@ -198,6 +222,9 @@ public:
 	AttackResult RequestAttack(CZoneEntity& attacker, uint64 targetId);
 	bool DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 amount);
 	SkillResult CastSkill(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint64& readyAtMs);
+	bool CancelCast(CZoneEntity& caster, SkillCancelReason reason);
+	bool ApplyStatus(CZoneEntity& target, const SStatusTemplate& status, CZoneEntity* caster);
+	void ClearStatuses(CZoneEntity& entity, StatusEndReason reason);
 	bool Heal(CZoneEntity& entity, int32 amount);
 	bool Respawn(uint64 id);
 	bool IsInvulnerable(const CZoneEntity& entity) const;
@@ -297,6 +324,15 @@ protected:
 	virtual void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason);
 	virtual void HandleSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount);
 	virtual void HandleSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason);
+	virtual void HandleSkillCastStarted(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center);
+	virtual void HandleSkillCastCancelled(CZoneEntity& caster, const SSkillTemplate& skill, SkillCancelReason reason);
+	virtual void HandleProjectileLaunched(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, uint64 targetId, const Vec2& from, const Vec2& to, uint32 flightMs);
+	virtual void HandleProjectileImpact(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, const Vec2& center, uint32 hitCount);
+	virtual void HandleStatusApplied(CZoneEntity& entity, const SStatusTemplate& status, uint64 casterId);
+	virtual void HandleStatusEnded(CZoneEntity& entity, uint32 statusId, StatusEndReason reason);
+
+	// 상태 효과 데이터 조회. 스킬이 거는 효과(SSkillTemplate::statusId)를 찾는다. 기본은 효과 없음(nullptr)이며, 데이터를 가진 파생 존이 재정의한다.
+	virtual const SStatusTemplate* FindStatusTemplate(uint32 statusId) const;
 
 	// 전투 정책. 파생 클래스가 재정의한다.
 	virtual bool CanAttack(const CZoneEntity& attacker, const CZoneEntity& target) const;
@@ -315,6 +351,21 @@ private:
 	void Kill(CZoneEntity& victim, CZoneEntity* killer);
 	void ScheduleRespawn(CZoneEntity& victim);
 
+	// ── 스킬/상태 효과 내부 구현 (FieldZoneSkill.cpp) ──────
+	struct SSkillHit { float distSq; uint64 id; };
+	bool BeginCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& mid);
+	void FinishCast(uint64 casterId);
+	void ExecuteSkill(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& mid);
+	void LaunchProjectile(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& mid);
+	void LandProjectile(uint64 casterId, const SSkillTemplate& skill, uint32 projectileId, uint64 targetId, const Vec2& from, const Vec2& mid, int32 attack);
+	void CollectHits(CZoneEntity& caster, const SSkillTemplate& skill, CZoneEntity* target, const Vec2& mid, std::vector<SSkillHit>& hits) const;
+	void ApplyHits(CZoneEntity& caster, const SSkillTemplate& skill, const std::vector<SSkillHit>& hits, int32 attack);
+	void ApplySelfStatus(CZoneEntity& caster, const SSkillTemplate& skill);
+	void DetachSkillState(CZoneEntity& entity);
+	void RemoveStatusHolder(CZoneEntity& entity);
+	void RecomputeStatMods(CZoneEntity& entity);
+	void UpdateStatuses();
+
 	FieldZoneConfig _fieldConfig;												// 필드 존 설정
 	bool _valid;																// AOI 초기화 성공 여부
 	bool _updatingMovement;														// UpdateMovement 실행 중 여부 (제거 재진입 방지)
@@ -322,6 +373,9 @@ private:
 	CZoneGridAOI _aoi;																// 그리드 AOI
 	std::unordered_map<uint64, std::unique_ptr<CZoneEntity>> _entities;			// 엔티티 소유 테이블 (ID -> 엔티티)
 	CVector<CZoneEntity*> _moving;												// 이동 중인 엔티티 목록 (매 틱 이 목록만 순회)
+	CVector<CZoneEntity*> _statusHolders;										// 상태 효과가 걸린 엔티티 목록 (매 틱 이 목록만 순회)
+	std::vector<uint64> _statusScratch;											// UpdateStatuses 작업 공간 (순회 중 목록이 바뀌어도 안전하게 ID로 돈다)
+	uint32 _nextProjectileId;													// 투사체 ID 발급기 (0은 쓰지 않는다)
 };
 
 #endif // ndef FIELDZONEBASE_H

@@ -17,6 +17,8 @@
     <ClCompile Include="ValueFormat.cpp" />
     <ClCompile Include="XlsxToJson.cpp" />
     <ClCompile Include="pch.cpp" />
+    <ClCompile Include="RowGenerator.cpp" />
+    <ClCompile Include="DefinitionSheets.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
@@ -49,6 +51,10 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="RowSchema.h" />
+    <ClInclude Include="RowGenerator.h" />
+    <ClInclude Include="DefinitionSheets.h" />
+    <ClInclude Include="Utf8Literal.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

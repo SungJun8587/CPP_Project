@@ -1,0 +1,6 @@
+Id:uint[1..]	Name:string	Color:EColor	Flag:EFlag?	Weight:float	Active:bool	Delta:int[-100..100]?
+# 주석 행은 건너뜀						
+1	칼	Red	A	1.5	TRUE	-3
+2	방패	Blue		0.1	FALSE	
+3	'007	Alpha	High	1e3	TRUE	100
+						

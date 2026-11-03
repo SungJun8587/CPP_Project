@@ -1,0 +1,5 @@
+ZoneId:uint	Type:string	X:float	Y:float	W:float	H:float	R:float
+# Rect: X,Y=왼쪽 아래 모서리, W,H=크기 / Circle: X,Y=중심, R=반지름. 쓰지 않는 칸은 0						
+1	Rect	150	150	30	6	0
+1	Circle	220	180	0	0	5
+1	Circle	260	240	0	0	3

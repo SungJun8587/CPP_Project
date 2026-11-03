@@ -72,6 +72,7 @@ using namespace std;
 
 #include "../GameCommon/ZoneCommon/ZonePacketTypes.h"
 #include "../GameCommon/ZoneCommon/ZonePacket.h"
+#include "../GameCommon/Generated/GeneratedCommon.h"
 #include "../GameCommon/ZoneCore/FieldZone.h"
 #include "../GameCommon/ZoneCore/ZoneEntity.h"
 #include "../GameCommon/ZoneCore/HeroData.h"

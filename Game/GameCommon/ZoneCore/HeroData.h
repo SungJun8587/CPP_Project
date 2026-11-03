@@ -44,6 +44,7 @@ class CHeroData
 public:
 	bool AddHero(const SHeroTemplate& hero);
 	bool AddSkill(const SSkillTemplate& skill);
+	bool AddStatus(const SStatusTemplate& status);
 	bool AssignSkill(uint32 heroId, uint32 skillId);
 	bool Validate(std::string& error) const;
 
@@ -86,6 +87,31 @@ public:
 		return nullptr;
 	}
 
+	//***************************************************************************
+	// @brief 상태 효과를 ID로 찾습니다.
+	// @return 상태 효과, 없으면 nullptr
+	//***************************************************************************
+	const SStatusTemplate* FindStatus(uint32 id) const
+	{
+		auto it = _statuses.find(id);
+		return it != _statuses.end() ? &it->second : nullptr;
+	}
+
+	size_t GetStatusCount() const { return _statuses.size(); }
+
+	//***************************************************************************
+	// @brief 상태 효과 중 가장 큰 이동속도 증가(%)를 반환합니다. 영웅이 낼 수 있는 최고 속도 계산(AOI 시야 검증)에 쓴다.
+	// @return 이동속도 증가 최대치(%), 증가 효과가 없으면 0
+	//***************************************************************************
+	int32 GetMaxSpeedBuffPercent() const
+	{
+		int32 best = 0;
+		for( const auto& pair : _statuses )
+			if( pair.second.kind == EStatusKind::Buff && pair.second.speedPercent > best )
+				best = pair.second.speedPercent;
+		return best;
+	}
+
 	size_t GetSkillCount() const { return _skills.size(); }
 	const std::map<uint32, SSkillTemplate>& GetSkills() const { return _skills; }
 
@@ -123,6 +149,7 @@ public:
 
 private:
 	std::map<uint32, SSkillTemplate>	_skills;	// 스킬 ID -> 스킬
+	std::map<uint32, SStatusTemplate>	_statuses;	// 상태 효과 ID -> 상태 효과
 	std::map<uint32, SHeroTemplate>	_heroes;	// 영웅 ID -> 영웅 (정렬되어 있어 첫 원소가 기본 영웅)
 };
 

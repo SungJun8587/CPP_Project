@@ -360,6 +360,75 @@ struct ZcSkillRejectNotifyPacket : PacketHeader
 };
 
 //***************************************************************************
+// @brief 스킬 시전 시작 알림 (Zone -> Client). 시전 시간이 있는 스킬만 보낸다. 시전자 주변 전원에게 전송된다.
+// @details 시전이 끝나면 ZcSkillNotify(즉시 스킬) 또는 ZcProjectileNotify(투사체 스킬)가 이어지고, 취소되면 ZcSkillCancelNotify가 온다.
+//***************************************************************************
+struct ZcSkillCastNotifyPacket : PacketHeader
+{
+	uint64	casterId;
+	uint32	skillId;
+	uint64	targetId;		// Single의 대상, Area는 0
+	float	x;				// 효과 중심 (Single은 시전 시작 시점의 대상 위치)
+	float	y;
+	uint32	castTimeMs;
+};
+
+//***************************************************************************
+// @brief 스킬 시전 취소 알림 (Zone -> Client). 시전자 주변 전원에게 전송된다.
+//***************************************************************************
+struct ZcSkillCancelNotifyPacket : PacketHeader
+{
+	uint64	casterId;
+	uint32	skillId;
+	uint8	reason;			// ESkillCancelReason
+};
+
+//***************************************************************************
+// @brief 투사체 발사 알림 (Zone -> Client). 시전자 주변 전원에게 전송된다.
+// @details 서버는 투사체를 엔티티로 두지 않는다. 클라이언트는 (x0,y0)에서 (x1,y1)까지 flightMs 동안 날아가는 연출만 한다.
+//          Single은 대상을 추적하므로 실제 착탄 지점은 ZcSkillImpactNotify의 좌표를 따른다.
+//***************************************************************************
+struct ZcProjectileNotifyPacket : PacketHeader
+{
+	uint32	projectileId;	// 존 안에서 발사마다 늘어나는 번호 (착탄 알림과 짝)
+	uint64	casterId;
+	uint32	skillId;
+	uint64	targetId;		// Single의 대상, Area는 0
+	float	x0;
+	float	y0;
+	float	x1;
+	float	y1;
+	uint32	flightMs;
+};
+
+//***************************************************************************
+// @brief 투사체 착탄 알림 (Zone -> Client). 시전자 주변 전원에게 전송된다. 맞은 대상의 피해는 ZcDamageNotify로 이어진다.
+//***************************************************************************
+struct ZcSkillImpactNotifyPacket : PacketHeader
+{
+	uint32	projectileId;
+	uint64	casterId;
+	uint32	skillId;
+	float	x;				// 실제 착탄 지점
+	float	y;
+	uint32	hitCount;		// 맞은 대상 수 (빗나가면 0)
+};
+
+//***************************************************************************
+// @brief 상태 효과 알림 (Zone -> Client). 엔티티 주변 플레이어 전원에게 전송된다.
+// @details applied=1이면 걸렸거나 지속시간이 갱신된 것이고(durationMs만큼 남음), 0이면 지속시간이 다해 풀린 것이다.
+//          엔티티가 사망하면 모든 상태 효과가 풀리지만 해제 알림은 보내지 않는다. ZcDeathNotify를 받으면 클라이언트가 비운다.
+//***************************************************************************
+struct ZcStatusNotifyPacket : PacketHeader
+{
+	uint64	entityId;
+	uint32	statusId;
+	uint64	casterId;		// 건 엔티티 (applied=1일 때만 유효)
+	uint32	durationMs;		// 남은 지속시간 (applied=0이면 0)
+	uint8	applied;
+};
+
+//***************************************************************************
 // @brief 체력 회복 알림 (Zone -> Client). 엔티티 주변 플레이어 전원에게 전송된다.
 //***************************************************************************
 struct ZcHealNotifyPacket : PacketHeader

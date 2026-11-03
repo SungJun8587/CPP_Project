@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// BattleZone.cpp : implementation of the CBattleZone class.
+// BattleZone.cpp: implementation of the CBattleZone class.
 //
 //***************************************************************************
 
@@ -60,10 +60,12 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 	}
 
 	const float monsterSpeed = _monsters->GetMaxSpawnSpeed();
+	// 이동속도 버프를 받은 영웅이 낼 수 있는 최고 속도로 검사한다(위치 허용 오차가 속도에 비례해 늘어난다).
+	const float buffMul = 1.0f + static_cast<float>(_heroes->GetMaxSpeedBuffPercent()) * 0.01f;
 	for( const auto& pair : _heroes->GetHeroes() )
 	{
 		const SHeroTemplate& hero = pair.second;
-		if( !IsAttackRangeSupported(hero.stats.attackRange, (std::max)(hero.speed, monsterSpeed)) )
+		if( !IsAttackRangeSupported(hero.stats.attackRange, (std::max)(hero.speed * buffMul, monsterSpeed)) )
 		{
 			char buf[160];
 			std::snprintf(buf, sizeof(buf), "hero %u: attack reach exceeds the guaranteed AOI view range", hero.id);
@@ -79,7 +81,7 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 		for( const uint32 skillId : hero.skills )
 		{
 			const SSkillTemplate* skill = _heroes->FindSkill(skillId);
-			if( skill != nullptr && !IsAttackRangeSupported(skill->range + skill->radius, (std::max)(hero.speed, monsterSpeed)) )
+			if( skill != nullptr && !IsAttackRangeSupported(skill->range + skill->radius, (std::max)(hero.speed * buffMul, monsterSpeed)) )
 			{
 				char buf[160];
 				std::snprintf(buf, sizeof(buf), "hero %u skill %u: range + radius exceeds the guaranteed AOI view range", hero.id, skill->id);
@@ -89,7 +91,7 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 		}
 	}
 
-	return _monsters->Validate(error, _heroes->GetMaxSpeed());
+	return _monsters->Validate(error, _heroes->GetMaxSpeed() * buffMul);
 }
 
 //***************************************************************************
@@ -303,6 +305,125 @@ void CBattleZone::OnSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, 
 }
 
 //***************************************************************************
+// @brief 시전 시간이 있는 스킬의 시전 시작을 시전자 주변 전원에게 알린다. 끝나면 ZcSkillNotify/ZcProjectileNotify가 이어진다.
+//***************************************************************************
+void CBattleZone::OnSkillCastStarted(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center)
+{
+	ZcSkillCastNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcSkillCastNotify);
+	notify.casterId = caster.GetId();
+	notify.skillId = skill.id;
+	notify.targetId = targetId;
+	notify.x = center.x;
+	notify.y = center.y;
+	notify.castTimeMs = skill.castTimeMs;
+
+	BroadcastAround(caster, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 시전 취소를 시전자 주변 전원에게 알린다.
+//***************************************************************************
+void CBattleZone::OnSkillCastCancelled(CZoneEntity& caster, const SSkillTemplate& skill, SkillCancelReason reason)
+{
+	ZcSkillCancelNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcSkillCancelNotify);
+	notify.casterId = caster.GetId();
+	notify.skillId = skill.id;
+
+	ESkillCancelReason code = ESkillCancelReason::InvalidTarget;
+	switch( reason )
+	{
+	case SkillCancelReason::Moved:			code = ESkillCancelReason::Moved; break;
+	case SkillCancelReason::Died:			code = ESkillCancelReason::Died; break;
+	case SkillCancelReason::OutOfRange:		code = ESkillCancelReason::OutOfRange; break;
+	case SkillCancelReason::NoLineOfSight:	code = ESkillCancelReason::NoLineOfSight; break;
+	default:								break;
+	}
+	notify.reason = static_cast<uint8>(code);
+
+	BroadcastAround(caster, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 투사체 발사를 시전자 주변 전원에게 알린다.
+//***************************************************************************
+void CBattleZone::OnProjectileLaunched(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, uint64 targetId, const Vec2& from, const Vec2& to, uint32 flightMs)
+{
+	ZcProjectileNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcProjectileNotify);
+	notify.projectileId = projectileId;
+	notify.casterId = caster.GetId();
+	notify.skillId = skill.id;
+	notify.targetId = targetId;
+	notify.x0 = from.x;
+	notify.y0 = from.y;
+	notify.x1 = to.x;
+	notify.y1 = to.y;
+	notify.flightMs = flightMs;
+
+	BroadcastAround(caster, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 투사체 착탄을 시전자 주변 전원에게 알린다. 피해는 ZcDamageNotify로 이어진다.
+//***************************************************************************
+void CBattleZone::OnProjectileImpact(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, const Vec2& center, uint32 hitCount)
+{
+	ZcSkillImpactNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcSkillImpactNotify);
+	notify.projectileId = projectileId;
+	notify.casterId = caster.GetId();
+	notify.skillId = skill.id;
+	notify.x = center.x;
+	notify.y = center.y;
+	notify.hitCount = hitCount;
+
+	BroadcastAround(caster, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 상태 효과가 걸렸거나 갱신된 것을 엔티티 주변 전원에게 알린다.
+//***************************************************************************
+void CBattleZone::OnStatusApplied(CZoneEntity& entity, const SStatusTemplate& status, uint64 casterId)
+{
+	ZcStatusNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcStatusNotify);
+	notify.entityId = entity.GetId();
+	notify.statusId = status.id;
+	notify.casterId = casterId;
+	notify.durationMs = status.durationMs;
+	notify.applied = 1;
+
+	BroadcastAround(entity, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 상태 효과가 지속시간이 다해 풀린 것을 알린다. 사망으로 풀린 경우는 사망 통지가 대신하므로 보내지 않는다.
+//***************************************************************************
+void CBattleZone::OnStatusEnded(CZoneEntity& entity, uint32 statusId, StatusEndReason reason)
+{
+	if( reason != StatusEndReason::Expired )
+		return;
+
+	ZcStatusNotifyPacket notify{};
+	InitZonePacket(notify, EZoneClientPacketType::ZcStatusNotify);
+	notify.entityId = entity.GetId();
+	notify.statusId = statusId;
+	notify.applied = 0;
+
+	BroadcastAround(entity, &notify, notify.size);
+}
+
+//***************************************************************************
+// @brief 스킬이 거는 상태 효과 데이터를 영웅 데이터에서 찾는다.
+//***************************************************************************
+const SStatusTemplate* CBattleZone::FindStatusTemplate(uint32 statusId) const
+{
+	return _heroes->FindStatus(statusId);
+}
+
+//***************************************************************************
 // @brief 스킬 시전 거부를 요청한 본인에게 알린다.
 //***************************************************************************
 void CBattleZone::OnSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason)
@@ -314,6 +435,7 @@ void CBattleZone::OnSkillRejected(CZoneEntity& caster, const SSkillTemplate& ski
 	case SkillResult::Cooldown:			code = ESkillRejectReason::Cooldown; break;
 	case SkillResult::OutOfRange:		code = ESkillRejectReason::OutOfRange; break;
 	case SkillResult::NoLineOfSight:	code = ESkillRejectReason::NoLineOfSight; break;
+	case SkillResult::Casting:			code = ESkillRejectReason::Casting; break;
 	default:							break;
 	}
 
@@ -589,6 +711,7 @@ void CBattleZone::OnAttackRejected(CZoneEntity& attacker, uint64 targetId, Attac
 	case AttackResult::TargetDead:		notify.reason = static_cast<uint8>(EAttackRejectReason::TargetDead); break;
 	case AttackResult::TargetInvulnerable:	notify.reason = static_cast<uint8>(EAttackRejectReason::TargetInvulnerable); break;
 	case AttackResult::NoLineOfSight:	notify.reason = static_cast<uint8>(EAttackRejectReason::NoLineOfSight); break;
+	case AttackResult::Casting:			notify.reason = static_cast<uint8>(EAttackRejectReason::Casting); break;
 	default:							notify.reason = static_cast<uint8>(EAttackRejectReason::InvalidTarget); break;
 	}
 

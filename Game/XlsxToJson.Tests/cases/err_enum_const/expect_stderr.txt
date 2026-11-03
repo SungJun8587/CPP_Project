@@ -1,0 +1,13 @@
+변환 실패 (12건):
+Enum!3행 Name: EOne에 같은 이름의 멤버가 이미 있습니다 ('X')
+Enum!4행 Value: EOne에 같은 값(1)이 이미 있습니다 ('X')
+Enum!7행 Base: uint8, uint16, uint32, int32 중 하나여야 합니다 ('uint64')
+Enum!9행 Base: EFour의 기반형이 앞 행(uint8)과 다릅니다 ('uint16')
+Enum!10행 Enum: C++/C# 식별자여야 합니다 ('bad name')
+Enum: EOne.Z 값 300이(가) uint8 범위(0..255)를 벗어났습니다
+Const!2행 Type: int, uint, float, string, bool 중 하나여야 합니다 ('decimal')
+Const!3행 Name: 이름 중복 ('K1')
+Const!4행 Value: 음수는 uint가 될 수 없음: -1
+Const!5행 Value: bool이 아님: 5
+Const!6행 Value: 숫자가 아님: 'abc'
+Const!7행 Name: C++/C# 식별자여야 합니다 ('1K')

@@ -9,10 +9,13 @@
 
 #include <cmath>
 #include <cstddef>
+#include <memory>
+#include <vector>
 
 #include <BaseRedefineDataType.h>
 
 #include "GridAOI.h"
+#include "SkillData.h"
 #include "ZoneMath.h"
 
 class CFieldZoneBase;
@@ -73,6 +76,38 @@ struct SReqGate
 };
 
 //***************************************************************************
+// @struct SCastState
+// @brief 진행 중인 스킬 시전. 시전 시간이 있는 스킬만 만들어지며, 시전자 한 명당 하나다. CFieldZoneBase 전용.
+// @details 스킬 데이터는 복사해 둔다. 시전 중에 데이터 객체가 바뀌어도 이 시전은 시작할 때의 값으로 끝난다.
+//***************************************************************************
+struct SCastState
+{
+	SSkillTemplate	skill;				// 시전 중인 스킬 (사본)
+	uint64			targetId = 0;		// Single의 대상 ID
+	Vec2			center;				// 효과 중심 (Single은 시작 시점의 대상 위치)
+	uint64			endMs = 0;			// 시전이 끝나는 존 논리 시각
+	uint64			timerId = 0;		// 완료 타이머 ID
+};
+
+//***************************************************************************
+// @struct SActiveStatus
+// @brief 엔티티에 걸려 있는 상태 효과 하나. CFieldZoneBase 전용.
+//***************************************************************************
+struct SActiveStatus
+{
+	uint32			id = 0;				// 상태 효과 ID
+	EStatusKind		kind = EStatusKind::Dot;
+	uint64			casterId = 0;		// 건 엔티티 ID (퇴장했을 수 있다)
+	uint64			endMs = 0;			// 끝나는 존 논리 시각
+	uint64			nextTickMs = 0;		// 다음 Dot 틱 시각
+	uint32			tickMs = 0;			// Dot 틱 간격
+	int32			dotDamage = 0;		// Dot 한 틱 피해 (걸 때 정해진다)
+	int32			attackPercent = 0;
+	int32			defensePercent = 0;
+	int32			speedPercent = 0;
+};
+
+//***************************************************************************
 // @class CZoneEntity
 // @brief 존에 배치되는 모든 객체(플레이어/몬스터/NPC/아이템)의 기반 클래스.
 // @details
@@ -121,17 +156,44 @@ public:
 	const Vec2& GetDest() const { return _dest; }
 
 	//***************************************************************************
-	// @brief 이동 속도를 반환합니다.
+	// @brief 현재 이동 속도를 반환합니다. 상태 효과(이동속도 버프/디버프)가 반영된 값입니다.
 	// @return 이동 속도(units/sec)
 	//***************************************************************************
 	float GetSpeed() const { return _speed; }
+
+	//***************************************************************************
+	// @brief 상태 효과를 반영한 공격력/방어력을 반환합니다. 전투 계산은 GetCombatStats()의 기본값이 아니라 이 값을 씁니다.
+	//***************************************************************************
+	int32 GetAttack() const { return ApplyStatPercent(_stats.attack, _attackPct); }
+	int32 GetDefense() const { return ApplyStatPercent(_stats.defense, _defensePct); }
+
+	//***************************************************************************
+	// @brief 스킬 시전 중인지 반환합니다. 시전 시간이 있는 스킬만 해당합니다.
+	//***************************************************************************
+	bool IsCasting() const { return _cast != nullptr; }
+
+	//***************************************************************************
+	// @brief 걸려 있는 상태 효과 수 / 특정 효과 보유 여부를 반환합니다.
+	//***************************************************************************
+	size_t GetStatusCount() const { return _statuses.size(); }
+	bool HasStatus(uint32 statusId) const
+	{
+		for( const SActiveStatus& s : _statuses )
+			if( s.id == statusId )
+				return true;
+		return false;
+	}
 
 	//***************************************************************************
 	// @brief 이동 속도를 설정합니다. 속도는 서버 스탯으로만 결정되며 클라이언트 값은 신뢰하지 않습니다.
 	//        NaN/무한대/음수는 0(이동 불가)으로 보정합니다. 이동 중에 0 이하가 되면 다음 틱에 그 자리에 멈춥니다.
 	// @param speed 이동 속도(units/sec)
 	//***************************************************************************
-	void SetSpeed(float speed) { _speed = (std::isfinite(speed) && speed > 0.0f) ? speed : 0.0f; }
+	void SetSpeed(float speed)
+	{
+		_baseSpeed = (std::isfinite(speed) && speed > 0.0f) ? speed : 0.0f;
+		_speed = _baseSpeed * static_cast<float>(100 + _speedPct) * 0.01f;
+	}
 
 	//***************************************************************************
 	// @brief 이동 중인지 반환합니다.
@@ -216,6 +278,13 @@ private:
 	uint64		_invulnerableUntilMs;	// 무적 종료 시각 (존 논리 시간, 0이면 무적 아님) - CFieldZoneBase 전용
 	SReqGate	_attackGate;			// 공격 요청 간격 검사 - CFieldZoneBase 전용
 	uint64		_respawnTimerId;		// 예약된 자동 리스폰 타이머 ID (0이면 없음) - CFieldZoneBase 전용
+	float		_baseSpeed;				// 상태 효과를 반영하기 전의 이동 속도 (SetSpeed가 정한 값)
+	int32		_attackPct;				// 상태 효과 합산 공격력 증감(%) - CFieldZoneBase 전용
+	int32		_defensePct;			// 상태 효과 합산 방어력 증감(%) - CFieldZoneBase 전용
+	int32		_speedPct;				// 상태 효과 합산 이동속도 증감(%) - CFieldZoneBase 전용
+	std::unique_ptr<SCastState>	_cast;	// 진행 중인 시전 (없으면 nullptr) - CFieldZoneBase 전용
+	std::vector<SActiveStatus>	_statuses;	// 걸려 있는 상태 효과 - CFieldZoneBase 전용
+	size_t		_statusIdx;				// 상태 효과 보유 목록 내 위치 - CFieldZoneBase 전용
 
 	SAoiNode	_aoiNode;				// 소속 AOI 셀 정보 - CGridAOI 전용
 	size_t		_movingIdx;				// 이동 목록 내 위치 - CFieldZoneBase 전용

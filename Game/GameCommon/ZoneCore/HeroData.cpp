@@ -49,6 +49,18 @@ bool CHeroData::AddSkill(const SSkillTemplate& skill)
 }
 
 //***************************************************************************
+// @brief 상태 효과 템플릿을 추가합니다.
+// @return 추가했으면 true, ID가 0이거나 이미 있으면 false
+//***************************************************************************
+bool CHeroData::AddStatus(const SStatusTemplate& status)
+{
+	if( status.id == 0 )
+		return false;
+
+	return _statuses.emplace(status.id, status).second;
+}
+
+//***************************************************************************
 // @brief 영웅에게 스킬을 연결합니다. 영웅이 쓸 수 있는 스킬이 된다.
 // @return 연결했으면 true, 영웅/스킬이 없거나 이미 연결됐거나 영웅당 상한(kMaxHeroSkills)을 넘으면 false
 //***************************************************************************
@@ -101,7 +113,13 @@ bool CHeroData::Validate(std::string& error) const
 		if( s.shape != ESkillShape::Single && s.shape != ESkillShape::Area ) { error = Format("skill %u: unknown shape", id); return false; }
 		if( s.damagePercent > kMaxSkillDamagePercent ) { error = Format("skill %u: damagePercent is too large", id); return false; }
 		if( s.flatDamage < 0 ) { error = Format("skill %u: flatDamage must be >= 0", id); return false; }
-		if( s.damagePercent == 0 && s.flatDamage == 0 ) { error = Format("skill %u: needs damagePercent or flatDamage", id); return false; }
+		if( s.damagePercent == 0 && s.flatDamage == 0 && s.statusId == 0 ) { error = Format("skill %u: needs damagePercent, flatDamage or statusId", id); return false; }
+		if( s.castTimeMs > kMaxCastTimeMs ) { error = Format("skill %u: castTimeMs is too large", id); return false; }
+		if( !std::isfinite(s.projectileSpeed) || s.projectileSpeed < 0.0f || s.projectileSpeed > kMaxProjectileSpeed )
+		{
+			error = Format("skill %u: projectileSpeed must be 0..1000", id); return false;
+		}
+		if( s.statusId != 0 && FindStatus(s.statusId) == nullptr ) { error = Format("skill %u: unknown statusId", id); return false; }
 		if( !IsFinitePositive(s.range) ) { error = Format("skill %u: range must be > 0", id); return false; }
 		if( s.cooldownMs < 1 ) { error = Format("skill %u: cooldownMs must be >= 1", id); return false; }
 		if( s.shape == ESkillShape::Single )
@@ -113,6 +131,46 @@ bool CHeroData::Validate(std::string& error) const
 		{
 			if( !IsFinitePositive(s.radius) ) { error = Format("skill %u: Area skill needs radius > 0", id); return false; }
 			if( s.maxTargets < 1 || s.maxTargets > kMaxSkillTargets ) { error = Format("skill %u: maxTargets must be 1..32", id); return false; }
+		}
+
+		// 비행 시간이 상한을 넘는 조합은 투사체가 도착하기 전에 시야 밖으로 사라지고 타이머가 오래 남는다.
+		if( s.projectileSpeed > 0.0f && (s.range + s.radius) / s.projectileSpeed * 1000.0f > static_cast<float>(kMaxProjectileFlightMs) )
+		{
+			error = Format("skill %u: projectile flight time exceeds the limit", id); return false;
+		}
+	}
+
+	for( const auto& pair : _statuses )
+	{
+		const SStatusTemplate& t = pair.second;
+		const unsigned id = t.id;
+
+		if( t.kind != EStatusKind::Dot && t.kind != EStatusKind::Buff ) { error = Format("status %u: unknown kind", id); return false; }
+		if( t.target != EStatusTarget::Hit && t.target != EStatusTarget::Self ) { error = Format("status %u: unknown target", id); return false; }
+		if( t.durationMs < 1 || t.durationMs > kMaxStatusDurationMs ) { error = Format("status %u: durationMs must be 1..600000", id); return false; }
+		if( t.kind == EStatusKind::Dot )
+		{
+			if( t.tickMs < kMinStatusTickMs || t.tickMs > t.durationMs ) { error = Format("status %u: Dot tickMs must be 100..durationMs", id); return false; }
+			if( t.damagePercent > kMaxSkillDamagePercent || t.flatDamage < 0 ) { error = Format("status %u: Dot damage out of range", id); return false; }
+			if( t.damagePercent == 0 && t.flatDamage == 0 ) { error = Format("status %u: Dot needs damagePercent or flatDamage", id); return false; }
+			if( t.attackPercent != 0 || t.defensePercent != 0 || t.speedPercent != 0 )
+			{
+				error = Format("status %u: Dot must not have stat percents", id); return false;
+			}
+		}
+		else
+		{
+			if( t.tickMs != 0 || t.damagePercent != 0 || t.flatDamage != 0 ) { error = Format("status %u: Buff must not have tick or damage", id); return false; }
+			if( t.attackPercent == 0 && t.defensePercent == 0 && t.speedPercent == 0 )
+			{
+				error = Format("status %u: Buff needs a stat percent", id); return false;
+			}
+			if( t.attackPercent < kMinStatPercent || t.attackPercent > kMaxStatPercent
+				|| t.defensePercent < kMinStatPercent || t.defensePercent > kMaxStatPercent
+				|| t.speedPercent < kMinStatPercent || t.speedPercent > kMaxSpeedBuffPercent )
+			{
+				error = Format("status %u: stat percent out of range", id); return false;
+			}
 		}
 	}
 

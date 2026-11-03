@@ -69,6 +69,13 @@ protected:
 	virtual void OnAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) override;
 	virtual void OnSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount) override;
 	virtual void OnSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason) override;
+	virtual void OnSkillCastStarted(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center) override;
+	virtual void OnSkillCastCancelled(CZoneEntity& caster, const SSkillTemplate& skill, SkillCancelReason reason) override;
+	virtual void OnProjectileLaunched(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, uint64 targetId, const Vec2& from, const Vec2& to, uint32 flightMs) override;
+	virtual void OnProjectileImpact(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, const Vec2& center, uint32 hitCount) override;
+	virtual void OnStatusApplied(CZoneEntity& entity, const SStatusTemplate& status, uint64 casterId) override;
+	virtual void OnStatusEnded(CZoneEntity& entity, uint32 statusId, StatusEndReason reason) override;
+	virtual const SStatusTemplate* FindStatusTemplate(uint32 statusId) const override;
 	virtual void OnUpdate(uint32 dtMs) override;
 	virtual uint32 GetRespawnDelayMs(const CZoneEntity& victim) const override;
 	virtual Vec2 GetRespawnPos(const CZoneEntity& entity) const override;

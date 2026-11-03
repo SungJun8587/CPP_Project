@@ -1,0 +1,6 @@
+Id:uint[1..]	Name:string	Kind:EStatusKind	Target:EStatusTarget	DurationMs:uint[1..]	TickMs:uint	DamagePercent:uint	FlatDamage:int[0..]	AttackPercent:int[-1000..1000]	DefensePercent:int[-1000..1000]	SpeedPercent:int[-1000..1000]
+# Kind: Dot(TickMs마다 공격력*DamagePercent/100+FlatDamage, 방어력 무시) / Buff(공격/방어/이동속도 %, 음수=디버프, TickMs=0). Target: Hit(맞은 대상) / Self(시전자). 같은 효과 재적용은 지속시간 갱신										
+1	화상	Dot	Hit	6000	1000	30	0	0	0	0
+2	출혈	Dot	Hit	5000	1000	25	0	0	0	0
+3	전투 함성	Buff	Self	8000	0	0	0	30	20	0
+4	둔화	Buff	Hit	3000	0	0	0	0	0	-30

@@ -8,301 +8,43 @@
 #include "GameDataLoader.h"
 #include "../GameCommon/ZoneCore/BlockMapFile.h"
 #include <ConfigFile/JSONConfigFieldReader.h>
+#include "../GameCommon/Generated/GeneratedCommon.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <initializer_list>
+#include <limits>
+#include <type_traits>
+
+using namespace GameDataRows;
+
+// SkillData.h가 예전 방식(수동 enum)이면 아래 대입에서 알 수 없는 변환 오류가 나므로 원인을 바로 알 수 있게 확인한다.
+static_assert(std::is_same_v<decltype(SStatusRow::kind), EStatusKind>
+	&& std::is_same_v<decltype(SStatusRow::target), EStatusTarget>
+	&& std::is_same_v<decltype(SSkillRow::shape), ESkillShape>,
+	"SkillData.h must use the generated enums: using GameDataEnums::ESkillShape / EStatusKind / EStatusTarget (replace SkillData.h)");
 
 namespace
 {
-	constexpr int64 kU32Max = 0xFFFFFFFFll;
-	constexpr int64 kI32Max = 0x7FFFFFFFll;
-
-	//***************************************************************************
-	// @brief Hero.json의 한 행.
-	//***************************************************************************
-	struct SHeroRow
-	{
-		uint32		id = 0;
-		_tstring	name;
-		int32		maxHp = 0;
-		int32		attack = 0;
-		int32		defense = 0;
-		double		attackRange = 0;
-		uint32		attackIntervalMs = 0;
-		double		speed = 0;
-
-		static constexpr const TCHAR* kFile = _T("Hero.json");
-		static constexpr const TCHAR* kTable = _T("Hero");
-
-		static std::initializer_list<SFieldSpec> Specs()
-		{
-			static const std::initializer_list<SFieldSpec> specs =
-			{
-				{ _T("Id"), EFieldType::UInt, 1, kU32Max },
-				{ _T("Name"), EFieldType::String },
-				{ _T("MaxHp"), EFieldType::Int, 1, kI32Max },
-				{ _T("Attack"), EFieldType::Int, 0, kI32Max },
-				{ _T("Defense"), EFieldType::Int, 0, kI32Max },
-				{ _T("AttackRange"), EFieldType::Number },
-				{ _T("AttackIntervalMs"), EFieldType::UInt, 1, kU32Max },
-				{ _T("Speed"), EFieldType::Number },
-			};
-			return specs;
-		}
-
-		void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
-		{
-			value.SetObject();
-			value.AddMember(_T("Id"), id, allocator);
-			value.AddMember(_T("Name"), _tValue(name.c_str(), allocator), allocator);
-			value.AddMember(_T("MaxHp"), maxHp, allocator);
-			value.AddMember(_T("Attack"), attack, allocator);
-			value.AddMember(_T("Defense"), defense, allocator);
-			value.AddMember(_T("AttackRange"), attackRange, allocator);
-			value.AddMember(_T("AttackIntervalMs"), attackIntervalMs, allocator);
-			value.AddMember(_T("Speed"), speed, allocator);
-		}
-
-		void FromJSON(const _tValue& value)
-		{
-			id = value[_T("Id")].GetUint();
-			name = value[_T("Name")].GetString();
-			maxHp = value[_T("MaxHp")].GetInt();
-			attack = value[_T("Attack")].GetInt();
-			defense = value[_T("Defense")].GetInt();
-			attackRange = value[_T("AttackRange")].GetDouble();
-			attackIntervalMs = value[_T("AttackIntervalMs")].GetUint();
-			speed = value[_T("Speed")].GetDouble();
-		}
-	};
-
-	//***************************************************************************
-	// @brief Monster.json의 한 행. 필드 존재/타입은 읽기 전에 SFieldSpec으로 검증하므로 FromJSON은 값만 옮긴다.
-	//***************************************************************************
-	struct SMonsterRow
-	{
-		uint32		id = 0;
-		_tstring	name;
-		int32		maxHp = 0;
-		int32		attack = 0;
-		int32		defense = 0;
-		double		attackRange = 0;
-		uint32		attackIntervalMs = 0;
-		double		speed = 0;
-		double		aggroRange = 0;
-		double		leashRange = 0;
-		uint32		respawnMs = 0;
-
-		static constexpr const TCHAR* kFile = _T("Monster.json");
-		static constexpr const TCHAR* kTable = _T("Monster");
-
-		// 필드 이름/타입/범위의 단일 출처. FromJSON/ToJSON과 같은 구조체에 두어 컬럼을 바꿀 때 한 곳에서 맞춘다.
-		static std::initializer_list<SFieldSpec> Specs()
-		{
-			static const std::initializer_list<SFieldSpec> specs =
-			{
-				{ _T("Id"), EFieldType::UInt, 1, kU32Max },
-				{ _T("Name"), EFieldType::String },
-				{ _T("MaxHp"), EFieldType::Int, 1, kI32Max },
-				{ _T("Attack"), EFieldType::Int, 0, kI32Max },
-				{ _T("Defense"), EFieldType::Int, 0, kI32Max },
-				{ _T("AttackRange"), EFieldType::Number },
-				{ _T("AttackIntervalMs"), EFieldType::UInt, 1, kU32Max },
-				{ _T("Speed"), EFieldType::Number },
-				{ _T("AggroRange"), EFieldType::Number },
-				{ _T("LeashRange"), EFieldType::Number },
-				{ _T("RespawnMs"), EFieldType::UInt, 0, kU32Max },
-			};
-			return specs;
-		}
-
-		void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
-		{
-			value.SetObject();
-			value.AddMember(_T("Id"), id, allocator);
-			value.AddMember(_T("Name"), _tValue(name.c_str(), allocator), allocator);
-			value.AddMember(_T("MaxHp"), maxHp, allocator);
-			value.AddMember(_T("Attack"), attack, allocator);
-			value.AddMember(_T("Defense"), defense, allocator);
-			value.AddMember(_T("AttackRange"), attackRange, allocator);
-			value.AddMember(_T("AttackIntervalMs"), attackIntervalMs, allocator);
-			value.AddMember(_T("Speed"), speed, allocator);
-			value.AddMember(_T("AggroRange"), aggroRange, allocator);
-			value.AddMember(_T("LeashRange"), leashRange, allocator);
-			value.AddMember(_T("RespawnMs"), respawnMs, allocator);
-		}
-
-		void FromJSON(const _tValue& value)
-		{
-			id = value[_T("Id")].GetUint();
-			name = value[_T("Name")].GetString();
-			maxHp = value[_T("MaxHp")].GetInt();
-			attack = value[_T("Attack")].GetInt();
-			defense = value[_T("Defense")].GetInt();
-			attackRange = value[_T("AttackRange")].GetDouble();
-			attackIntervalMs = value[_T("AttackIntervalMs")].GetUint();
-			speed = value[_T("Speed")].GetDouble();
-			aggroRange = value[_T("AggroRange")].GetDouble();
-			leashRange = value[_T("LeashRange")].GetDouble();
-			respawnMs = value[_T("RespawnMs")].GetUint();
-		}
-	};
-
-	//***************************************************************************
-	// @brief Spawn.json의 한 행.
-	//***************************************************************************
-	struct SSpawnRow
-	{
-		uint32		zoneId = 0;
-		uint32		monsterId = 0;
-		uint32		count = 0;
-		double		x = 0;
-		double		y = 0;
-		double		radius = 0;
-
-		static constexpr const TCHAR* kFile = _T("Spawn.json");
-		static constexpr const TCHAR* kTable = _T("Spawn");
-
-		static std::initializer_list<SFieldSpec> Specs()
-		{
-			static const std::initializer_list<SFieldSpec> specs =
-			{
-				{ _T("ZoneId"), EFieldType::UInt, 0, kU32Max },
-				{ _T("MonsterId"), EFieldType::UInt, 1, kU32Max },
-				{ _T("Count"), EFieldType::UInt, 1, kU32Max },
-				{ _T("X"), EFieldType::Number },
-				{ _T("Y"), EFieldType::Number },
-				{ _T("Radius"), EFieldType::Number },
-			};
-			return specs;
-		}
-
-		void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
-		{
-			value.SetObject();
-			value.AddMember(_T("ZoneId"), zoneId, allocator);
-			value.AddMember(_T("MonsterId"), monsterId, allocator);
-			value.AddMember(_T("Count"), count, allocator);
-			value.AddMember(_T("X"), x, allocator);
-			value.AddMember(_T("Y"), y, allocator);
-			value.AddMember(_T("Radius"), radius, allocator);
-		}
-
-		void FromJSON(const _tValue& value)
-		{
-			zoneId = value[_T("ZoneId")].GetUint();
-			monsterId = value[_T("MonsterId")].GetUint();
-			count = value[_T("Count")].GetUint();
-			x = value[_T("X")].GetDouble();
-			y = value[_T("Y")].GetDouble();
-			radius = value[_T("Radius")].GetDouble();
-		}
-	};
-
-	//***************************************************************************
-	// @brief Skill.json의 한 행.
-	//***************************************************************************
-	struct SSkillRow
-	{
-		uint32		id = 0;
-		_tstring	name;
-		_tstring	shape;
-		uint32		damagePercent = 0;
-		int32		flatDamage = 0;
-		double		range = 0;
-		double		radius = 0;
-		uint32		cooldownMs = 0;
-		uint32		maxTargets = 0;
-
-		static constexpr const TCHAR* kFile = _T("Skill.json");
-		static constexpr const TCHAR* kTable = _T("Skill");
-
-		static std::initializer_list<SFieldSpec> Specs()
-		{
-			static const std::initializer_list<SFieldSpec> specs =
-			{
-				{ _T("Id"), EFieldType::UInt, 1, kU32Max },
-				{ _T("Name"), EFieldType::String },
-				{ _T("Shape"), EFieldType::String },
-				{ _T("DamagePercent"), EFieldType::UInt, 0, kU32Max },
-				{ _T("FlatDamage"), EFieldType::Int, 0, kI32Max },
-				{ _T("Range"), EFieldType::Number },
-				{ _T("Radius"), EFieldType::Number },
-				{ _T("CooldownMs"), EFieldType::UInt, 1, kU32Max },
-				{ _T("MaxTargets"), EFieldType::UInt, 1, kU32Max },
-			};
-			return specs;
-		}
-
-		void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
-		{
-			value.SetObject();
-			value.AddMember(_T("Id"), id, allocator);
-			value.AddMember(_T("Name"), _tValue(name.c_str(), allocator), allocator);
-			value.AddMember(_T("Shape"), _tValue(shape.c_str(), allocator), allocator);
-			value.AddMember(_T("DamagePercent"), damagePercent, allocator);
-			value.AddMember(_T("FlatDamage"), flatDamage, allocator);
-			value.AddMember(_T("Range"), range, allocator);
-			value.AddMember(_T("Radius"), radius, allocator);
-			value.AddMember(_T("CooldownMs"), cooldownMs, allocator);
-			value.AddMember(_T("MaxTargets"), maxTargets, allocator);
-		}
-
-		void FromJSON(const _tValue& value)
-		{
-			id = value[_T("Id")].GetUint();
-			name = value[_T("Name")].GetString();
-			shape = value[_T("Shape")].GetString();
-			damagePercent = value[_T("DamagePercent")].GetUint();
-			flatDamage = value[_T("FlatDamage")].GetInt();
-			range = value[_T("Range")].GetDouble();
-			radius = value[_T("Radius")].GetDouble();
-			cooldownMs = value[_T("CooldownMs")].GetUint();
-			maxTargets = value[_T("MaxTargets")].GetUint();
-		}
-	};
-
-	//***************************************************************************
-	// @brief HeroSkill.json의 한 행. 영웅이 쓸 수 있는 스킬을 연결한다.
-	//***************************************************************************
-	struct SHeroSkillRow
-	{
-		uint32		heroId = 0;
-		uint32		skillId = 0;
-
-		static constexpr const TCHAR* kFile = _T("HeroSkill.json");
-		static constexpr const TCHAR* kTable = _T("HeroSkill");
-
-		static std::initializer_list<SFieldSpec> Specs()
-		{
-			static const std::initializer_list<SFieldSpec> specs =
-			{
-				{ _T("HeroId"), EFieldType::UInt, 1, kU32Max },
-				{ _T("SkillId"), EFieldType::UInt, 1, kU32Max },
-			};
-			return specs;
-		}
-
-		void ToJSON(_tValue& value, _tDocument::AllocatorType& allocator) const
-		{
-			value.SetObject();
-			value.AddMember(_T("HeroId"), heroId, allocator);
-			value.AddMember(_T("SkillId"), skillId, allocator);
-		}
-
-		void FromJSON(const _tValue& value)
-		{
-			heroId = value[_T("HeroId")].GetUint();
-			skillId = value[_T("SkillId")].GetUint();
-		}
-	};
-
 	//***************************************************************************
 	// @brief <dir>/TRow::kFile JSON을 열어 TRow::kTable 키의 행 배열을 읽는다. 파일/키가 없으면 실패한다.
 	//        (기획 데이터가 통째로 빠진 배포 실수를 빈 테이블로 넘기지 않기 위함)
-	// @details 행 타입이 파일 이름, 테이블 키, 필드 규칙(Specs)을 함께 가지므로 새 테이블은 행 타입만 추가하면 된다.
+	// @details 행 타입(GameCommon/Generated/GeneratedCommon.h, XlsxToJson이 엑셀 헤더로 생성)이 파일 이름, 테이블 키, 필드 규칙(Specs)을 함께 가지므로
+	//          새 테이블은 엑셀에 시트를 추가하고 XlsxToJson을 다시 실행하면 된다.
 	//***************************************************************************
+	// 행 타입에 enumOk가 있으면(enum 열이 있는 시트) 그 값을, 없으면 true를 돌려준다.
+	template <typename TRow>
+	auto RowEnumOk(const TRow& row, int) -> decltype(static_cast<bool>(row.enumOk))
+	{
+		return row.enumOk;
+	}
+
+	template <typename TRow>
+	bool RowEnumOk(const TRow&, long)
+	{
+		return true;
+	}
+
 	template <typename TRow>
 	bool ReadTable(const std::filesystem::path& dir, std::vector<TRow>& rows)
 	{
@@ -330,7 +72,19 @@ namespace
 
 		CJSONConfigFieldReader reader(json);
 		reader.ReadObjects(table, rows, TRow::Specs());
-		return reader.Validate();
+		if( !reader.Validate() )
+			return false;
+
+		// enum 열에 Enum 시트에 없는 이름이 있으면(JSON을 손으로 고친 경우) 생성된 FromJSON이 enumOk를 내려 둔다.
+		for( size_t i = 0; i < rows.size(); ++i )
+		{
+			if( !RowEnumOk(rows[i], 0) )
+			{
+				LOG_ERROR(_T("[GameData] unknown enum name. path=%s, row=%u"), file.c_str(), static_cast<uint32>(i));
+				return false;
+			}
+		}
+		return true;
 	}
 
 }
@@ -367,6 +121,37 @@ std::shared_ptr<const CHeroData> CGameDataLoader::LoadHeroes(const _tstring& dir
 		}
 	}
 
+	// 상태 효과(선택). 스킬이 참조하므로 스킬보다 먼저 읽는다.
+	const std::filesystem::path statusFile = std::filesystem::path(dir) / SStatusRow::kFile;
+	if( std::filesystem::exists(statusFile) )
+	{
+		std::vector<SStatusRow> statusRows;
+		if( !ReadTable(std::filesystem::path(dir), statusRows) )
+			return nullptr;
+
+		for( const SStatusRow& r : statusRows )
+		{
+			SStatusTemplate t;
+			t.id = r.id;
+			t.name = TStringToString(r.name.c_str());
+			t.kind = r.kind;
+			t.target = r.target;
+			t.durationMs = r.durationMs;
+			t.tickMs = r.tickMs;
+			t.damagePercent = r.damagePercent;
+			t.flatDamage = r.flatDamage;
+			t.attackPercent = r.attackPercent;
+			t.defensePercent = r.defensePercent;
+			t.speedPercent = r.speedPercent;
+
+			if( !data->AddStatus(t) )
+			{
+				LOG_ERROR(_T("[GameData] duplicate status id. id=%u"), r.id);
+				return nullptr;
+			}
+		}
+	}
+
 	// 스킬(선택). 파일이 없으면 스킬 없이 구동하고, 있는데 형식이 틀리면 구동하지 않는다.
 	const std::filesystem::path skillFile = std::filesystem::path(dir) / SSkillRow::kFile;
 	if( std::filesystem::exists(skillFile) )
@@ -380,21 +165,16 @@ std::shared_ptr<const CHeroData> CGameDataLoader::LoadHeroes(const _tstring& dir
 			SSkillTemplate s;
 			s.id = r.id;
 			s.name = TStringToString(r.name.c_str());
-			if( r.shape == _T("Single") )
-				s.shape = ESkillShape::Single;
-			else if( r.shape == _T("Area") )
-				s.shape = ESkillShape::Area;
-			else
-			{
-				LOG_ERROR(_T("[GameData] skill %u: Shape must be \"Single\" or \"Area\". value=%s"), r.id, r.shape.c_str());
-				return nullptr;
-			}
+			s.shape = r.shape;
 			s.damagePercent = r.damagePercent;
 			s.flatDamage = r.flatDamage;
 			s.range = static_cast<float>(r.range);
 			s.radius = static_cast<float>(r.radius);
 			s.cooldownMs = r.cooldownMs;
 			s.maxTargets = r.maxTargets;
+			s.castTimeMs = r.castTimeMs;
+			s.projectileSpeed = static_cast<float>(r.projectileSpeed);
+			s.statusId = r.statusId;
 
 			if( !data->AddSkill(s) )
 			{
@@ -431,7 +211,7 @@ std::shared_ptr<const CHeroData> CGameDataLoader::LoadHeroes(const _tstring& dir
 		return nullptr;
 	}
 
-	LOG_INFO(_T("[GameData] loaded. heroes=%u, skills=%u"), static_cast<uint32>(data->GetHeroCount()), static_cast<uint32>(data->GetSkillCount()));
+	LOG_INFO(_T("[GameData] loaded. heroes=%u, skills=%u, statuses=%u"), static_cast<uint32>(data->GetHeroCount()), static_cast<uint32>(data->GetSkillCount()), static_cast<uint32>(data->GetStatusCount()));
 	return data;
 }
 

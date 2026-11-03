@@ -9,6 +9,10 @@
       "SkillId": 2
     },
     {
+      "HeroId": 1,
+      "SkillId": 7
+    },
+    {
       "HeroId": 2,
       "SkillId": 3
     },

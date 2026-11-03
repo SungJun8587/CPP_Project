@@ -76,6 +76,13 @@ struct SBotStats
 	uint64	skillCasts = 0;			// 내 스킬 시전 통지 수
 	uint64	skillHits = 0;			// 내 스킬 시전 통지의 hitCount 합
 	uint64	skillRejects[8] = {};	// ESkillRejectReason 별
+	uint64	castStarts = 0;			// 내 시전 시작 통지 수 (시전 시간이 있는 스킬)
+	uint64	castCancels[8] = {};	// 내 시전 취소 통지 수, ESkillCancelReason 별
+	uint64	projectiles = 0;		// 내 투사체 발사 통지 수
+	uint64	impacts = 0;			// 내 투사체 착탄 통지 수
+	uint64	impactHits = 0;			// 착탄 통지의 hitCount 합
+	uint64	statusApplied = 0;		// 나에게 걸린(또는 갱신된) 상태 효과 통지 수
+	uint64	statusEnded = 0;		// 나에게서 풀린 상태 효과 통지 수
 	uint64	attackRejects[8] = {};	// EAttackRejectReason 별
 	uint64	posCorrects[8] = {};	// ECorrectPosReason 별
 	uint64	damageDealt = 0;		// 내가 준 피해 합
@@ -98,6 +105,7 @@ public:
 
 	static constexpr uint8	kWireEntityPlayer = 0;		// ZcSpawnNotify::entityType (EntityType::Player)
 	static constexpr size_t	kMaxLatencySamples = 4096;
+	static constexpr uint32	kCastSlackMs = 500;			// 시전 완료/취소 통지가 오지 않아도 이 시간이 지나면 시전이 끝난 것으로 본다
 
 	CBotBrain(const SBotConfig& cfg, SendFn send)
 		: _cfg(cfg), _send(std::move(send)), _rng(cfg.seed != 0 ? cfg.seed : static_cast<uint32>(cfg.charId * 2654435761u))
@@ -188,6 +196,21 @@ public:
 		case (uint16)EZoneClientPacketType::ZcSkillRejectNotify:
 			Count(_stats.zcRecv, h->type, kClientBase);
 			return With<ZcSkillRejectNotifyPacket>(h, [&](auto& p) { OnSkillReject(p); });
+		case (uint16)EZoneClientPacketType::ZcSkillCastNotify:
+			Count(_stats.zcRecv, h->type, kClientBase);
+			return With<ZcSkillCastNotifyPacket>(h, [&](auto& p) { OnSkillCastStart(p, nowMs); });
+		case (uint16)EZoneClientPacketType::ZcSkillCancelNotify:
+			Count(_stats.zcRecv, h->type, kClientBase);
+			return With<ZcSkillCancelNotifyPacket>(h, [&](auto& p) { OnSkillCancel(p); });
+		case (uint16)EZoneClientPacketType::ZcProjectileNotify:
+			Count(_stats.zcRecv, h->type, kClientBase);
+			return With<ZcProjectileNotifyPacket>(h, [&](auto& p) { OnProjectile(p); });
+		case (uint16)EZoneClientPacketType::ZcSkillImpactNotify:
+			Count(_stats.zcRecv, h->type, kClientBase);
+			return With<ZcSkillImpactNotifyPacket>(h, [&](auto& p) { OnImpact(p); });
+		case (uint16)EZoneClientPacketType::ZcStatusNotify:
+			Count(_stats.zcRecv, h->type, kClientBase);
+			return With<ZcStatusNotifyPacket>(h, [&](auto& p) { OnStatus(p); });
 		default:
 			++_stats.unknownPackets;
 			return true;
@@ -464,6 +487,7 @@ private:
 			_self.moving = false;
 			_targetId = 0;
 			_awaitMoveAck = false;
+			_castUntilMs = 0;
 			return;
 		}
 
@@ -506,6 +530,51 @@ private:
 			return;
 		++_stats.skillCasts;
 		_stats.skillHits += p.hitCount;
+		_castUntilMs = 0;		// 시전이 끝났다 (즉시 스킬은 곧바로 이 통지가 온다)
+	}
+
+	// 시전 시간이 있는 스킬: 끝나거나 취소될 때까지 제자리에서 기다린다. 이동하면 서버가 시전을 취소하고, 기본 공격은 Casting으로 거부된다.
+	void OnSkillCastStart(const ZcSkillCastNotifyPacket& p, uint64 nowMs)
+	{
+		if( p.casterId != _cfg.charId )
+			return;
+		++_stats.castStarts;
+		_castUntilMs = nowMs + p.castTimeMs + kCastSlackMs;
+	}
+
+	void OnSkillCancel(const ZcSkillCancelNotifyPacket& p)
+	{
+		if( p.casterId != _cfg.charId )
+			return;
+		if( p.reason < 8 )
+			++_stats.castCancels[p.reason];
+		_castUntilMs = 0;
+	}
+
+	void OnProjectile(const ZcProjectileNotifyPacket& p)
+	{
+		if( p.casterId != _cfg.charId )
+			return;
+		++_stats.projectiles;
+		_castUntilMs = 0;		// 시전이 끝나고 날아가는 중. 비행 중에는 움직여도 된다
+	}
+
+	void OnImpact(const ZcSkillImpactNotifyPacket& p)
+	{
+		if( p.casterId != _cfg.charId )
+			return;
+		++_stats.impacts;
+		_stats.impactHits += p.hitCount;
+	}
+
+	void OnStatus(const ZcStatusNotifyPacket& p)
+	{
+		if( p.entityId != _cfg.charId )
+			return;
+		if( p.applied != 0 )
+			++_stats.statusApplied;
+		else
+			++_stats.statusEnded;
 	}
 
 	void OnSkillReject(const ZcSkillRejectNotifyPacket& p)
@@ -646,6 +715,10 @@ private:
 		const float dx = tx - sx, dy = ty - sy;
 		const float dist = std::sqrt(dx * dx + dy * dy);
 
+		// 스킬을 시전하는 중에는 움직이지도, 기본 공격을 하지도 않는다 (움직이면 시전이 취소된다).
+		if( nowMs < _castUntilMs )
+			return;
+
 		// 대상과 나 사이에 장애물이 있으면 돌아간다(서버도 같은 이유로 벽 너머 공격을 거부한다).
 		if( !IsClear(sx, sy, tx, ty) )
 		{
@@ -769,6 +842,7 @@ private:
 	uint64				_lastMoveMs = 0;
 	uint64				_lastAttackMs = 0;
 	uint64				_lastSkillMs = 0;
+	uint64				_castUntilMs = 0;			// 시전 중이라고 보는 시각 (0이면 시전 중 아님)
 	bool				_skillDisabled = false;
 	uint64				_lastWanderMs = 0;
 	bool				_awaitMoveAck = false;

@@ -4,8 +4,8 @@
 //
 //***************************************************************************
 
-#ifndef UC_GAMEDATALOADER_H
-#define UC_GAMEDATALOADER_H
+#ifndef GAMEDATALOADER_H
+#define GAMEDATALOADER_H
 
 #include <Network/NetworkCommon.h>
 
@@ -27,9 +27,14 @@
 //     <dir>/Spawn.json   : { "Spawn":   [ { "ZoneId","MonsterId","Count","X","Y","Radius" }, ... ] }
 //     <dir>/Hero.json    : { "Hero":    [ { "Id","Name","MaxHp","Attack","Defense","AttackRange","AttackIntervalMs",
 //                                           "Speed" }, ... ] }   (영웅은 1개 이상, 플레이어가 입장할 때 하나를 선택한다)
-//     <dir>/Skill.json   : { "Skill":   [ { "Id","Name","Shape","DamagePercent","FlatDamage","Range","Radius","CooldownMs","MaxTargets" }, ... ] }   (선택)
+//     <dir>/Skill.json   : { "Skill":   [ { "Id","Name","Shape","DamagePercent","FlatDamage","Range","Radius","CooldownMs","MaxTargets",
+//                                            "CastTimeMs"(선택,0=즉시),"ProjectileSpeed"(선택,0=즉시 적중),"StatusId"(선택,0=없음) }, ... ] }   (선택)
+//     <dir>/Status.json  : { "Status":  [ { "Id","Name","Kind"("Dot"/"Buff"),"Target"("Hit"/"Self"),"DurationMs","TickMs","DamagePercent","FlatDamage",
+//                                            "AttackPercent","DefensePercent","SpeedPercent" }, ... ] }   (선택. Skill의 StatusId가 참조)
 //                          Shape는 "Single"(대상 지정, Radius 0, MaxTargets 1) 또는 "Area"(지정 지점 중심의 원, Radius > 0, MaxTargets 1~32).
-//                          피해 = max(최소 피해, 공격력 * DamagePercent / 100 + FlatDamage - 방어력). 즉시 발동이며 시전 시간은 없다.
+//                          피해 = max(최소 피해, 공격력 * DamagePercent / 100 + FlatDamage - 방어력). DamagePercent와 FlatDamage가 모두 0이면 피해 없이 상태 효과만 건다.
+//                          CastTimeMs > 0이면 시전 시간이 있고(이동하면 취소), ProjectileSpeed > 0이면 거리/속도만큼 날아간 뒤 착탄 시점에 판정한다.
+//                          Status의 Dot은 TickMs마다 공격력 * DamagePercent / 100 + FlatDamage(방어력 무시, 최소 1)를 주고, Buff는 공격/방어/이동속도를 %로 바꾼다.
 //     <dir>/HeroSkill.json: { "HeroSkill": [ { "HeroId","SkillId" }, ... ] }   (선택. 영웅 한 명당 최대 8개)
 //     <dir>/Block.json   : { "Block":   [ { "ZoneId","Type","X","Y","W","H","R" }, ... ] }   (선택. 없으면 장애물 없음)
 //                          Type은 "Rect"(X,Y = 왼쪽 아래 모서리, W,H = 크기) 또는 "Circle"(X,Y = 중심, R = 반경).
@@ -52,4 +57,4 @@ public:
 		std::shared_ptr<const CBlockMap>& out);
 };
 
-#endif // ndef UC_GAMEDATALOADER_H
+#endif // ndef GAMEDATALOADER_H

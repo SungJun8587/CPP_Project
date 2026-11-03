@@ -9,7 +9,10 @@
       "Range": 3.0,
       "Radius": 0.0,
       "CooldownMs": 4000,
-      "MaxTargets": 1
+      "MaxTargets": 1,
+      "CastTimeMs": 0,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 4
     },
     {
       "Id": 2,
@@ -20,7 +23,10 @@
       "Range": 3.0,
       "Radius": 4.0,
       "CooldownMs": 7000,
-      "MaxTargets": 6
+      "MaxTargets": 6,
+      "CastTimeMs": 0,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 0
     },
     {
       "Id": 3,
@@ -31,7 +37,10 @@
       "Range": 14.0,
       "Radius": 0.0,
       "CooldownMs": 5000,
-      "MaxTargets": 1
+      "MaxTargets": 1,
+      "CastTimeMs": 0,
+      "ProjectileSpeed": 60.0,
+      "StatusId": 2
     },
     {
       "Id": 4,
@@ -42,7 +51,10 @@
       "Range": 12.0,
       "Radius": 5.0,
       "CooldownMs": 8000,
-      "MaxTargets": 8
+      "MaxTargets": 8,
+      "CastTimeMs": 600,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 0
     },
     {
       "Id": 5,
@@ -53,7 +65,10 @@
       "Range": 10.0,
       "Radius": 0.0,
       "CooldownMs": 4000,
-      "MaxTargets": 1
+      "MaxTargets": 1,
+      "CastTimeMs": 800,
+      "ProjectileSpeed": 40.0,
+      "StatusId": 1
     },
     {
       "Id": 6,
@@ -64,7 +79,24 @@
       "Range": 9.0,
       "Radius": 6.0,
       "CooldownMs": 9000,
-      "MaxTargets": 12
+      "MaxTargets": 12,
+      "CastTimeMs": 1200,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 0
+    },
+    {
+      "Id": 7,
+      "Name": "전투 함성",
+      "Shape": "Area",
+      "DamagePercent": 0,
+      "FlatDamage": 0,
+      "Range": 1.0,
+      "Radius": 1.0,
+      "CooldownMs": 20000,
+      "MaxTargets": 1,
+      "CastTimeMs": 0,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 3
     }
   ]
 }

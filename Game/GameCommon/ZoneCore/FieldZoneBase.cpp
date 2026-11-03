@@ -21,6 +21,7 @@ CFieldZoneBase::CFieldZoneBase(const FieldZoneConfig& config)
 	, _fieldConfig(config)
 	, _valid(false)
 	, _updatingMovement(false)
+	, _nextProjectileId(0)
 {
 	if( _fieldConfig.minDamage < 1 )
 		_fieldConfig.minDamage = 1;
@@ -29,6 +30,7 @@ CFieldZoneBase::CFieldZoneBase(const FieldZoneConfig& config)
 	assert(_valid && "CFieldZoneBase: invalid AOI configuration");
 
 	_moving.reserve(1024);
+	_statusHolders.reserve(256);
 }
 
 //***************************************************************************
@@ -108,6 +110,8 @@ bool CFieldZoneBase::RemoveEntity(uint64 id)
 		CancelTimer(entity->_respawnTimerId);
 		entity->_respawnTimerId = 0;
 	}
+
+	DetachSkillState(*entity);
 
 	HandleEntityRemoved(*entity);
 
@@ -228,6 +232,8 @@ void CFieldZoneBase::OrderMove(CZoneEntity& entity, const Vec2& dest)
 	if( entity._moving && DistanceSq(dest, entity._dest) < 1e-4f )
 		return;
 
+	CancelCast(entity, SkillCancelReason::Moved);
+
 	entity._dest = dest;
 
 	if( !entity._moving )
@@ -314,6 +320,8 @@ bool CFieldZoneBase::MoveTo(CZoneEntity* entity, const Vec2& pos, bool notify)
 	if( !IsWalkable(pos) )
 		return false;
 
+	CancelCast(*entity, SkillCancelReason::Moved);
+
 	const bool wasMoving = entity->_moving;
 	if( wasMoving )
 		EndMoving(entity);
@@ -354,6 +362,7 @@ bool CFieldZoneBase::PostMove(uint64 id, const Vec2& clientPos, const Vec2& dest
 void CFieldZoneBase::OnUpdate(uint32 dtMs)
 {
 	UpdateMovement(dtMs);
+	UpdateStatuses();
 }
 
 //***************************************************************************
@@ -460,6 +469,12 @@ AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetI
 		return AttackResult::AttackerDead;
 	}
 
+	if( attacker._cast != nullptr )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::Casting);
+		return AttackResult::Casting;
+	}
+
 	if( nowMs + GetTickIntervalMs() < attacker._nextAttackMs )
 		return AttackResult::Cooldown;
 
@@ -527,7 +542,7 @@ AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetI
 //***************************************************************************
 int32 CFieldZoneBase::CalcDamage(const CZoneEntity& attacker, const CZoneEntity& victim) const
 {
-	int64 damage = static_cast<int64>(attacker._stats.attack) - static_cast<int64>(victim._stats.defense);
+	int64 damage = static_cast<int64>(attacker.GetAttack()) - static_cast<int64>(victim.GetDefense());
 	if( damage < _fieldConfig.minDamage )
 		damage = _fieldConfig.minDamage;
 	if( damage > INT32_MAX )
@@ -562,115 +577,6 @@ bool CFieldZoneBase::DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 
 		Kill(victim, source);
 
 	return true;
-}
-
-//***************************************************************************
-// @brief 스킬을 시전하고 피해를 적용합니다. 검증 순서는 RequestAttack과 같은 원칙(싸고 위조하기 쉬운 값부터)이다.
-//        1) 같은 틱의 공격/스킬 요청 중복은 조용히 무시(Throttled, 기본 공격과 같은 게이트를 쓴다)
-//        2) 시전자 생존 -> 3) 재사용 대기 -> 4) 사거리(Single은 대상 위치, Area는 지정한 중심) -> 5) 시선(장애물)
-//        -> 6) Single은 대상이 생존/공격 가능/무적 아님. 대상이 없는 경우와 사거리 밖은 같은 사유(엔티티 존재 여부 비노출).
-//        Area는 중심에서 radius 안의 공격 가능한 엔티티를 모으되, 중심에서 장애물에 가린 대상은 뺀다.
-//        모인 대상이 maxTargets를 넘으면 중심에 가까운 순(같으면 ID 순)으로 자른다. 대상이 0이어도 시전은 성공하고 재사용 대기가 시작된다.
-//        시전 알림(HandleSkillCast)을 피해 알림보다 먼저 보낸다. 거부된 요청(Throttled 제외)은 HandleSkillRejected로 알리고
-//        재사용 대기를 소모하지 않는다. 성공하면 시전자 본인의 무적은 해제된다.
-//        존 스레드에서만 호출해야 하며, caster는 이 존에 속해야 한다.
-// @param caster    시전자
-// @param skill     스킬 (시전자가 쓸 수 있는지는 호출자가 확인)
-// @param targetId  Single의 대상 ID (Area는 무시)
-// @param center    Area의 중심 좌표 (Single은 무시)
-// @param readyAtMs [in,out] 이 시전자의 이 스킬을 다시 쓸 수 있는 존 논리 시각. 성공하면 갱신된다
-// @return 처리 결과
-//***************************************************************************
-SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint64& readyAtMs)
-{
-	assert(CanTouchZoneState());
-	assert(caster._inZone);
-	assert(!_updatingMovement && "CFieldZoneBase::CastSkill called during movement update");
-
-	const uint64 nowMs = GetNowMs();
-	if( !caster._attackGate.TryPass(nowMs, 1) )
-		return SkillResult::Throttled;
-
-	auto reject = [&](SkillResult reason)
-		{
-			HandleSkillRejected(caster, skill, reason);
-			return reason;
-		};
-
-	if( caster._dead )
-		return reject(SkillResult::CasterDead);
-
-	if( nowMs + GetTickIntervalMs() < readyAtMs )
-		return reject(SkillResult::Cooldown);
-
-	const bool single = skill.shape == ESkillShape::Single;
-	CZoneEntity* target = nullptr;
-	Vec2 mid;
-	float moveSpeed = caster._moving ? caster._speed : 0.0f;
-	if( single )
-	{
-		target = FindEntity(targetId);
-		if( target == nullptr )
-			return reject(SkillResult::OutOfRange);
-		mid = target->_pos;
-		if( target->_moving )
-			moveSpeed += target->_speed;
-	}
-	else
-	{
-		if( !std::isfinite(center.x) || !std::isfinite(center.y) || !IsInBounds(center) )
-			return reject(SkillResult::OutOfRange);
-		mid = center;
-	}
-
-	const float reach = skill.range + _fieldConfig.posToleranceBase + moveSpeed * static_cast<float>(_fieldConfig.maxLatencyMs) * 0.001f;
-	if( !(DistanceSq(caster._pos, mid) <= reach * reach) )
-		return reject(SkillResult::OutOfRange);
-
-	if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(caster._pos, mid) )
-		return reject(SkillResult::NoLineOfSight);
-
-	struct SHit { float distSq; uint64 id; };
-	std::vector<SHit> hits;
-	if( single )
-	{
-		if( target->_dead || !CanAttack(caster, *target) || IsInvulnerable(*target) )
-			return reject(SkillResult::InvalidTarget);
-		hits.push_back({ 0.0f, target->GetId() });
-	}
-	else
-	{
-		ForEachInRadius(mid, skill.radius, [&](CZoneEntity& e)
-			{
-				if( &e == &caster || e._dead || !CanAttack(caster, e) || IsInvulnerable(e) )
-					return;
-				if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(mid, e._pos) )
-					return;		// 폭발이 벽에 가려진 대상에게는 닿지 않는다
-				hits.push_back({ DistanceSq(mid, e._pos), e.GetId() });
-			});
-
-		std::sort(hits.begin(), hits.end(), [](const SHit& a, const SHit& b)
-			{
-				return a.distSq != b.distSq ? a.distSq < b.distSq : a.id < b.id;
-			});
-		if( hits.size() > skill.maxTargets )
-			hits.resize(skill.maxTargets);
-	}
-
-	readyAtMs = (readyAtMs > nowMs ? readyAtMs : nowMs) + skill.cooldownMs;
-	caster._invulnerableUntilMs = 0;
-
-	HandleSkillCast(caster, skill, single ? targetId : 0, mid, static_cast<uint32>(hits.size()));
-
-	for( const SHit& hit : hits )
-	{
-		CZoneEntity* victim = FindEntity(hit.id);
-		if( victim == nullptr || victim->_dead )
-			continue;		// 앞선 피해의 훅에서 사망/퇴장한 경우
-		DealDamage(*victim, &caster, CalcSkillDamage(skill, caster._stats.attack, victim->_stats.defense, _fieldConfig.minDamage));
-	}
-
-	return SkillResult::Ok;
 }
 
 //***************************************************************************
@@ -741,6 +647,9 @@ void CFieldZoneBase::Kill(CZoneEntity& victim, CZoneEntity* killer)
 {
 	victim._dead = true;
 	victim._hp = 0;
+
+	CancelCast(victim, SkillCancelReason::Died);
+	ClearStatuses(victim, StatusEndReason::Died);
 
 	if( victim._moving )
 	{

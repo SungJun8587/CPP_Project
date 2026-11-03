@@ -1,0 +1,7 @@
+Name	Type	Value	Comment
+MaxUsers	uint	1000	최대 접속자
+Gravity	float	9.81	
+Title	string	따옴표 " 와 백슬래시 \ 와 한글	
+Enabled	bool	TRUE	
+Offset	int	-5	
+Big	uint	4000000000	

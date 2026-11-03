@@ -1,0 +1,7 @@
+Enum:string	Name:string	Value:int?	Base:string?	Comment:string?
+ESkillShape	Single	0	uint8	스킬 효과 범위 형태 - 대상 하나 (대상 ID를 지정)
+ESkillShape	Area	1		지정한 지점을 중심으로 한 원형 범위 (좌표를 지정)
+EStatusKind	Dot	0	uint8	지속 피해: tickMs마다 고정 피해(방어력 무시)를 준다
+EStatusKind	Buff	1		능력치 보정: 지속시간 동안 공격력/방어력/이동속도를 %로 바꾼다 (음수면 디버프)
+EStatusTarget	Hit	0	uint8	스킬에 맞은 대상에게 건다
+EStatusTarget	Self	1		시전자 본인에게 건다 (효과가 발동하는 시점에 한 번)

@@ -1,0 +1,11 @@
+Enum	Name	Value	Base	Comment
+EFlag	None	0	uint32	없음
+EFlag	A	1		
+EFlag	B	2		
+EFlag	High	2147483648		2^31 이상 값
+EColor	Red			첫 값은 0
+EColor	Green			앞 값 + 1
+EColor	Blue	10		
+EColor	Alpha			11
+ESigned	Neg	-5	int32	
+ESigned	Zero	0		

@@ -98,6 +98,7 @@
   <ItemGroup>
     <ClCompile Include="..\GameCommon\ZoneCore\BlockMap.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\BlockMapFile.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneSkill.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\HeroData.cpp" />
     <ClCompile Include="BlockMapTests.cpp" />
     <ClCompile Include="pch.cpp">
@@ -141,6 +142,7 @@
     <ClInclude Include="..\GameCommon\ZoneCore\BlockMap.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\BlockMapFile.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\HeroData.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\SkillData.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="TestCommon.h" />
     <ClInclude Include="TestSuites.h" />

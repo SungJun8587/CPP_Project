@@ -1,0 +1,1 @@
+--out {out} --cpp-out {cpp} --cs-out {cs} --cs-namespace Game.Data

@@ -110,6 +110,18 @@ protected:
 	virtual void OnAttackRejected(TEntity& attacker, uint64 targetId, AttackResult reason) { (void)attacker; (void)targetId; (void)reason; }
 	virtual void OnSkillCast(TEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount) { (void)caster; (void)skill; (void)targetId; (void)center; (void)hitCount; }
 	virtual void OnSkillRejected(TEntity& caster, const SSkillTemplate& skill, SkillResult reason) { (void)caster; (void)skill; (void)reason; }
+	virtual void OnSkillCastStarted(TEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center) { (void)caster; (void)skill; (void)targetId; (void)center; }
+	virtual void OnSkillCastCancelled(TEntity& caster, const SSkillTemplate& skill, SkillCancelReason reason) { (void)caster; (void)skill; (void)reason; }
+	virtual void OnProjectileLaunched(TEntity& caster, const SSkillTemplate& skill, uint32 projectileId, uint64 targetId, const Vec2& from, const Vec2& to, uint32 flightMs)
+	{
+		(void)caster; (void)skill; (void)projectileId; (void)targetId; (void)from; (void)to; (void)flightMs;
+	}
+	virtual void OnProjectileImpact(TEntity& caster, const SSkillTemplate& skill, uint32 projectileId, const Vec2& center, uint32 hitCount)
+	{
+		(void)caster; (void)skill; (void)projectileId; (void)center; (void)hitCount;
+	}
+	virtual void OnStatusApplied(TEntity& entity, const SStatusTemplate& status, uint64 casterId) { (void)entity; (void)status; (void)casterId; }
+	virtual void OnStatusEnded(TEntity& entity, uint32 statusId, StatusEndReason reason) { (void)entity; (void)statusId; (void)reason; }
 
 private:
 	void HandleEntityRemoved(CZoneEntity& entity) final { OnEntityRemoved(static_cast<TEntity&>(entity)); }
@@ -124,6 +136,18 @@ private:
 	void HandleAttackRejected(CZoneEntity& attacker, uint64 targetId, AttackResult reason) final { OnAttackRejected(static_cast<TEntity&>(attacker), targetId, reason); }
 	void HandleSkillCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint32 hitCount) final { OnSkillCast(static_cast<TEntity&>(caster), skill, targetId, center, hitCount); }
 	void HandleSkillRejected(CZoneEntity& caster, const SSkillTemplate& skill, SkillResult reason) final { OnSkillRejected(static_cast<TEntity&>(caster), skill, reason); }
+	void HandleSkillCastStarted(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center) final { OnSkillCastStarted(static_cast<TEntity&>(caster), skill, targetId, center); }
+	void HandleSkillCastCancelled(CZoneEntity& caster, const SSkillTemplate& skill, SkillCancelReason reason) final { OnSkillCastCancelled(static_cast<TEntity&>(caster), skill, reason); }
+	void HandleProjectileLaunched(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, uint64 targetId, const Vec2& from, const Vec2& to, uint32 flightMs) final
+	{
+		OnProjectileLaunched(static_cast<TEntity&>(caster), skill, projectileId, targetId, from, to, flightMs);
+	}
+	void HandleProjectileImpact(CZoneEntity& caster, const SSkillTemplate& skill, uint32 projectileId, const Vec2& center, uint32 hitCount) final
+	{
+		OnProjectileImpact(static_cast<TEntity&>(caster), skill, projectileId, center, hitCount);
+	}
+	void HandleStatusApplied(CZoneEntity& entity, const SStatusTemplate& status, uint64 casterId) final { OnStatusApplied(static_cast<TEntity&>(entity), status, casterId); }
+	void HandleStatusEnded(CZoneEntity& entity, uint32 statusId, StatusEndReason reason) final { OnStatusEnded(static_cast<TEntity&>(entity), statusId, reason); }
 };
 
 #endif // ndef FIELDZONE_H
