@@ -1,0 +1,3 @@
+Enum:string	Name:string	Value:int?	Base:string?	Comment:string?	EnumComment:string?
+EWide	A	1	uint16		
+EResult	Ok	0	uint8		

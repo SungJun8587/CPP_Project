@@ -18,6 +18,28 @@
 namespace
 {
 	constexpr size_t kInlinePacketBytes = 32;		// 작업 객체에 인라인으로 담는 클라이언트 패킷 최대 크기 (ZoneJob 인라인 용량 48바이트에 맞춤)
+
+	//***************************************************************************
+	// @brief Gateway와의 연결이 새로 맺어지거나 끊겼을 때, 존에 남은 플레이어를 모두 내보내도록 존 스레드에 요청합니다.
+	// @details Gateway 쪽은 존 연결이 끊기면 클라이언트의 존 점유를 해제하지만 퇴장 통지는 보낼 수 없다. 이 정리가 없으면
+	//          같은 캐릭터가 다시 입장할 때 DuplicateEntity로 거부되고, 남은 엔티티가 인원 집계와 몬스터 어그로에 계속 참여한다.
+	//          연결 직후(등록 요청 전)에 올리므로, 새 연결의 입장 요청은 입력 큐 순서상 항상 이 정리 뒤에 처리된다.
+	// @param zone   대상 존 (nullptr이면 아무것도 하지 않음)
+	// @param zoneId 로그용 존 ID
+	// @param reason 로그용 사유 (정적 문자열)
+	//***************************************************************************
+	void PostGatewayReset(CBattleZone* zone, uint32 zoneId, const TCHAR* reason)
+	{
+		if( zone == nullptr )
+			return;
+
+		zone->Post([zoneId, reason](CZone& z)
+			{
+				const uint32 removed = static_cast<CBattleZone&>(z).HandleGatewayReset();
+				if( removed != 0 )
+					LOG_WARNING(_T("[CZoneServerMain] players removed after gateway link reset. zoneId=%u, count=%u, reason=%s"), zoneId, removed, reason);
+			});
+	}
 }
 
 //***************************************************************************
@@ -204,6 +226,10 @@ void CZoneServerMain::OnLinkConnected(const std::shared_ptr<CZoneLinkSession>& s
 	}
 
 	_registered.store(false, std::memory_order_release);
+
+	// 이전 연결의 플레이어는 새 Gateway 연결에서 유효하지 않다. 등록 요청 전에 정리를 올려 순서를 보장한다.
+	PostGatewayReset(_zone.get(), _options.zoneId, _T("connected"));
+
 	SendRegisterReq();
 }
 
@@ -215,17 +241,26 @@ void CZoneServerMain::OnLinkConnected(const std::shared_ptr<CZoneLinkSession>& s
 //***************************************************************************
 void CZoneServerMain::OnLinkDisconnected(CZoneLinkSession* session)
 {
-	std::lock_guard<std::mutex> lock(_linkMutex);
+	bool lost = false;
 
-	if( _link.get() == session )
 	{
-		_link.reset();
-		_registered.store(false, std::memory_order_release);
-		LOG_WARNING(_T("[CZoneServerMain] gateway link lost. zoneId=%u"), _options.zoneId);
+		std::lock_guard<std::mutex> lock(_linkMutex);
+
+		if( _link.get() == session )
+		{
+			_link.reset();
+			_registered.store(false, std::memory_order_release);
+			LOG_WARNING(_T("[CZoneServerMain] gateway link lost. zoneId=%u"), _options.zoneId);
+			lost = true;
+		}
+
+		if( _link == nullptr && !_stopRequested.load() )
+			_needReconnect = true;
 	}
 
-	if( _link == nullptr && !_stopRequested.load() )
-		_needReconnect = true;
+	// 연결이 없는 동안 남은 플레이어는 응답을 받을 곳이 없으므로 바로 내보낸다. (재접속 시 한 번 더 정리하므로 누락돼도 안전하다)
+	if( lost && !_stopRequested.load() )
+		PostGatewayReset(_zone.get(), _options.zoneId, _T("link lost"));
 }
 
 //***************************************************************************

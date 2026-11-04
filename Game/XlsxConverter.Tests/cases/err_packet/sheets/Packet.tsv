@@ -1,0 +1,7 @@
+Name:string	Group:string	Id:int	Cs:string?	Summary:string?	Comment:string	Detail:string?
+P1	A	1	Send		p1	
+P2	A	1	Send		dup id	
+P3	A	2000	None		out of range	
+P4	Z	5	None		no group	
+P5	A	6	Maybe		bad cs	
+P6	A	7	Recv		char recv	

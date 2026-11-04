@@ -2,7 +2,7 @@
 //***************************************************************************
 // GeneratedCommon.h : 자동 생성 파일 - 직접 수정하지 마세요.
 //
-// XlsxToJson이 만든 시트별 행 구조체 헤더(<시트>.gen.h)를 한곳에서 포함합니다.
+// XlsxConverter가 만든 시트별 행 구조체 헤더(<시트>.gen.h)를 한곳에서 포함합니다.
 //***************************************************************************
 
 #ifndef GAMEDATAROWS_GENERATEDCOMMON_H
@@ -18,5 +18,8 @@
 #include "Skill.gen.h"
 #include "Status.gen.h"
 #include "HeroSkill.gen.h"
+#include "Boss.gen.h"
+#include "BossPhase.gen.h"
+#include "BossAction.gen.h"
 
 #endif // ndef GAMEDATAROWS_GENERATEDCOMMON_H

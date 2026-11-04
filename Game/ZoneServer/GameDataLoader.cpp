@@ -280,6 +280,144 @@ std::shared_ptr<const CMonsterData> CGameDataLoader::LoadMonsters(const _tstring
 }
 
 //***************************************************************************
+// @brief 보스 전투 데이터를 읽고 검증한다. Boss.json이 없으면 보스 없이 구동한다(성공). 있으면 BossPhase.json, BossAction.json도 있어야 한다.
+// @details 행들을 보스 > 페이즈 > 행동으로 묶고 행동은 (OnEnter 먼저, Seq 순)으로 정렬한다.
+//          어느 보스/페이즈에도 속하지 않는 행, 같은 페이즈가 두 번 나오는 경우는 오류다.
+// @param dir      기획 데이터 폴더
+// @param monsters 검증된 몬스터 데이터 (참조 대상)
+// @param skills   검증된 스킬/상태 효과 데이터 (참조 대상)
+// @return 검증을 통과한 불변 데이터(보스가 없을 수도 있음), 실패하면 nullptr (원인은 로그)
+//***************************************************************************
+std::shared_ptr<const CBossData> CGameDataLoader::LoadBosses(const _tstring& dir, const CMonsterData& monsters, const CHeroData& skills)
+{
+	const std::filesystem::path base(dir);
+	std::shared_ptr<CBossData> data = std::make_shared<CBossData>();
+
+	if( !std::filesystem::exists(base / SBossRow::kFile) )
+	{
+		LOG_INFO(_T("[GameData] %s not found. no bosses. dir=%s"), SBossRow::kFile, dir.c_str());
+		return data;
+	}
+
+	std::vector<SBossRow> bossRows;
+	std::vector<SBossPhaseRow> phaseRows;
+	std::vector<SBossActionRow> actionRows;
+	if( !ReadTable(base, bossRows) || !ReadTable(base, phaseRows) || !ReadTable(base, actionRows) )
+		return nullptr;
+
+	std::vector<SBossTemplate> bosses;
+	bosses.reserve(bossRows.size());
+	for( const SBossRow& r : bossRows )
+	{
+		SBossTemplate t;
+		t.id = r.id;
+		t.monsterId = r.monsterId;
+		t.name = TStringToString(r.name.c_str());
+		t.enrageAfterMs = r.enrageAfterMs;
+		t.enrageStatusId = r.enrageStatusId;
+		bosses.push_back(std::move(t));
+	}
+
+	auto findBoss = [&](uint32 id) -> SBossTemplate*
+		{
+			for( SBossTemplate& b : bosses )
+				if( b.id == id )
+					return &b;
+			return nullptr;
+		};
+	auto findPhase = [](SBossTemplate& boss, uint32 phase) -> SBossPhaseTemplate*
+		{
+			for( SBossPhaseTemplate& p : boss.phases )
+				if( p.phase == phase )
+					return &p;
+			return nullptr;
+		};
+
+	for( const SBossPhaseRow& r : phaseRows )
+	{
+		SBossTemplate* boss = findBoss(r.bossId);
+		if( boss == nullptr )
+		{
+			LOG_ERROR(_T("[GameData] %s: unknown BossId. bossId=%u, phase=%u"), SBossPhaseRow::kFile, r.bossId, r.phase);
+			return nullptr;
+		}
+		if( findPhase(*boss, r.phase) != nullptr )
+		{
+			LOG_ERROR(_T("[GameData] %s: duplicate phase. bossId=%u, phase=%u"), SBossPhaseRow::kFile, r.bossId, r.phase);
+			return nullptr;
+		}
+
+		SBossPhaseTemplate p;
+		p.phase = r.phase;
+		p.hpBelowPercent = r.hpBelowPercent;
+		p.enterStatusId = r.enterStatusId;
+		p.enterHealPercent = r.enterHealPercent;
+		p.transitionMs = r.transitionMs;
+		boss->phases.push_back(std::move(p));
+	}
+
+	for( SBossTemplate& boss : bosses )
+		std::sort(boss.phases.begin(), boss.phases.end(), [](const SBossPhaseTemplate& a, const SBossPhaseTemplate& b) { return a.phase < b.phase; });
+
+	for( const SBossActionRow& r : actionRows )
+	{
+		SBossTemplate* boss = findBoss(r.bossId);
+		SBossPhaseTemplate* phase = boss != nullptr ? findPhase(*boss, r.phase) : nullptr;
+		if( phase == nullptr )
+		{
+			LOG_ERROR(_T("[GameData] %s: unknown BossId/Phase. bossId=%u, phase=%u, seq=%u"), SBossActionRow::kFile, r.bossId, r.phase, r.seq);
+			return nullptr;
+		}
+
+		SBossActionTemplate a;
+		a.seq = r.seq;
+		a.trigger = r.trigger;
+		a.type = r.type;
+		a.target = r.target;
+		a.skillId = r.skillId;
+		a.monsterId = r.monsterId;
+		a.count = r.count;
+		a.spreadRadius = static_cast<float>(r.spreadRadius);
+		a.delayMs = r.delayMs;
+		phase->actions.push_back(a);
+	}
+
+	for( SBossTemplate& boss : bosses )
+	{
+		for( SBossPhaseTemplate& phase : boss.phases )
+		{
+			// OnEnter 행동이 앞, 그다음 Loop 행동. 각각 Seq 오름차순 (Seq 중복은 Validate가 거부한다)
+			std::stable_sort(phase.actions.begin(), phase.actions.end(), [](const SBossActionTemplate& a, const SBossActionTemplate& b)
+				{
+					const int ka = a.trigger == EBossTrigger::OnEnter ? 0 : 1;
+					const int kb = b.trigger == EBossTrigger::OnEnter ? 0 : 1;
+					return ka != kb ? ka < kb : a.seq < b.seq;
+				});
+
+			phase.loopStart = 0;
+			while( phase.loopStart < phase.actions.size() && phase.actions[phase.loopStart].trigger == EBossTrigger::OnEnter )
+				++phase.loopStart;
+		}
+
+		if( !data->AddBoss(boss) )
+		{
+			LOG_ERROR(_T("[GameData] duplicate boss id or monster id. bossId=%u, monsterId=%u"), boss.id, boss.monsterId);
+			return nullptr;
+		}
+	}
+
+	std::string error;
+	if( !data->Validate(monsters, skills, error) )
+	{
+		LOG_ERROR(_T("[GameData] boss validation failed. %hs"), error.c_str());
+		return nullptr;
+	}
+
+	LOG_INFO(_T("[GameData] loaded. bosses=%u"), static_cast<uint32>(data->GetBossCount()));
+	return data;
+}
+
+//***************************************************************************
 // @brief 이 존의 장애물을 읽어 차단 맵을 만든다. 실제 읽기와 검증은 LoadBlockMapFile()이 한다(봇 클라이언트와 공유).
 // @details Block.json이 없으면 장애물 없는 존으로 보고 성공한다(Monster/Spawn/Hero와 달리 선택 데이터).
 //          파일이 있는데 형식이 틀리면 실패한다(장애물 없이 조용히 뜨는 것이 더 위험하다).

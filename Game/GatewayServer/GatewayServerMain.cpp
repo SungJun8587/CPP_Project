@@ -230,12 +230,21 @@ bool CGatewayServerMain::OnZonePacket(CGatewayZoneSession& session, const Packet
 void CGatewayServerMain::OnZoneSessionClosed(CGatewayZoneSession* session)
 {
 	const uint32 zoneId = session->GetZoneId();
-	if( zoneId == 0 || !_router.Unregister(zoneId, session) )
+	if( zoneId == 0 )
 		return;
 
-	LOG_WARNING(_T("[CGatewayServerMain] zone server lost. zoneId=%u"), zoneId);
+	// 이 세션이 등록한 노드의 순번. 클라이언트는 입장한 노드의 순번을 기억하므로, 노드가 새 세션으로 교체된 뒤에도
+	// (존 서버가 빠르게 재시작) 이 세션 시절에 입장한 클라이언트만 골라낼 수 있다.
+	const std::shared_ptr<SZoneNode>& node = session->GetNode();
+	const uint64 seq = node != nullptr ? node->seq : 0;
 
-	// 해당 존에 있던 클라이언트를 락 안에서 수집하고, 락 밖에서 통지한다.
+	// 교체되어 이미 라우팅에서 빠진 노드여도 그 노드에 있던 클라이언트는 정리해야 한다.
+	if( _router.Unregister(zoneId, session) )
+		LOG_WARNING(_T("[CGatewayServerMain] zone server lost. zoneId=%u"), zoneId);
+	else
+		LOG_WARNING(_T("[CGatewayServerMain] replaced zone session closed. zoneId=%u"), zoneId);
+
+	// 해당 노드에 있던 클라이언트를 락 안에서 수집하고, 락 밖에서 통지한다.
 	// 존 서버가 죽는 드문 이벤트라 전체 순회(O(N))를 허용한다.
 	std::vector<std::shared_ptr<CGatewayClientSession>> affected;
 	{
@@ -243,7 +252,7 @@ void CGatewayServerMain::OnZoneSessionClosed(CGatewayZoneSession* session)
 		for( const auto& kv : _clients )
 		{
 			std::shared_ptr<CGatewayClientSession> client = kv.second.lock();
-			if( client != nullptr && client->GetZoneId() == zoneId )
+			if( client != nullptr && client->GetZoneId() == zoneId && (seq == 0 || client->GetZoneSeq() == seq) )
 				affected.push_back(std::move(client));
 		}
 	}
@@ -309,7 +318,7 @@ bool CGatewayServerMain::HandleLogin(CGatewayClientSession& client, const Packet
 // @details 세션이 존 슬롯을 먼저 점유(TryAssignZone)해 중복 입장을 막고, 존 정원 슬롯을 예약한 뒤
 //          존 서버에 입장을 요청한다. 최종 결과는 존 서버의 ZoneEnterRes로 비동기 통지된다(HandleZoneEnterRes).
 // @param client 요청한 클라이언트 세션
-// @param header GwEnterZoneReqPacket (heroId는 존 서버로 그대로 전달하며, 유효성은 존 서버가 영웅 데이터로 판정한다)
+// @param header GwEnterZoneReqPacket
 // @return 프로토콜 위반이면 false
 //***************************************************************************
 bool CGatewayServerMain::HandleEnterZone(CGatewayClientSession& client, const PacketHeader* header)
@@ -317,9 +326,7 @@ bool CGatewayServerMain::HandleEnterZone(CGatewayClientSession& client, const Pa
 	if( header->size < sizeof(GwEnterZoneReqPacket) )
 		return false;
 
-	const GwEnterZoneReqPacket* req = static_cast<const GwEnterZoneReqPacket*>(header);
-	const uint32 zoneId = req->zoneId;
-	const uint32 heroId = req->heroId;
+	const uint32 zoneId = static_cast<const GwEnterZoneReqPacket*>(header)->zoneId;
 
 	if( !client.IsLoggedIn() )
 	{
@@ -355,11 +362,13 @@ bool CGatewayServerMain::HandleEnterZone(CGatewayClientSession& client, const Pa
 		return true;
 	}
 
+	// 입장한 노드와 존 서버 세션을 기억한다. 패킷 중계가 라우터 조회 없이 이 세션을 쓰고, 노드가 교체됐을 때 식별에도 쓴다.
+	client.SetZoneRoute(node->seq, zoneSession);
+
 	ZoneEnterReqPacket enter{};
 	InitZonePacket(enter, EZoneServerPacketType::ZoneEnterReq);
 	enter.clientSessionId = client.GetSessionId();
 	enter.charId = client.GetCharId();
-	enter.heroId = heroId;
 
 	if( !zoneSession->Send(&enter, enter.size) )
 	{
@@ -403,11 +412,12 @@ bool CGatewayServerMain::RelayClientPacket(CGatewayClientSession& client, const 
 	if( !client.IsLoggedIn() || !client.IsEnterConfirmed() )
 		return true;
 
-	const uint32 zoneId = client.GetZoneId();
-	if( zoneId == 0 )
+	if( client.GetZoneId() == 0 )
 		return true;
 
-	std::shared_ptr<CGatewayZoneSession> zoneSession = _router.FindSession(zoneId);
+	// 입장 때 기억해 둔 존 서버 세션을 쓴다. 패킷마다 라우터 읽기 락을 잡는 비용이 없고,
+	// 존 서버가 교체됐다면 이전 세션은 이미 끊겨 Send가 실패하며 클라이언트는 ZoneLost 통지로 정리된다.
+	std::shared_ptr<CIocpSession> zoneSession = client.GetZoneSession();
 	if( zoneSession == nullptr )
 		return true;
 
@@ -514,8 +524,12 @@ bool CGatewayServerMain::HandleZoneEnterRes(CGatewayZoneSession& session, const 
 	const ZoneEnterResPacket* res = static_cast<const ZoneEnterResPacket*>(header);
 	const uint32 zoneId = session.GetZoneId();
 
+	// 교체된 이전 세션의 늦은 응답은 새 노드에 입장한 같은 클라이언트에게 적용하지 않는다.
+	const std::shared_ptr<SZoneNode>& enterNode = session.GetNode();
+
 	std::shared_ptr<CGatewayClientSession> client = FindClient(res->clientSessionId);
-	if( client == nullptr || client->GetZoneId() != zoneId || client->GetCharId() != res->charId )
+	if( client == nullptr || client->GetZoneId() != zoneId || client->GetCharId() != res->charId
+		|| (enterNode != nullptr && client->GetZoneSeq() != enterNode->seq) )
 		return true;
 
 	if( res->success )
@@ -531,9 +545,7 @@ bool CGatewayServerMain::HandleZoneEnterRes(CGatewayZoneSession& session, const 
 			CZoneRouter::ReleaseSlot(*node);
 	}
 
-	const EGatewayResult failure = (res->reason == static_cast<uint8>(EZoneEnterResult::InvalidHero))
-		? EGatewayResult::InvalidHero : EGatewayResult::ZoneError;
-	SendEnterZoneRes(*client, failure, zoneId, 0.0f, 0.0f);
+	SendEnterZoneRes(*client, EGatewayResult::ZoneError, zoneId, 0.0f, 0.0f);
 	return true;
 }
 
@@ -685,12 +697,18 @@ bool CGatewayServerMain::AuthenticateClient(CGatewayClientSession& client, uint6
 //***************************************************************************
 uint32 CGatewayServerMain::DetachFromZone(CGatewayClientSession& client)
 {
+	const uint64 seq = client.GetZoneSeq();		// ClearZone()이 지우기 전에 읽는다
 	const uint32 zoneId = client.ClearZone();
 	if( zoneId == 0 )
 		return 0;
 
 	std::shared_ptr<SZoneNode> node = _router.Find(zoneId);
 	if( node == nullptr )
+		return zoneId;
+
+	// 입장했던 노드가 이미 새 노드로 교체됐다면 정원 슬롯도 존 서버 세션도 이 클라이언트와 무관하다.
+	// (새 노드의 슬롯을 반환하면 다른 사용자의 자리를 훔치게 된다)
+	if( seq != 0 && node->seq != seq )
 		return zoneId;
 
 	CZoneRouter::ReleaseSlot(*node);

@@ -189,6 +189,7 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
+    <ClInclude Include="..\GameCommon\ZoneCommon\ServerMainCommon.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h" />
     <ClInclude Include="GatewayClientSession.h" />

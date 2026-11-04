@@ -16,6 +16,8 @@
 #include "Monster.h"
 #include "MonsterData.h"
 
+class CBossSystem;
+
 //***************************************************************************
 // @struct SMonsterSystemConfig
 // @brief 몬스터 AI 튜닝값.
@@ -67,6 +69,11 @@ public:
 	uint32 SpawnAll();
 	void Update();
 
+	// 보스 시스템을 붙입니다 (nullptr이면 떼어냄). 보스 시스템은 이 객체보다 오래 살거나 존 파괴 전에 떼어야 한다. 존 구동 전에 한 번 호출한다.
+	void SetBossSystem(CBossSystem* boss) { _boss = boss; }
+	const std::shared_ptr<const CMonsterData>& GetData() const { return _data; }
+	CMonster* SpawnSummon(uint32 monsterId, const Vec2& center, float spreadRadius, uint64 ownerId, uint64 threatTargetId);
+
 	// ── 존 훅 전달 ───────────────────────────────────────
 	void OnDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32 damage);
 	void OnDied(CZoneEntity& victim);
@@ -106,6 +113,7 @@ private:
 	size_t								_monsterCount;	// 존에 있는 AI 몬스터 수
 	std::vector<CMonster*>				_active;		// AI 활성 몬스터 목록
 	uint32								_pathBudget = 0;	// 이번 틱에 남은 경로탐색 횟수
+	CBossSystem* _boss = nullptr;	// 보스 시스템 (없으면 일반 몬스터만)
 	std::vector<Vec2>					_pathScratch;	// 경로탐색 결과 작업 공간 (존 스레드 전용)
 };
 

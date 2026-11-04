@@ -74,7 +74,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PreBuildEvent>
-      <Command>"$(SolutionDir)Bin\x64\Release\XlsxToJson64.exe" "$(SolutionDir)GameData\GameData.xlsx" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --incremental</Command>
+      <Command>"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData\GameData.xlsx" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -94,7 +94,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PreBuildEvent>
-      <Command>"$(SolutionDir)Bin\x64\Release\XlsxToJson64.exe" "$(SolutionDir)GameData\GameData.xlsx" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --incremental</Command>
+      <Command>"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData\GameData.xlsx" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
@@ -128,6 +128,8 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\BlockMap.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\BlockMapFile.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\BossData.cpp" />
+    <ClCompile Include="..\GameCommon\ZoneCore\BossSystem.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneBase.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneSkill.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\HeroData.cpp" />
@@ -204,21 +206,13 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ScopeExit.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
-    <ClInclude Include="..\GameCommon\Generated\Block.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\Consts.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\Enums.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\EnumStrings.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\GeneratedCommon.h" />
-    <ClInclude Include="..\GameCommon\Generated\Hero.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\HeroSkill.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\Monster.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\Skill.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\Spawn.gen.h" />
-    <ClInclude Include="..\GameCommon\Generated\Status.gen.h" />
+    <ClInclude Include="..\GameCommon\ZoneCommon\ServerMainCommon.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacket.h" />
     <ClInclude Include="..\GameCommon\ZoneCommon\ZonePacketTypes.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\BlockMap.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\BlockMapFile.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\BossData.h" />
+    <ClInclude Include="..\GameCommon\ZoneCore\BossSystem.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZone.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\FieldZoneBase.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\GridAOI.h" />

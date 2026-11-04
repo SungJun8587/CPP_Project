@@ -9,7 +9,8 @@ int RunCombatTests();							// combat_tests.cpp   : 전투(피해, 사거리, Pv
 int RunMonsterTests();							// monster_tests.cpp  : 몬스터 스폰/어그로/추적/복귀/리스폰
 int RunGameDataTests(const _tstring& dataDir);	// game_data_tests.cpp: JSON 게임 데이터 로더 (dataDir = 샘플 GameData 폴더)
 int RunBlockMapTests();							// block_map_tests.cpp: 장애물 맵(CBlockMap) + 존 이동 충돌
-int RunSkillTests();							// skill_tests.cpp    : 스킬(단일/범위 피해, 쿨다운, 사거리, 시야, 데이터 로드)
+int RunSkillTests();								// skill_tests.cpp    : 스킬(단일/범위 피해, 쿨다운, 사거리, 시야, 데이터 로드)
+int RunBossTests(const _tstring& dataDir);		// boss_tests.cpp     : 보스 전투 (데이터 검증, 로더, 시전 예고/회피, 페이즈, 격노, 소환, 어그로 교체, 대상 규칙)
 int RunZoneConfigTests();						// zone_config_tests.cpp: 존 서버 설정 파일 읽기/저장/검증
 int RunCombatFuzz(int seeds);					// fuzz_combat.cpp    : 전투 랜덤 연산 (시드 수만큼 반복)
 int RunMonsterFuzz();							// fuzz_monster.cpp   : 몬스터 랜덤 연산 + 불변식 점검

@@ -123,6 +123,12 @@
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneSkill.cpp">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BossSystem.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BossData.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -343,38 +349,14 @@
     <ClInclude Include="..\GameCommon\ZoneCore\SkillData.h">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Block.gen.h">
-      <Filter>GameCommon\Generated</Filter>
+    <ClInclude Include="..\GameCommon\ZoneCore\BossSystem.h">
+      <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Consts.gen.h">
-      <Filter>GameCommon\Generated</Filter>
+    <ClInclude Include="..\GameCommon\ZoneCore\BossData.h">
+      <Filter>GameCommon\ZoneCore</Filter>
     </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Enums.gen.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\EnumStrings.gen.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\GeneratedCommon.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Hero.gen.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\HeroSkill.gen.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Monster.gen.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Skill.gen.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Spawn.gen.h">
-      <Filter>GameCommon\Generated</Filter>
-    </ClInclude>
-    <ClInclude Include="..\GameCommon\Generated\Status.gen.h">
-      <Filter>GameCommon\Generated</Filter>
+    <ClInclude Include="..\GameCommon\ZoneCommon\ServerMainCommon.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -419,9 +401,6 @@
     </Filter>
     <Filter Include="UtilCore\Containers\Queue">
       <UniqueIdentifier>{c40d6216-69f7-4f39-bde3-d01829035c02}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="GameCommon\Generated">
-      <UniqueIdentifier>{55f95036-edb7-4156-9596-9cf3486cd791}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>

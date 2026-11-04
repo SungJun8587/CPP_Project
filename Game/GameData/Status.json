@@ -51,6 +51,32 @@
       "AttackPercent": 0,
       "DefensePercent": 0,
       "SpeedPercent": -30
+    },
+    {
+      "Id": 5,
+      "Name": "격노",
+      "Kind": "Buff",
+      "Target": "Self",
+      "DurationMs": 600000,
+      "TickMs": 0,
+      "DamagePercent": 0,
+      "FlatDamage": 0,
+      "AttackPercent": 50,
+      "DefensePercent": 0,
+      "SpeedPercent": 30
+    },
+    {
+      "Id": 6,
+      "Name": "광폭화 준비",
+      "Kind": "Buff",
+      "Target": "Self",
+      "DurationMs": 600000,
+      "TickMs": 0,
+      "DamagePercent": 0,
+      "FlatDamage": 0,
+      "AttackPercent": 25,
+      "DefensePercent": 0,
+      "SpeedPercent": 0
     }
   ]
 }

@@ -20,9 +20,10 @@
 // @param heroData    선택 가능한 영웅 데이터 (nullptr이면 내장 기본 영웅 하나)
 // @param monsterData   몬스터 데이터 (nullptr이면 몬스터 없음)
 // @param monsterConfig 몬스터 AI 튜닝값
+// @param bossData      보스 전투 데이터 (nullptr이면 보스 없음)
 //***************************************************************************
 CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, std::shared_ptr<const CHeroData> heroData,
-	std::shared_ptr<const CMonsterData> monsterData, const SMonsterSystemConfig& monsterConfig)
+	std::shared_ptr<const CMonsterData> monsterData, const SMonsterSystemConfig& monsterConfig, std::shared_ptr<const CBossData> bossData)
 	: CFieldZone<>(config)
 	, _server(server)
 	, _spawnPos(spawnPos)
@@ -31,6 +32,12 @@ CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server,
 	, _playerCount(0)
 {
 	_recipients.reserve(256);
+
+	if( bossData != nullptr )
+	{
+		_bosses = std::make_unique<CBossSystem>(*this, *_monsters, std::move(bossData), _heroes, _monsters->GetData());
+		_monsters->SetBossSystem(_bosses.get());
+	}
 }
 
 //***************************************************************************
@@ -39,6 +46,7 @@ CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server,
 //          (벗어나면 입장 응답은 성공으로 보낸 뒤 AddEntity가 실패해 추방 통지로 정정하는 경로를 매번 타게 된다)
 //        - 모든 영웅의 공격 판정 거리 <= AOI 최소 보장 시야. 상대(몬스터)의 최고 속도를 반영한다
 //        - 몬스터 데이터 검사(CMonsterSystem::Validate). 상대(영웅)의 최고 속도를 반영한다
+//        - 보스 데이터 검사(CBossSystem::Validate): 값 범위/참조, 보스 스킬이 AOI 보장 시야 안
 // @param error [out] 오류 설명
 // @return 문제가 없으면 true
 //***************************************************************************
@@ -91,7 +99,10 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 		}
 	}
 
-	return _monsters->Validate(error, _heroes->GetMaxSpeed() * buffMul);
+	if( !_monsters->Validate(error, _heroes->GetMaxSpeed() * buffMul) )
+		return false;
+
+	return _bosses == nullptr || _bosses->Validate(error);
 }
 
 //***************************************************************************
@@ -104,11 +115,15 @@ uint32 CBattleZone::SpawnMonsters()
 }
 
 //***************************************************************************
-// @brief 소멸자. 틱 스레드가 이 객체의 멤버를 사용하지 않도록 먼저 정지시킨다.
+// @brief 소멸자. 틱 스레드가 이 객체의 멤버를 사용하지 않도록 먼저 정지시키고, 보스 시스템 연결을 뗀다.
 //***************************************************************************
 CBattleZone::~CBattleZone()
 {
 	Stop();
+
+	// 보스 시스템이 먼저 파괴되므로, 몬스터 시스템이 해제된 보스 시스템을 가리키지 않게 떼어 둔다.
+	if( _monsters != nullptr )
+		_monsters->SetBossSystem(nullptr);
 }
 
 //***************************************************************************
@@ -199,6 +214,41 @@ void CBattleZone::HandleLeave(uint64 clientSessionId, uint64 charId)
 	_sessionToEntity.erase(it);
 	RemoveEntity(charId);
 	_playerCount.fetch_sub(1, std::memory_order_relaxed);
+}
+
+//***************************************************************************
+// @brief Gateway와 새로 등록되었을 때 호출한다. 이전 연결에서 입장했던 플레이어를 모두 내보낸다.
+// @details Gateway 연결이 끊기면 Gateway는 그 존의 클라이언트 점유를 해제하지만 퇴장 통지는 보낼 수 없고,
+//          Gateway가 재시작했다면 세션 ID도 무효가 된다. 정리하지 않으면 같은 캐릭터가 다시 입장할 때 DuplicateEntity로
+//          거부되고, 남은 엔티티가 인원 집계와 몬스터 어그로, AOI 브로드캐스트에 계속 참여한다.
+//          등록 응답은 새 입장 요청보다 먼저 도착하고 입력 큐는 FIFO이므로 새 연결의 입장 요청은 이 정리 뒤에 처리된다.
+// @return 내보낸 플레이어 수
+//***************************************************************************
+uint32 CBattleZone::HandleGatewayReset()
+{
+	if( _sessionToEntity.empty() )
+		return 0;
+
+	// 퇴장 표시 후 제거한다. 접속이 이미 끊긴 클라이언트에게 이웃 수만큼 디스폰을 보내지 않기 위함이다.
+	std::vector<uint64> charIds;
+	charIds.reserve(_sessionToEntity.size());
+	for( const auto& kv : _sessionToEntity )
+	{
+		static_cast<CZonePlayer*>(kv.second)->MarkLeaving();
+		charIds.push_back(kv.second->GetId());
+	}
+
+	_sessionToEntity.clear();
+
+	uint32 removed = 0;
+	for( const uint64 charId : charIds )
+	{
+		if( RemoveEntity(charId) )
+			++removed;
+	}
+
+	_playerCount.store(0, std::memory_order_relaxed);
+	return removed;
 }
 
 //***************************************************************************

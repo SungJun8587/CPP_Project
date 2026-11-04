@@ -322,6 +322,9 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h">
       <Filter>UtilCore\Util</Filter>
     </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCommon\ServerMainCommon.h">
+      <Filter>GameCommon\ZoneCommon</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\..\Library\UtilCore\Memory\Singleton.inl">

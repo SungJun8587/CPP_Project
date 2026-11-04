@@ -1,0 +1,5 @@
+DemoLoginReqPacket 16
+DemoLoginResPacket 18
+DemoPingPacket 14
+DemoLeavePacket 4
+DemoRegisterPacket 32

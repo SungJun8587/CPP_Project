@@ -24,12 +24,13 @@ class CGatewayZoneSession;
 struct SZoneNode
 {
 	uint32_t							zoneId = 0;			// 존 ID
+	uint64_t							seq = 0;			// 등록 순번(Register마다 증가). 같은 zoneId가 새 세션으로 교체됐는지 구분한다
 	EZoneKind							kind = EZoneKind::Field;
 	uint32_t							capacity = 0;		// 최대 수용 인원
 	std::string							serverName;			// 로그/모니터링용 이름
 
 	std::weak_ptr<CGatewayZoneSession>	session;			// 이 존 서버와의 연결 세션
-	const CGatewayZoneSession*			sessionKey = nullptr;	// 세션 동일성 비교용(Unregister) — 역참조 금지
+	const CGatewayZoneSession* sessionKey = nullptr;	// 세션 동일성 비교용(Unregister) — 역참조 금지
 
 	std::atomic<int32_t>				activeUsers{ 0 };	// Gateway 집계 인원(입장 진행 중 포함) — 입장 제한 기준
 	std::atomic<int64_t>				lastHeartbeatMs{ 0 };	// 마지막 하트비트 수신 시각(SteadyNowMs 기준)

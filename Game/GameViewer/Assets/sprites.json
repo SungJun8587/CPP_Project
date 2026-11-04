@@ -1,0 +1,9 @@
+{
+  "sprites": [
+    { "kind": "monster", "template": 9, "pattern": "demon/{0:000}.png", "angles": 18, "height": 4.6 },
+    { "kind": "monster", "template": 2, "pattern": "mushroom/{0:000}.png", "angles": 18, "height": 3.2 },
+    { "kind": "hero", "template": 1, "pattern": "dragonkid/{0:000}.png", "angles": 18, "height": 3.4 },
+    { "kind": "monster", "template": 1, "pattern": "slime/{0:000}.png", "angles": 18, "height": 2.8 },
+    { "kind": "tree", "pattern": "spruce/{0:000}.png", "angles": 18, "height": 2.6 }
+  ]
+}

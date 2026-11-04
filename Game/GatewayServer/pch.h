@@ -74,6 +74,7 @@ using namespace std;
 
 #include "../GameCommon/ZoneCommon/ZonePacketTypes.h"
 #include "../GameCommon/ZoneCommon/ZonePacket.h"
+#include "../GameCommon/ZoneCommon/ServerMainCommon.h"
 #include "ZoneRouter.h"
 #include "GatewayZoneSession.h"
 #include "GatewayClientSession.h"

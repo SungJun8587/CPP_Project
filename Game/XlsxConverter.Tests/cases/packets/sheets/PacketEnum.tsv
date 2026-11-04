@@ -1,0 +1,5 @@
+Enum:string	Name:string	Value:int?	Base:string?	Comment:string?	EnumComment:string?
+EDemoResult	Ok	0	uint8	성공	데모 결과 코드
+EDemoResult	Fail			실패	
+EDemoResult	Busy	5		바쁨	
+EDemoKind	Small	1	uint16		

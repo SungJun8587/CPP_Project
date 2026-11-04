@@ -1,0 +1,3 @@
+Group:string	Enum:string	CsEnum:string	Min:int	Max:int?	Section:string	Comment:string?
+Client	EClientPacketType	ClientPacketType	1	999	클라이언트 <-> 서버	클라이언트 패킷 번호
+Server	EServerPacketType	ServerPacketType	1000		서버 <-> 서버	서버 패킷 번호

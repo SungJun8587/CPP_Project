@@ -2,7 +2,7 @@
 //***************************************************************************
 // Enums.gen.h : 자동 생성 파일 - 직접 수정하지 마세요.
 //
-// XlsxToJson이 GameData.xlsx의 Enum 시트로부터 만듭니다. 다른 헤더에 의존하지 않습니다.
+// XlsxConverter가 GameData.xlsx의 Enum 시트로부터 만듭니다. 다른 헤더에 의존하지 않습니다.
 //***************************************************************************
 
 #ifndef GAMEDATAENUMS_GEN_H
@@ -28,6 +28,29 @@ namespace GameDataEnums
 	{
 		Hit = 0,	// 스킬에 맞은 대상에게 건다
 		Self = 1,	// 시전자 본인에게 건다 (효과가 발동하는 시점에 한 번)
+	};
+
+	enum class EBossActionType : std::uint8_t
+	{
+		Cast = 0,	// 스킬을 시전한다 (SkillId). 시전 시간이 있으면 시전 중 보스는 멈추고, 범위 스킬의 중심은 시전 시작 때 정해져 피할 수 있다
+		Summon = 1,	// 몬스터를 소환한다 (MonsterId, Count, SpreadRadius). 소환된 몬스터는 부활하지 않고 보스가 리셋/사망하면 사라진다
+		Aggro = 2,	// 대상을 골라 보스의 어그로 1순위로 만든다 (시전 없음)
+	};
+
+	enum class EBossTarget : std::uint8_t
+	{
+		Current = 0,	// 보스의 현재 공격 대상
+		Random = 1,	// 범위 안의 무작위 플레이어
+		Farthest = 2,	// 범위 안에서 가장 먼 플레이어
+		Nearest = 3,	// 범위 안에서 가장 가까운 플레이어
+		LowestHp = 4,	// 범위 안에서 체력이 가장 낮은 플레이어
+		Self = 5,	// 보스 자신의 위치 (Cast의 Area 스킬, Summon 전용. 보스 주변 폭발/소환)
+	};
+
+	enum class EBossTrigger : std::uint8_t
+	{
+		Loop = 0,	// 페이즈 동안 Seq 순서로 반복한다
+		OnEnter = 1,	// 페이즈에 들어갈 때 한 번, Seq 순서로 먼저 실행한다 (끝나면 Loop로 넘어감)
 	};
 }
 

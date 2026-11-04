@@ -293,6 +293,24 @@ public:
 	}
 
 	//***************************************************************************
+	// @brief 원형 범위 안의 살아 있고 무적이 아닌 플레이어만 순회합니다. 몬스터 선공 대상, 보스 행동 대상 후보 탐색용.
+	//        범위 판정은 AOI가 중심과의 실제 거리로 하므로 호출자가 거리를 다시 검사할 필요가 없다.
+	// @tparam F void(CZoneEntity&) 형태의 호출 가능 객체
+	// @param center 중심 좌표
+	// @param radius 반경
+	// @param fn     각 플레이어에 대해 호출할 함수
+	//***************************************************************************
+	template <typename F>
+	void ForEachLivePlayerInRadius(const Vec2& center, float radius, F&& fn) const
+	{
+		_aoi.ForEachWatcherInRadius(center, radius, [&](CZoneEntity& e)
+			{
+				if( e.GetType() == EntityType::Player && e.IsAlive() && !IsInvulnerable(e) )
+					fn(e);
+			});
+	}
+
+	//***************************************************************************
 	// @brief 존에 등록된 엔티티 수를 반환합니다.
 	// @return 엔티티 수
 	//***************************************************************************
@@ -300,6 +318,7 @@ public:
 
 protected:
 	friend class CMonsterSystem;	// 스폰 시 엔티티를 직접 등록한다 (AddEntity는 타입 래퍼가 공개한다)
+	friend class CBossSystem;		// 보스 행동의 대상 후보를 고를 때 공격 가능 정책(CanAttack)을 쓴다
 
 	void OnUpdate(uint32 dtMs) override;
 

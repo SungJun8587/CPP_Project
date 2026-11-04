@@ -1,0 +1,3 @@
+Group:string	Enum:string	CsEnum:string	Min:int	Max:int?	Section:string	Comment:string?
+A	EAPacketType	APacketType	1	999	a	
+B	EBPacketType	BPacketType	500	1999	b	

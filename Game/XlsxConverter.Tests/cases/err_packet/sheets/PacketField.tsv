@@ -1,0 +1,11 @@
+Packet:string	Name:string	Type:string	Len:string?	Enum:string?	Comment:string?
+Nope	x	uint8			
+P1	a	uint128			
+P1	b	uint8		EWide	
+P1	c	char			
+P1	d	uint8	4		
+P1	e	uint32		EResult	
+P1	e	uint8			
+P1	f	uint8		ENope	
+P6	name	char	kOk		
+P1	1bad	uint8			

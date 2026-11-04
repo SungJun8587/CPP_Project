@@ -110,6 +110,15 @@
     <ClCompile Include="..\GameCommon\ZoneCore\FieldZoneSkill.cpp">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClCompile>
+    <ClCompile Include="BossTests.cpp">
+      <Filter>Tests</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BossData.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
+    <ClCompile Include="..\GameCommon\ZoneCore\BossSystem.cpp">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -295,6 +304,15 @@
     </ClInclude>
     <ClInclude Include="..\GameCommon\ZoneCore\SkillData.h">
       <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\BossData.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="..\GameCommon\ZoneCore\BossSystem.h">
+      <Filter>GameCommon\ZoneCore</Filter>
+    </ClInclude>
+    <ClInclude Include="TestZoneHelpers.h">
+      <Filter>Tests</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

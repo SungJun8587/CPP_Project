@@ -1,0 +1,16 @@
+PacketConst!2행 Type: uint16, uint32, size 중 하나여야 합니다 ('int64')
+PacketConst!3행 Value: uint16 범위를 벗어났습니다 (70000)
+PacketGroup!3행 Min/Max: 그룹 'A'과 번호 구간이 겹칩니다
+Packet!6행 Cs: None, Send, Recv, Both 중 하나여야 합니다 ('Maybe')
+PacketField!2행 Packet: Packet 시트에 없는 패킷입니다 ('Nope')
+PacketField!3행 Type: uint8, bool8, uint16, uint32, int32, uint64, float, char 중 하나여야 합니다 ('uint128')
+PacketField!4행 Enum: EWide의 기반형(uint16)과 필드 타입(uint8)이 달라 와이어 크기가 어긋납니다
+PacketField!5행 Len: char 배열은 길이가 필요합니다
+PacketField!6행 Len: char 이외에는 쓸 수 없습니다
+PacketField!7행 Enum: EResult의 기반형(uint8)과 필드 타입(uint32)이 달라 와이어 크기가 어긋납니다
+PacketField!9행 Enum: PacketEnum에 없는 enum입니다 ('ENope')
+PacketField!11행 Name: 식별자여야 합니다 ('1bad')
+Packet: P2: Id 1이(가) P1과 같습니다
+Packet: P3: Id 2000이(가) 그룹 A (1..999) 범위 밖입니다
+Packet: P4: Group 'Z'이(가) PacketGroup 시트에 없습니다
+PacketField: P6.name: char 배열은 C# 생성(Cs=Recv)을 지원하지 않습니다. Cs를 None으로 하세요

@@ -1,0 +1,6 @@
+Name:string	Group:string	Id:int	Cs:string?	Summary:string?	Comment:string	Detail:string?
+DemoLoginReq	Client	1	Send	Client -> Server, 로그인	로그인 요청	
+DemoLoginRes	Client	2	Recv	Server -> Client, 로그인 응답	로그인 응답	success==1일 때만 sessionId가 유효
+DemoPing	Client	3	Both		핑	
+DemoLeave	Client	4			빈 패킷	
+DemoRegister	Server	1001	None	서버 등록	서버 등록 요청	

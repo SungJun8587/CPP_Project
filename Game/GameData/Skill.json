@@ -97,6 +97,62 @@
       "CastTimeMs": 0,
       "ProjectileSpeed": 0.0,
       "StatusId": 3
+    },
+    {
+      "Id": 8,
+      "Name": "대지 강타",
+      "Shape": "Area",
+      "DamagePercent": 180,
+      "FlatDamage": 0,
+      "Range": 6.0,
+      "Radius": 5.0,
+      "CooldownMs": 6000,
+      "MaxTargets": 10,
+      "CastTimeMs": 1500,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 0
+    },
+    {
+      "Id": 9,
+      "Name": "포효",
+      "Shape": "Area",
+      "DamagePercent": 100,
+      "FlatDamage": 0,
+      "Range": 1.0,
+      "Radius": 10.0,
+      "CooldownMs": 10000,
+      "MaxTargets": 12,
+      "CastTimeMs": 1000,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 4
+    },
+    {
+      "Id": 10,
+      "Name": "독 안개",
+      "Shape": "Area",
+      "DamagePercent": 60,
+      "FlatDamage": 0,
+      "Range": 12.0,
+      "Radius": 6.0,
+      "CooldownMs": 5000,
+      "MaxTargets": 8,
+      "CastTimeMs": 800,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 2
+    },
+    {
+      "Id": 11,
+      "Name": "점액 폭발",
+      "Shape": "Area",
+      "DamagePercent": 140,
+      "FlatDamage": 0,
+      "Range": 8.0,
+      "Radius": 4.0,
+      "CooldownMs": 4000,
+      "MaxTargets": 8,
+      "CastTimeMs": 1200,
+      "ProjectileSpeed": 0.0,
+      "StatusId": 0
     }
   ]
 }

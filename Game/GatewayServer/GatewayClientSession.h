@@ -13,6 +13,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 
 class CGatewayServerMain;
 
@@ -28,6 +29,9 @@ class CGatewayServerMain;
 //
 // _zoneId의 의미: 0이면 존 없음, 0이 아니면 "그 존의 정원 슬롯을 점유 중"(입장 진행 중 포함).
 //                 _enterConfirmed가 true가 되어야 입장이 확정된 것이다.
+// _zoneSeq는 입장한 존 노드의 등록 순번이다. 같은 zoneId의 존 서버가 빠르게 재시작해 노드가 교체돼도,
+// 이전 노드에 있던 클라이언트만 골라서 정리하는 데 쓴다.
+// _zoneSession은 입장 요청을 처리한 수신 스레드가 설정하고 같은 스레드의 패킷 중계가 읽으므로 동기화가 필요 없다.
 //***************************************************************************
 class CGatewayClientSession : public CIocpSession
 {
@@ -64,6 +68,30 @@ public:
 	uint32 GetZoneId() const { return _zoneId.load(std::memory_order_acquire); }
 
 	//***************************************************************************
+	// @brief 입장한 존 노드의 등록 순번을 반환합니다. 존에 없으면 0.
+	// @return 존 노드 등록 순번
+	//***************************************************************************
+	uint64 GetZoneSeq() const { return _zoneSeq.load(std::memory_order_acquire); }
+
+	//***************************************************************************
+	// @brief 입장한 존 노드의 등록 순번과 연결 세션을 기록합니다. 입장 요청을 처리하는 수신 스레드에서만 호출한다.
+	// @details 세션은 클라이언트 패킷을 존 서버로 중계할 때 라우터 조회 없이 쓴다.
+	// @param seq     존 노드 등록 순번
+	// @param session 존 서버 연결 세션
+	//***************************************************************************
+	void SetZoneRoute(uint64 seq, const std::shared_ptr<CIocpSession>& session)
+	{
+		_zoneSession = session;
+		_zoneSeq.store(seq, std::memory_order_release);
+	}
+
+	//***************************************************************************
+	// @brief 입장한 존 서버의 연결 세션을 반환합니다. 패킷을 중계하는 수신 스레드에서만 호출한다.
+	// @return 세션, 설정되지 않았거나 이미 사라졌으면 nullptr
+	//***************************************************************************
+	std::shared_ptr<CIocpSession> GetZoneSession() const { return _zoneSession.lock(); }
+
+	//***************************************************************************
 	// @brief 존 슬롯 점유를 시작합니다. 이미 존에 있거나 입장이 진행 중이면 실패합니다.
 	// @param zoneId 입장하려는 존 ID
 	// @return 점유에 성공했으면 true
@@ -75,6 +103,7 @@ public:
 			return false;
 
 		_enterConfirmed.store(false, std::memory_order_release);
+		_zoneSeq.store(0, std::memory_order_release);
 		return true;
 	}
 
@@ -86,6 +115,7 @@ public:
 	{
 		const uint32 zoneId = _zoneId.exchange(0, std::memory_order_acq_rel);
 		_enterConfirmed.store(false, std::memory_order_release);
+		_zoneSeq.store(0, std::memory_order_release);
 		return zoneId;
 	}
 
@@ -101,6 +131,7 @@ public:
 			return false;
 
 		_enterConfirmed.store(false, std::memory_order_release);
+		_zoneSeq.store(0, std::memory_order_release);
 		return true;
 	}
 
@@ -140,11 +171,13 @@ protected:
 private:
 	static constexpr int32	kMaxPacketsPerSec = 120;	// 세션당 초당 전체 패킷 상한
 
-	CGatewayServerMain*		_server;						// 이 세션이 속한 Gateway (서버가 세션보다 오래 살아있음이 보장됨)
+	CGatewayServerMain* _server;						// 이 세션이 속한 Gateway (서버가 세션보다 오래 살아있음이 보장됨)
 	std::atomic<bool>		_loggedIn{ false };				// 로그인 여부
 	std::atomic<uint64>		_charId{ 0 };					// 로그인한 캐릭터 ID
 	std::atomic<uint32>		_zoneId{ 0 };					// 점유 중인 존 ID (0 = 없음)
 	std::atomic<bool>		_enterConfirmed{ false };		// 존 서버가 입장을 확정했는지
+	std::atomic<uint64>		_zoneSeq{ 0 };					// 입장한 존 노드의 등록 순번 (0 = 없음)
+	std::weak_ptr<CIocpSession>	_zoneSession;				// 입장한 존 서버 연결 세션 (수신 처리 스레드 전용)
 
 	int64					_pktWindowStartMs = 0;			// 수신 속도 제한 윈도우 시작 시각 (수신 처리 스레드 전용)
 	int32					_pktCount = 0;					// 윈도우 내 수신 패킷 수 (수신 처리 스레드 전용)

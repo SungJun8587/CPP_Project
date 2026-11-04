@@ -3,6 +3,7 @@
 #include "FieldZone.h"
 #include "MonsterSystem.h"
 #include "TestCommon.h"
+#include "TestZoneHelpers.h"
 
 #include <cmath>
 #include <cstdio>
@@ -40,8 +41,6 @@ namespace
 		}
 	};
 
-	struct Pl : CZoneEntity { Pl(uint64 id) : CZoneEntity(id, EntityType::Player) {} };
-
 	static FieldZoneConfig Cfg()
 	{
 		FieldZoneConfig f;
@@ -71,31 +70,9 @@ namespace
 		return d;
 	}
 
-	template <typename F> static void Run(MonZone& z, F fn);
+	template <typename F> static void Run(MonZone& z, F fn) { TestZone::RunOnZone(z, fn); }
 
-	static CZoneEntity* AddPlayer(MonZone& z, uint64 id, Vec2 pos, int hp = 1000, int atk = 30)
-	{
-		if( z.IsRunning() && !z.IsZoneThread() )
-		{
-			CZoneEntity* r = nullptr;
-			Run(z, [&] { r = AddPlayer(z, id, pos, hp, atk); });
-			return r;
-		}
-
-		auto e = std::make_unique<Pl>(id);
-		e->SetSpawnPos(pos);
-		SCombatStats s; s.maxHp = hp; s.attack = atk; s.defense = 0; s.attackRange = 2.0f; s.attackIntervalMs = 100;
-		e->SetCombatStats(s);
-		e->SetSpeed(40.0f);
-		return z.AddEntity(std::move(e));
-	}
-
-	template <typename F> static void Run(MonZone& z, F fn)
-	{
-		std::promise<void> p; auto f = p.get_future();
-		z.Post([&](CZone&) { fn(); p.set_value(); });
-		f.wait();
-	}
+	static CZoneEntity* AddPlayer(MonZone& z, uint64 id, Vec2 pos, int hp = 1000, int atk = 30) { return TestZone::AddTestPlayer(z, id, pos, hp, atk); }
 
 	static CMonster* Mon(MonZone& z, uint64 serial) { return static_cast<CMonster*>(z.FindEntity(kMonsterIdBase | serial)); }
 

@@ -9,7 +9,7 @@
 //***************************************************************************
 
 #include "pch.h"
-#include <Util/MainArgParser.h>
+#include "../GameCommon/ZoneCommon/ServerMainCommon.h"
 #include "ZoneServerMain.h"
 #include "ZoneServerConfig.h"
 
@@ -18,71 +18,25 @@
 #include <iostream>
 #include <thread>
 
-namespace
-{
-	std::atomic<bool> g_bShouldExit{ false };
-
-	//***************************************************************************
-	// @brief 콘솔 Ctrl+C / 창 닫기 등을 감지해 메인 스레드에 종료를 알립니다.
-	// @details 실제 정지(Stop())는 메인 스레드에서 수행한다 — 이 핸들러는 별도 스레드 컨텍스트에서 호출된다.
-	//***************************************************************************
-	BOOL WINAPI ConsoleCtrlHandler(DWORD ctrlType)
-	{
-		switch( ctrlType )
-		{
-		case CTRL_C_EVENT:
-		case CTRL_BREAK_EVENT:
-		case CTRL_CLOSE_EVENT:
-			g_bShouldExit.store(true);
-			return TRUE;
-		default:
-			return FALSE;
-		}
-	}
-}
-
-//***************************************************************************
-// @brief 프로세스 종료 직전 정리 — 실패 경로/정상 종료 경로가 공유한다.
-//***************************************************************************
-void MainClose()
-{
-	BaseGlobal::Destroy();
-	CSocketUtils::Clear();
-}
-
 int _tmain(int argc, TCHAR* argv[])
 {
-#ifdef	_MSC_VER
-	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-#endif
-
-	InitUtf8Console();
-
-	CSocketUtils::Init();
-	BaseGlobal::Init();
-
-	::SetConsoleCtrlHandler(ConsoleCtrlHandler, TRUE);
+	ServerMainCommon::Startup();
 
 	// 설정 — 우선순위: 명령행 인자 > JSON 설정 파일 > SZoneServerOptions 기본값
 	const CMainArgParser args(argc, argv);
 
 	// --dump-config=경로 : 기본값으로 채운 설정 파일 템플릿을 저장하고 종료한다.
-	const _tstring dumpPath = args.GetString(_T("dump-config"), _T(""));
-	if( !dumpPath.empty() )
+	int exitCode = 0;
+	if( ServerMainCommon::TryDumpConfig<CZoneServerConfig>(args, exitCode) )
 	{
-		const bool saved = dumpPath != _T("1") && CZoneServerConfig().Save(dumpPath.c_str());
-		if( saved )
-			LOG_INFO(_T("Default config saved. path=%s"), dumpPath.c_str());
-		else
-			LOG_ERROR(_T("--dump-config needs a writable file path. value=%s"), dumpPath.c_str());
-		MainClose();
-		return saved ? 0 : -1;
+		ServerMainCommon::Close();
+		return exitCode;
 	}
 
 	CZoneServerConfig config;
 	if( !config.Init(args.GetString(_T("config"), _T("Config\\zoneserver_config.json")).c_str()) )
 	{
-		MainClose();
+		ServerMainCommon::Close();
 		return -1;
 	}
 	config.PrintServerSettingInfo();
@@ -123,7 +77,7 @@ int _tmain(int argc, TCHAR* argv[])
 	argsOk &= readFloat(_T("spawn-y"), options.spawnY, -1e9, 1e9);
 	if( !argsOk )
 	{
-		MainClose();
+		ServerMainCommon::Close();
 		return -1;
 	}
 
@@ -131,7 +85,7 @@ int _tmain(int argc, TCHAR* argv[])
 	if( !server.Start(options) )
 	{
 		LOG_ERROR(_T("CZoneServerMain::Start Fail. zoneId=%u"), options.zoneId);
-		MainClose();
+		ServerMainCommon::Close();
 		return -1;
 	}
 
@@ -139,7 +93,7 @@ int _tmain(int argc, TCHAR* argv[])
 
 	// 메인 스레드 대기 루프 — 실제 처리는 존 틱 스레드와 IOCP 워커가 한다.
 	// Gateway가 등록을 거부하면(중복 zoneId 등) 재시도해도 같은 결과이므로 스스로 종료한다.
-	while( !g_bShouldExit.load() )
+	while( !ServerMainCommon::ShouldExit() )
 	{
 		if( server.IsRegisterRejected() )
 		{
@@ -151,7 +105,7 @@ int _tmain(int argc, TCHAR* argv[])
 	}
 
 	server.Stop();
-	MainClose();
+	ServerMainCommon::Close();
 	CloseConsole();
 
 	return 0;

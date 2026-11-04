@@ -4,12 +4,13 @@
 //
 //***************************************************************************
 
-#ifndef GAMEDATALOADER_H
-#define GAMEDATALOADER_H
+#ifndef UC_GAMEDATALOADER_H
+#define UC_GAMEDATALOADER_H
 
 #include <Network/NetworkCommon.h>
 
 #include "../GameCommon/ZoneCore/BlockMap.h"
+#include "../GameCommon/ZoneCore/BossData.h"
 #include "../GameCommon/ZoneCore/HeroData.h"
 #include "../GameCommon/ZoneCore/MonsterData.h"
 
@@ -40,6 +41,12 @@
 //                          Type은 "Rect"(X,Y = 왼쪽 아래 모서리, W,H = 크기) 또는 "Circle"(X,Y = 중심, R = 반경).
 //                          사용하지 않는 열(Rect의 R, Circle의 W/H)은 0으로 둔다.
 //                          엔티티는 점으로 다루므로 장애물은 CBlockMap::kDefaultMargin만큼 사방으로 키워서 적용된다(엔티티 몸 크기 반영).
+//     <dir>/Boss.json / BossPhase.json / BossAction.json : 보스 전투 (선택. Boss.json이 없으면 보스 없음. 있으면 세 파일이 모두 있어야 한다)
+//                          Boss       : { "Id","MonsterId","Name","EnrageAfterMs"(선택),"EnrageStatusId"(선택) }
+//                          BossPhase  : { "BossId","Phase","HpBelowPercent","EnterStatusId"(선택),"EnterHealPercent"(선택),"TransitionMs"(선택) }
+//                          BossAction : { "BossId","Phase","Seq","Trigger"("Loop"/"OnEnter"),"Type"("Cast"/"Summon"/"Aggro"),"Target",
+//                                         "SkillId"(선택),"MonsterId"(선택),"Count"(선택),"SpreadRadius"(선택),"DelayMs" }
+//                          값 범위와 참조(몬스터, 스킬, 상태 효과)는 CBossData::Validate()가 검사한다.
 //
 // 모든 필드는 필수이며 타입/범위가 맞지 않으면 어느 행의 어느 필드인지 로그를 남기고 실패한다.
 // 테이블 간 참조(스폰 -> 몬스터)와 값 범위는 CMonsterData::Validate()가 검사한다.
@@ -53,8 +60,9 @@ public:
 
 	static std::shared_ptr<const CHeroData> LoadHeroes(const _tstring& dir);
 	static std::shared_ptr<const CMonsterData> LoadMonsters(const _tstring& dir);
+	static std::shared_ptr<const CBossData> LoadBosses(const _tstring& dir, const CMonsterData& monsters, const CHeroData& skills);
 	static bool LoadBlockMap(const _tstring& dir, uint32 zoneId, float minX, float minY, float maxX, float maxY,
 		std::shared_ptr<const CBlockMap>& out);
 };
 
-#endif // ndef GAMEDATALOADER_H
+#endif // ndef UC_GAMEDATALOADER_H

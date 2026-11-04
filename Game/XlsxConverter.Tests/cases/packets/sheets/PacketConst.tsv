@@ -1,0 +1,4 @@
+Name:string	Type:string	Value	Comment:string?
+kDemoVersion	uint32	3	프로토콜 버전
+kDemoNameBytes	size	16	
+kDemoMax	uint16	4096	크기 상한

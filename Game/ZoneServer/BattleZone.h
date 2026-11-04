@@ -10,6 +10,7 @@
 #include "../GameCommon/ZoneCommon/ZonePacket.h"
 #include "../GameCommon/ZoneCore/FieldZone.h"
 #include "../GameCommon/ZoneCore/HeroData.h"
+#include "../GameCommon/ZoneCore/BossSystem.h"
 #include "../GameCommon/ZoneCore/MonsterSystem.h"
 #include "ZonePlayer.h"
 
@@ -34,7 +35,7 @@ class CBattleZone : public CFieldZone<>
 {
 public:
 	CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server, const Vec2& spawnPos, std::shared_ptr<const CHeroData> heroData,
-		std::shared_ptr<const CMonsterData> monsterData, const SMonsterSystemConfig& monsterConfig);
+		std::shared_ptr<const CMonsterData> monsterData, const SMonsterSystemConfig& monsterConfig, std::shared_ptr<const CBossData> bossData = nullptr);
 	virtual ~CBattleZone();
 
 	// ── 구동 전(Start 이전) 한 번 ─────────────────────────
@@ -45,6 +46,7 @@ public:
 	// ── 존 스레드 전용 ───────────────────────────────────
 	void HandleEnter(uint64 clientSessionId, uint64 charId, uint32 heroId = 0);
 	void HandleLeave(uint64 clientSessionId, uint64 charId);
+	uint32 HandleGatewayReset();
 	void HandleClientPacket(uint64 clientSessionId, const PacketHeader* header);
 
 	void SendSpawn(CZonePlayer& to, CZoneEntity& about);
@@ -95,6 +97,7 @@ private:
 	std::shared_ptr<const CHeroData>	_heroes;	// 선택 가능한 영웅 (이동 속도/전투 능력치의 출처. 클라이언트 값은 신뢰하지 않음)
 	std::vector<uint64>	_recipients;	// 브로드캐스트 수신자 세션 ID 모음 (존 스레드 전용, 재사용으로 힙 할당 방지)
 	std::unique_ptr<CMonsterSystem>	_monsters;	// 몬스터 스폰/AI (존 스레드 전용)
+	std::unique_ptr<CBossSystem>	_bosses;	// 보스 전투 (보스 데이터가 있을 때만. _monsters를 참조하므로 그보다 늦게 선언한다)
 
 	std::unordered_map<uint64, CZoneEntity*>	_sessionToEntity;	// 클라이언트 세션 ID -> 플레이어 엔티티 (존 스레드 전용, 패킷마다 해시 조회 1회로 끝내기 위함)
 	std::atomic<uint32>						_playerCount;	// 플레이어 수 (존 스레드가 갱신, 하트비트 스레드가 읽음)

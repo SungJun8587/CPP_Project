@@ -1,0 +1,1 @@
+--out {out} --cpp-out {cpp} --cs-out {cs} --proto-cs-out {pcs} --proto-cs-namespace Demo.Proto --proto-sizes-out {sizes}/sizes.txt

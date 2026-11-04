@@ -1,0 +1,4 @@
+Name:string	Type:string	Value	Comment:string?
+kBadType	int64	1	
+kTooBig	uint16	70000	
+kOk	uint16	8	

@@ -1,0 +1,13 @@
+Packet:string	Name:string	Type:string	Len:string?	Enum:string?	Comment:string?
+DemoLoginReq	charId	uint64			
+DemoLoginReq	heroId	uint32			선택한 영웅
+DemoLoginRes	success	bool8			1: 성공
+DemoLoginRes	reason	uint8		EDemoResult	
+DemoLoginRes	sessionId	uint64			
+DemoLoginRes	delta	int32			
+DemoPing	seq	uint16			
+DemoPing	x	float			
+DemoPing	y	float			
+DemoRegister	version	uint32			kDemoVersion
+DemoRegister	serverName	char	kDemoNameBytes		UTF-8
+DemoRegister	tag	char	8		

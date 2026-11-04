@@ -6,6 +6,7 @@
 
 #include "pch.h"
 #include "MonsterSystem.h"
+#include "BossSystem.h"
 
 #include <algorithm>
 #include <cmath>
@@ -176,15 +177,57 @@ uint32 CMonsterSystem::SpawnAll()
 			monster->SetSpawnPos(pos);
 			monster->_home = pos;
 
+			CMonster* raw = monster.get();
 			if( _zone.AddEntity(std::move(monster)) != nullptr )
 			{
 				++spawned;
 				++_monsterCount;
+
+				if( _boss != nullptr )
+					_boss->OnSpawned(*raw);
 			}
 		}
 	}
 
 	return spawned;
+}
+
+//***************************************************************************
+// @brief 보스가 부르는 몬스터를 만들어 존에 배치합니다. 소환수는 부활하지 않고(보스가 리셋/사망하면 사라짐),
+//        스폰 지점이 곧 복귀 지점이며, 지정한 대상에게 위협을 두고 바로 사고를 시작합니다.
+// @param monsterId      몬스터 템플릿 ID
+// @param center         소환 중심
+// @param spreadRadius   소환 반경 (장애물 밖의 무작위 지점)
+// @param ownerId        소환한 보스의 엔티티 ID
+// @param threatTargetId 처음부터 노릴 대상 (0이면 없음)
+// @return 소환수, 템플릿이 없거나 존에 등록하지 못했으면 nullptr
+//***************************************************************************
+CMonster* CMonsterSystem::SpawnSummon(uint32 monsterId, const Vec2& center, float spreadRadius, uint64 ownerId, uint64 threatTargetId)
+{
+	const SMonsterTemplate* tmpl = _data != nullptr ? _data->FindMonster(monsterId) : nullptr;
+	if( tmpl == nullptr )
+		return nullptr;
+
+	const Vec2 pos = PickFreePoint(center, spreadRadius);
+
+	std::unique_ptr<CMonster> monster = std::make_unique<CMonster>(kMonsterIdBase | ++_serial, *tmpl, this, pos, 0.0f);
+	monster->SetSpawnPos(pos);
+	monster->_home = pos;
+	monster->_summoned = true;
+	monster->_ownerId = ownerId;
+
+	CMonster* raw = monster.get();
+	if( _zone.AddEntity(std::move(monster)) == nullptr )
+		return nullptr;
+
+	++_monsterCount;
+
+	if( threatTargetId != 0 )
+		raw->AddThreat(threatTargetId, 1);
+
+	Activate(*raw);
+	raw->_nextThinkMs = _zone.GetNowMs();
+	return raw;
 }
 
 //***************************************************************************
@@ -304,6 +347,10 @@ void CMonsterSystem::ThinkIdle(CMonster& monster, uint64 nowMs)
 //***************************************************************************
 void CMonsterSystem::ThinkChase(CMonster& monster, uint64 nowMs)
 {
+	// 시전 중에는 움직이지도 기본 공격을 하지도 않는다 (이동하면 시전이 취소된다). 시전이 끝나면 다음 사고에서 이어간다.
+	if( monster.IsCasting() )
+		return;
+
 	const SMonsterTemplate& tmpl = *monster._tmpl;
 
 	if( DistanceSq(monster.GetPos(), monster._home) > tmpl.leashRange * tmpl.leashRange )
@@ -318,6 +365,10 @@ void CMonsterSystem::ThinkChase(CMonster& monster, uint64 nowMs)
 		EnterReturn(monster);
 		return;
 	}
+
+	// 보스는 페이즈/행동을 먼저 처리한다. 시전을 시작했으면 이번 사고는 여기까지.
+	if( monster._boss != nullptr && _boss != nullptr && _boss->OnChase(monster, *target, nowMs) )
+		return;
 
 	const float distSq = DistanceSq(monster.GetPos(), target->GetPos());
 	const float engage = tmpl.stats.attackRange * _config.engageRatio;
@@ -404,6 +455,9 @@ void CMonsterSystem::EnterReturn(CMonster& monster)
 {
 	monster._state = EMonsterState::Return;
 	monster.ClearAggro();
+
+	if( _boss != nullptr )
+		_boss->OnReset(monster);
 
 	if( !StepToward(monster, monster._home) )
 		_zone.Teleport(monster.GetId(), monster._home);
@@ -514,11 +568,8 @@ CZoneEntity* CMonsterSystem::FindAggroCandidate(CMonster& monster)
 	float bestDistSq = std::numeric_limits<float>::infinity();
 	const Vec2 pos = monster.GetPos();
 
-	_zone.ForEachWatcherInRadius(pos, monster._tmpl->aggroRange, [&](CZoneEntity& entity)
+	_zone.ForEachLivePlayerInRadius(pos, monster._tmpl->aggroRange, [&](CZoneEntity& entity)
 		{
-			if( entity.GetType() != EntityType::Player || !entity.IsAlive() || _zone.IsInvulnerable(entity) )
-				return;
-
 			const float distSq = DistanceSq(pos, entity.GetPos());
 			if( distSq < bestDistSq )
 			{
@@ -564,6 +615,19 @@ void CMonsterSystem::OnDied(CZoneEntity& victim)
 	monster.ClearAggro();
 	monster._state = EMonsterState::Idle;
 	Deactivate(monster);
+
+	if( _boss != nullptr )
+		_boss->OnDied(monster);
+
+	// 소환수는 부활하지 않으므로 시체를 잠시 두었다 치운다.
+	if( monster._summoned )
+	{
+		const uint64 id = monster.GetId();
+		_zone.ScheduleAfter(CBossSystem::kAddCorpseMs, [id](CZone& zone)
+			{
+				static_cast<CFieldZoneBase&>(zone).RemoveEntity(id);
+			});
+	}
 }
 
 //***************************************************************************
@@ -580,6 +644,9 @@ void CMonsterSystem::OnRespawned(CZoneEntity& entity)
 	monster._state = EMonsterState::Idle;
 	monster.ClearAggro();
 
+	if( _boss != nullptr )
+		_boss->OnReset(monster);
+
 	if( monster._nearPlayers > 0 )
 		Activate(monster);
 }
@@ -593,7 +660,11 @@ void CMonsterSystem::OnRemoved(CZoneEntity& entity)
 	if( !IsAiMonster(entity) )
 		return;
 
-	Deactivate(static_cast<CMonster&>(entity));
+	CMonster& removed = static_cast<CMonster&>(entity);
+	Deactivate(removed);
+
+	if( _boss != nullptr )
+		_boss->OnRemoved(removed);
 
 	if( _monsterCount > 0 )
 		--_monsterCount;
@@ -619,7 +690,8 @@ uint32 CMonsterSystem::GetRespawnDelayMs(const CZoneEntity& entity) const
 	if( !IsAiMonster(entity) )
 		return CFieldZoneBase::kNoRespawn;
 
-	return static_cast<const CMonster&>(entity).GetTemplate().respawnMs;
+	const CMonster& monster = static_cast<const CMonster&>(entity);
+	return monster._summoned ? CFieldZoneBase::kNoRespawn : monster.GetTemplate().respawnMs;
 }
 
 //***************************************************************************

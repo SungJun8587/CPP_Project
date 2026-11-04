@@ -1,12 +1,17 @@
 ﻿
 //***************************************************************************
-// ZoneRouter.cpp: implementation of the CZoneRouter class.
+// ZoneRouter.cpp : implementation of the CZoneRouter class.
 //
 //***************************************************************************
 
 #include "pch.h"
 #include "ZoneRouter.h"
 #include "GatewayZoneSession.h"
+
+namespace
+{
+	std::atomic<uint64_t> g_nodeSeq{ 0 };	// SZoneNode::seq 발급용 (프로세스 전역, 0은 "없음"으로 비워 둔다)
+}
 
 //***************************************************************************
 // @brief 존 서버를 라우팅 테이블에 등록합니다.
@@ -40,6 +45,7 @@ EZoneRegisterResult CZoneRouter::Register(const std::shared_ptr<CGatewayZoneSess
 
 	std::shared_ptr<SZoneNode> node = std::make_shared<SZoneNode>();
 	node->zoneId = zoneId;
+	node->seq = g_nodeSeq.fetch_add(1, std::memory_order_relaxed) + 1;
 	node->kind = kind;
 	node->capacity = capacity;
 	node->serverName = serverName;
