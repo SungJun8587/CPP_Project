@@ -20,6 +20,8 @@ namespace GameViewer.App.Render
         public bool ShowHelp = true;
         public bool ShowLog = true;
         public ulong HoverId;                   // 마우스가 올라가 있는 엔티티
+        public bool HeroSelectOpen;             // 영웅 선택 창이 열려 있는가 (열려 있으면 게임 입력은 막는다)
+        public int HeroSelectIndex;             // 영웅 선택 창에서 가리키는 줄
         public double Fps;
 
         public float ToScreenX(float wx) { return (float)((wx - CamX) * Scale + Width * 0.5); }

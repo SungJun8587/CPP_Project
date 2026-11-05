@@ -10,6 +10,7 @@
 #include <future>
 #include <map>
 #include <memory>
+#include <set>
 #include <vector>
 
 // 한 실행 파일에 여러 테스트 파일을 묶으므로 이름이 겹치지 않게 익명 네임스페이스로 감싼다.
@@ -288,7 +289,8 @@ namespace
 		~FxZone() override { Stop(); }
 
 		std::map<uint32, SStatusTemplate> statuses;
-		int casts = 0, rejects = 0, castStarted = 0, castCancelled = 0, launched = 0, impacts = 0, applied = 0, ended = 0, endedExpired = 0, endedDied = 0, deaths = 0;
+		int casts = 0, rejects = 0, castStarted = 0, castCancelled = 0, launched = 0, impacts = 0, applied = 0, ended = 0, endedExpired = 0, endedDied = 0, endedBroken = 0, deaths = 0;
+		std::vector<std::pair<uint64, int32>> heals;		// (회복된 엔티티, 실제 회복량)
 		SkillCancelReason lastCancel = SkillCancelReason::Moved;
 		SkillResult lastReject = SkillResult::Ok;
 		uint32 lastHitCount = 99, lastFlight = 0, lastImpactHits = 99;
@@ -310,7 +312,8 @@ namespace
 		void OnProjectileLaunched(CZoneEntity&, const SSkillTemplate&, uint32, uint64, const Vec2&, const Vec2&, uint32 flight) override { ++launched; lastFlight = flight; }
 		void OnProjectileImpact(CZoneEntity&, const SSkillTemplate&, uint32, const Vec2& c, uint32 hits) override { ++impacts; lastImpact = c; lastImpactHits = hits; }
 		void OnStatusApplied(CZoneEntity&, const SStatusTemplate&, uint64) override { ++applied; }
-		void OnStatusEnded(CZoneEntity&, uint32, StatusEndReason r) override { ++ended; if( r == StatusEndReason::Expired ) ++endedExpired; else ++endedDied; }
+		void OnStatusEnded(CZoneEntity&, uint32, StatusEndReason r) override { ++ended; if( r == StatusEndReason::Expired ) ++endedExpired; else if( r == StatusEndReason::Broken ) ++endedBroken; else ++endedDied; }
+		void OnEntityHealed(CZoneEntity& e, int32 amount) override { heals.push_back({ e.GetId(), amount }); }
 	};
 
 	static CZoneEntity* AddFx(FxZone& z, uint64 id, EntityType t, Vec2 pos, const SCombatStats& s, float speed = 6.0f)
@@ -771,6 +774,419 @@ namespace
 	}
 
 	// 무작위 연산: 시전/이동/순간이동/피해/제거·재투입/상태 효과를 섞어 돌리며 불변식을 확인한다 (ASan/UBSan과 함께 쓰는 것이 목적)
+	// ── 확장 스킬: 모양(Self/Cone/Line), 아군 치유, 기절/보호막/지속 치유 ──────────────────
+
+	static FieldZoneConfig NoPvpCfg()
+	{
+		FieldZoneConfig f = Cfg();
+		f.allowPvp = false;		// 플레이어끼리는 같은 편
+		return f;
+	}
+
+	static SSkillTemplate Shaped(uint32 id, ESkillShape shape)
+	{
+		SSkillTemplate s; s.id = id; s.name = "shaped"; s.shape = shape; s.damagePercent = 100; s.cooldownMs = 100; s.maxTargets = 8;
+		switch( shape )
+		{
+		case ESkillShape::Self: s.range = 0.0f; s.radius = 6.0f; break;
+		case ESkillShape::Cone: s.range = 10.0f; s.radius = 0.0f; s.angle = 90.0f; break;
+		case ESkillShape::Line: s.range = 12.0f; s.radius = 1.5f; break;
+		default: break;
+		}
+		return s;
+	}
+
+	static SSkillTemplate HealSkill(uint32 id, ESkillShape shape)
+	{
+		SSkillTemplate s = Shaped(id, shape == ESkillShape::Single ? ESkillShape::Self : shape);
+		s.shape = shape; s.target = ESkillTarget::Ally; s.damagePercent = 0; s.healPercent = 200; s.flatHeal = 5;
+		if( shape == ESkillShape::Single ) { s.range = 20.0f; s.radius = 0.0f; s.maxTargets = 1; }
+		return s;
+	}
+
+	static SStatusTemplate Stun(uint32 id, uint32 durationMs)
+	{
+		SStatusTemplate t; t.id = id; t.name = "stun"; t.kind = EStatusKind::Stun; t.durationMs = durationMs; t.tickMs = 0;
+		return t;
+	}
+
+	static SStatusTemplate Shield(uint32 id, uint32 durationMs, uint32 pct, int32 flat)
+	{
+		SStatusTemplate t; t.id = id; t.name = "shield"; t.kind = EStatusKind::Shield; t.durationMs = durationMs; t.tickMs = 0; t.healPercent = pct; t.flatHeal = flat;
+		return t;
+	}
+
+	static SStatusTemplate Hot(uint32 id, uint32 durationMs, uint32 tickMs, uint32 pct, int32 flat = 0)
+	{
+		SStatusTemplate t; t.id = id; t.name = "hot"; t.kind = EStatusKind::Hot; t.durationMs = durationMs; t.tickMs = tickMs; t.healPercent = pct; t.flatHeal = flat;
+		return t;
+	}
+
+	static void TestExtData()
+	{
+		std::printf("[Skill extension data]\n");
+		CHECK(CalcSkillHeal(HealSkill(1, ESkillShape::Single), 20) == 45);			// 20*200/100 + 5
+		CHECK(CalcSkillHeal(HealSkill(1, ESkillShape::Single), INT32_MAX) == INT32_MAX);
+		CHECK(CalcStatusAmount(Hot(1, 1000, 200, 0, 0), 20) == 1);					// 최소 1
+		CHECK(CalcStatusAmount(Shield(1, 1000, 50, 3), 20) == 13);
+
+		auto make = [](const SSkillTemplate& sk, const SStatusTemplate* st)
+			{
+				auto d = std::make_shared<CHeroData>();
+				SHeroTemplate h; h.id = 1; h.name = "h"; d->AddHero(h);
+				if( st ) CHECK(d->AddStatus(*st));
+				CHECK(d->AddSkill(sk));
+				return d;
+			};
+		std::string err;
+		CHECK(make(Shaped(1, ESkillShape::Self), nullptr)->Validate(err));
+		CHECK(make(Shaped(1, ESkillShape::Cone), nullptr)->Validate(err));
+		CHECK(make(Shaped(1, ESkillShape::Line), nullptr)->Validate(err));
+		CHECK(make(HealSkill(1, ESkillShape::Single), nullptr)->Validate(err));
+		CHECK(make(HealSkill(1, ESkillShape::Self), nullptr)->Validate(err));
+
+		SSkillTemplate bad = Shaped(1, ESkillShape::Self); bad.range = 3.0f;			CHECK(!make(bad, nullptr)->Validate(err));	// Self는 range 0
+		bad = Shaped(1, ESkillShape::Self); bad.radius = 0.0f;							CHECK(!make(bad, nullptr)->Validate(err));
+		bad = Shaped(1, ESkillShape::Cone); bad.angle = 0.0f;							CHECK(!make(bad, nullptr)->Validate(err));
+		bad = Shaped(1, ESkillShape::Cone); bad.angle = 361.0f;						CHECK(!make(bad, nullptr)->Validate(err));
+		bad = Shaped(1, ESkillShape::Cone); bad.angle = NAN;							CHECK(!make(bad, nullptr)->Validate(err));
+		bad = Shaped(1, ESkillShape::Cone); bad.radius = 2.0f;							CHECK(!make(bad, nullptr)->Validate(err));
+		bad = Shaped(1, ESkillShape::Line); bad.angle = 30.0f;							CHECK(!make(bad, nullptr)->Validate(err));	// angle은 Cone만
+		bad = Shaped(1, ESkillShape::Line); bad.radius = 0.0f;							CHECK(!make(bad, nullptr)->Validate(err));
+		bad = Shaped(1, ESkillShape::Cone); bad.projectileSpeed = 30.0f;				CHECK(!make(bad, nullptr)->Validate(err));	// 투사체는 Single/Area만
+		bad = Shaped(1, ESkillShape::Line); bad.maxTargets = 0;						CHECK(!make(bad, nullptr)->Validate(err));
+		bad = HealSkill(1, ESkillShape::Single); bad.target = ESkillTarget::Enemy;		CHECK(!make(bad, nullptr)->Validate(err));	// 치유는 Ally만
+		bad = HealSkill(1, ESkillShape::Single); bad.damagePercent = 10;				CHECK(!make(bad, nullptr)->Validate(err));	// Ally는 피해 불가
+		bad = HealSkill(1, ESkillShape::Single); bad.healPercent = 0; bad.flatHeal = 0;	CHECK(!make(bad, nullptr)->Validate(err));	// 효과 없음
+		bad = HealSkill(1, ESkillShape::Single); bad.healPercent = kMaxSkillDamagePercent + 1;	CHECK(!make(bad, nullptr)->Validate(err));
+
+		auto badStatus = [&](const SStatusTemplate& t) { auto d = make(Single(1), &t); return d->Validate(err); };
+		CHECK(badStatus(Stun(5, 1000)) && badStatus(Shield(5, 1000, 50, 0)) && badStatus(Hot(5, 1000, 200, 10)));
+		SStatusTemplate t = Stun(5, 1000); t.tickMs = 100;								CHECK(!badStatus(t));
+		t = Stun(5, 1000); t.speedPercent = -10;										CHECK(!badStatus(t));
+		t = Stun(5, 1000); t.healPercent = 10;											CHECK(!badStatus(t));
+		CHECK(!badStatus(Shield(5, 1000, 0, 0)));										// 흡수량 없음
+		t = Shield(5, 1000, 10, 0); t.tickMs = 200;									CHECK(!badStatus(t));
+		CHECK(!badStatus(Hot(5, 1000, 50, 10)));										// 틱이 너무 짧다
+		CHECK(!badStatus(Hot(5, 1000, 2000, 10)));										// 틱이 지속시간보다 길다
+		CHECK(!badStatus(Hot(5, 1000, 200, 0, 0)));									// 회복량 없음
+		t = Hot(5, 1000, 200, 10); t.damagePercent = 5;								CHECK(!badStatus(t));
+		t = Buff(5, 1000, 10, 0, 0); t.healPercent = 10;								CHECK(!badStatus(t));	// Hot/Shield만 amount를 쓴다
+	}
+
+	static void TestShapes()
+	{
+		std::printf("[Skill shapes]\n");
+		FxZone z(NoPvpCfg());
+		CZoneEntity* caster = AddFx(z, 1, EntityType::Player, { 300, 300 }, Stats(1000, 20, 0));
+		AddFx(z, 10, EntityType::Monster, { 305, 300 }, Stats(1000, 5, 0));		// 정면 5
+		AddFx(z, 11, EntityType::Monster, { 308, 304 }, Stats(1000, 5, 0));		// 정면에서 약 26도 위, 거리 8.9
+		AddFx(z, 12, EntityType::Monster, { 300, 306 }, Stats(1000, 5, 0));		// 위쪽 90도 (부채꼴 밖), 선 밖
+		AddFx(z, 13, EntityType::Monster, { 295, 300 }, Stats(1000, 5, 0));		// 뒤쪽
+		AddFx(z, 14, EntityType::Monster, { 311, 300 }, Stats(1000, 5, 0));		// 정면 11 (부채꼴 길이 10 밖, 직선 12 안)
+		AddFx(z, 15, EntityType::Monster, { 310, 302 }, Stats(1000, 5, 0));		// 선 옆 2 (폭 1.5 밖)
+		AddFx(z, 16, EntityType::Monster, { 340, 300 }, Stats(1000, 5, 0));		// 아주 멀다
+		AddFx(z, 20, EntityType::Player, { 303, 300 }, Stats(1000, 5, 0));			// 같은 편(PvP 금지)
+		z.Start();
+
+		uint64 ready = 0;
+		SkillResult r{};
+		auto hitIds = [&]
+			{
+				std::set<uint64> s;
+				for( const auto& d : z.damages ) s.insert(d.first);
+				return s;
+			};
+		const std::set<uint64> none;
+
+		// Self: 시전자 위치 중심 반경 6. 좌표는 무시되고 사거리 검사도 없다. 시전자 본인과 같은 편은 맞지 않는다.
+		SSkillTemplate self = Shaped(1, ESkillShape::Self);
+		RunFx(z, [&] { r = z.CastSkill(*caster, self, 0, Vec2{ 999, 999 }, ready); });
+		CHECK(r == SkillResult::Ok && z.lastHitCount == 3);
+		CHECK((hitIds() == std::set<uint64>{ 10, 12, 13 }));
+
+		// Cone: +x 방향 90도(좌우 45도), 길이 10. 정면 5, 26도 8.9만 맞는다.
+		SleepMs(150);
+		z.damages.clear();
+		SSkillTemplate cone = Shaped(2, ESkillShape::Cone);
+		uint64 readyC = 0;
+		RunFx(z, [&] { r = z.CastSkill(*caster, cone, 0, Vec2{ 330, 300 }, readyC); });
+		CHECK(r == SkillResult::Ok);
+		CHECK((hitIds() == std::set<uint64>{ 10, 11 }));
+		CHECK(z.lastHitCount == 2);
+
+		// 방향만 보므로 멀리 찍든 가까이 찍든 같다. 위쪽(+y)으로 돌리면 12만 맞는다.
+		SleepMs(150);
+		z.damages.clear();
+		RunFx(z, [&] { r = z.CastSkill(*caster, cone, 0, Vec2{ 300, 301 }, readyC); });
+		CHECK(r == SkillResult::Ok && (hitIds() == std::set<uint64>{ 12 }));
+
+		// 360도 부채꼴은 뒤쪽까지 포함하지만 길이 밖은 제외한다
+		SleepMs(150);
+		z.damages.clear();
+		SSkillTemplate wide = cone; wide.angle = 360.0f;
+		RunFx(z, [&] { r = z.CastSkill(*caster, wide, 0, Vec2{ 330, 300 }, readyC); });
+		CHECK(r == SkillResult::Ok && (hitIds() == std::set<uint64>{ 10, 11, 12, 13 }));
+
+		// 방향이 없는 좌표(시전자 위치)는 거부된다
+		SleepMs(150);
+		RunFx(z, [&] { r = z.CastSkill(*caster, cone, 0, Vec2{ 300, 300 }, readyC); });
+		CHECK(r == SkillResult::InvalidTarget && z.lastReject == SkillResult::InvalidTarget);
+		RunFx(z, [&] { r = z.CastSkill(*caster, cone, 0, Vec2{ NAN, 300 }, readyC); });
+		CHECK(r == SkillResult::OutOfRange);
+		RunFx(z, [&] { r = z.CastSkill(*caster, cone, 0, Vec2{ -50, 300 }, readyC); });
+		CHECK(r == SkillResult::OutOfRange);						// 영역 밖
+
+		// Line: +x 방향 길이 12, 폭 좌우 1.5. 10(5), 14(11)만 맞고 15(옆 2), 13(뒤)은 아니다.
+		SleepMs(150);
+		z.damages.clear();
+		SSkillTemplate line = Shaped(3, ESkillShape::Line);
+		uint64 readyL = 0;
+		RunFx(z, [&] { r = z.CastSkill(*caster, line, 0, Vec2{ 301, 300 }, readyL); });
+		CHECK(r == SkillResult::Ok && (hitIds() == std::set<uint64>{ 10, 14 }));
+
+		// maxTargets: 가까운 순으로 자른다
+		SleepMs(150);
+		z.damages.clear();
+		SSkillTemplate few = self; few.maxTargets = 2;
+		RunFx(z, [&] { r = z.CastSkill(*caster, few, 0, {}, ready); });
+		CHECK(r == SkillResult::Ok && z.lastHitCount == 2 && (hitIds() == std::set<uint64>{ 10, 13 }));	// 거리 5가 같으면 ID 순
+		z.Stop();
+
+		// 벽 뒤는 맞지 않는다 (Self/Cone/Line은 시전자 위치에서 판정)
+		auto bm = std::make_shared<CBlockMap>();
+		CHECK(bm->Init(0, 0, 1000, 1000, 1.0f));
+		bm->AddRect(303, 290, 1, 20);
+		FieldZoneConfig cfg = NoPvpCfg(); cfg.blockMap = bm;
+		FxZone w(cfg);
+		CZoneEntity* c2 = AddFx(w, 1, EntityType::Player, { 300, 300 }, Stats(1000, 20, 0));
+		AddFx(w, 10, EntityType::Monster, { 305, 300 }, Stats(1000, 5, 0));
+		AddFx(w, 11, EntityType::Monster, { 296, 300 }, Stats(1000, 5, 0));
+		w.Start();
+		uint64 rw = 0;
+		RunFx(w, [&] { r = w.CastSkill(*c2, self, 0, {}, rw); });
+		CHECK(r == SkillResult::Ok && w.Damages(10) == 0 && w.Damages(11) == 1);
+		SleepMs(150);
+		RunFx(w, [&] { r = w.CastSkill(*c2, line, 0, Vec2{ 330, 300 }, rw); });
+		CHECK(r == SkillResult::Ok && w.Damages(10) == 0);
+		w.Stop();
+
+		// PvP가 켜지면 같은 편이 아니라 적이다
+		FieldZoneConfig pvp = Cfg(); pvp.allowPvp = true;
+		FxZone p(pvp);
+		CZoneEntity* a = AddFx(p, 1, EntityType::Player, { 300, 300 }, Stats(1000, 20, 0));
+		AddFx(p, 2, EntityType::Player, { 303, 300 }, Stats(1000, 5, 0));
+		p.Start();
+		uint64 rp = 0;
+		RunFx(p, [&] { r = p.CastSkill(*a, self, 0, {}, rp); });
+		CHECK(r == SkillResult::Ok && p.Damages(2) == 1 && p.Damages(1) == 0);
+		p.Stop();
+	}
+
+	static void TestHeal()
+	{
+		std::printf("[Skill heal]\n");
+		FxZone z(NoPvpCfg());
+		z.statuses[7] = Hot(7, 1000, 200, 0, 3);
+		CZoneEntity* healer = AddFx(z, 1, EntityType::Player, { 300, 300 }, Stats(100, 20, 0));
+		CZoneEntity* ally = AddFx(z, 2, EntityType::Player, { 310, 300 }, Stats(100, 5, 0));
+		CZoneEntity* foe = AddFx(z, 3, EntityType::Monster, { 305, 300 }, Stats(100, 5, 0));
+		CZoneEntity* ally2 = AddFx(z, 4, EntityType::Player, { 304, 301 }, Stats(100, 5, 0));
+		z.Start();
+
+		uint64 ready = 0;
+		SkillResult r{};
+		RunFx(z, [&] { z.DealDamage(*ally, nullptr, 70); z.DealDamage(*healer, nullptr, 10); z.DealDamage(*ally2, nullptr, 50); });
+		z.damages.clear();
+
+		// 단일 치유: 20*200/100+5 = 45. 최대 체력을 넘지 않는다.
+		SSkillTemplate heal = HealSkill(1, ESkillShape::Single);
+		RunFx(z, [&] { r = z.CastSkill(*healer, heal, 2, {}, ready); });
+		int hp = 0;
+		RunFx(z, [&] { hp = ally->GetHp(); });
+		CHECK(r == SkillResult::Ok && hp == 75 && z.lastHitCount == 1 && z.damages.empty());
+		CHECK(z.heals.size() == 1 && z.heals[0].first == 2 && z.heals[0].second == 45);
+
+		// 자신도 대상이 될 수 있다. 가득 차지 않은 만큼만 회복(실제 회복량 10).
+		SleepMs(150);
+		RunFx(z, [&] { r = z.CastSkill(*healer, heal, 1, {}, ready); hp = healer->GetHp(); });
+		CHECK(r == SkillResult::Ok && hp == 100 && z.heals.size() == 2 && z.heals[1].second == 10);
+
+		// 이미 가득 찬 대상에게는 회복 알림이 없다. 시전은 성공한다.
+		SleepMs(150);
+		RunFx(z, [&] { r = z.CastSkill(*healer, heal, 1, {}, ready); });
+		CHECK(r == SkillResult::Ok && z.heals.size() == 2);
+
+		// 적(몬스터)은 치유 대상이 아니다. 거부는 InvalidTarget이며 재사용 대기를 쓰지 않는다.
+		SleepMs(150);
+		uint64 before = ready;
+		RunFx(z, [&] { r = z.CastSkill(*healer, heal, 3, {}, ready); });
+		CHECK(r == SkillResult::InvalidTarget && ready == before);
+
+		// 죽은 아군은 치유할 수 없다
+		RunFx(z, [&] { z.DealDamage(*ally2, nullptr, 1000); });
+		SleepMs(150);
+		RunFx(z, [&] { r = z.CastSkill(*healer, heal, 4, {}, ready); });
+		CHECK(r == SkillResult::InvalidTarget);
+
+		// 범위 치유: 자기 중심 반경 6. 시전자 본인과 반경 안 아군만(적/사망자 제외). 상태 효과(Hot)도 같이 건다.
+		RunFx(z, [&] { z.DealDamage(*ally, nullptr, 60); z.DealDamage(*healer, nullptr, 60); });
+		z.heals.clear();
+		SSkillTemplate aoe = HealSkill(2, ESkillShape::Self);
+		aoe.radius = 12.0f; aoe.statusId = 7;
+		SleepMs(150);
+		RunFx(z, [&] { r = z.CastSkill(*healer, aoe, 0, {}, ready); });
+		CHECK(r == SkillResult::Ok && z.lastHitCount == 2);			// 시전자 + 아군 2
+		std::set<uint64> healed; for( const auto& h : z.heals ) healed.insert(h.first);
+		CHECK((healed == std::set<uint64>{ 1, 2 }));
+		CHECK(z.applied == 2);										// Hot은 맞은 아군 둘에게
+		bool hot1 = false, hot3 = true;
+		RunFx(z, [&] { hot1 = healer->HasStatus(7); hot3 = foe->HasStatus(7); });
+		CHECK(hot1 && !hot3);
+
+		// Hot: 틱당 3씩, 1000ms 동안 5틱
+		z.heals.clear();
+		SleepMs(1400);
+		int ticks = 0;
+		for( const auto& h : z.heals ) if( h.first == 1 && h.second == 3 ) ++ticks;
+		CHECK(ticks == 5);
+		bool still = true;
+		RunFx(z, [&] { still = healer->HasStatus(7); });
+		CHECK(!still && z.endedExpired == 2);
+		z.Stop();
+	}
+
+	static void TestStunStatus()
+	{
+		std::printf("[Skill stun]\n");
+		FxZone z(Cfg());
+		z.statuses[1] = Stun(1, 500);
+		CZoneEntity* a = AddFx(z, 1, EntityType::Player, { 300, 300 }, Stats(1000, 20, 0));
+		CZoneEntity* m = AddFx(z, 2, EntityType::Monster, { 301, 300 }, Stats(1000, 5, 0));
+		z.Start();
+
+		SSkillTemplate stunSkill = Single(1); stunSkill.statusId = 1; stunSkill.cooldownMs = 100;
+		uint64 ready = 0, readyM = 0;
+		SkillResult r{};
+		RunFx(z, [&] { r = z.CastSkill(*a, stunSkill, 2, {}, ready); });
+		CHECK(r == SkillResult::Ok);
+
+		// 기절한 동안: 이동, 기본 공격, 스킬이 모두 막힌다
+		MoveResult mr{}; AttackResult ar{}; SkillResult sr{};
+		bool stunned = false;
+		RunFx(z, [&] {
+			stunned = z.IsStunned(*m);
+			mr = z.RequestMove(*m, m->GetPos(), Vec2{ 320, 300 });
+			SSkillTemplate s = Single(2);
+			sr = z.CastSkill(*m, s, 1, {}, readyM);
+			});
+		CHECK(stunned && mr == MoveResult::Stunned && sr == SkillResult::Stunned && z.lastReject == SkillResult::Stunned);
+		SleepMs(30);
+		RunFx(z, [&] { ar = z.RequestAttack(*m, 1); });
+		CHECK(ar == AttackResult::Stunned);
+		bool moved = true;
+		RunFx(z, [&] { moved = z.MoveEntity(*m, Vec2{ 320, 300 }); });
+		CHECK(!moved);												// 서버 주도 이동도 막힌다
+
+		// 시전자는 영향이 없다. 기절 거부는 재사용 대기를 쓰지 않는다.
+		CHECK(readyM == 0);
+
+		// 기절이 끝나면 다시 할 수 있다
+		SleepMs(600);
+		RunFx(z, [&] { stunned = z.IsStunned(*m); mr = z.RequestMove(*m, m->GetPos(), Vec2{ 320, 300 }); });
+		CHECK(!stunned && mr == MoveResult::Ok && z.endedExpired == 1);
+
+		// 걸리는 순간 이동이 멈춘다
+		SleepMs(100);
+		RunFx(z, [&] { r = z.CastSkill(*a, stunSkill, 2, {}, ready); });
+		bool moving = true;
+		RunFx(z, [&] { moving = m->IsMoving(); });
+		CHECK(r == SkillResult::Ok && !moving);
+
+		// 시전 중에 기절하면 시전이 취소된다. 재사용 대기는 돌려주지 않는다.
+		SleepMs(600);
+		SSkillTemplate slow = Timed(3, 300);
+		bool casting = false;
+		RunFx(z, [&] { r = z.CastSkill(*m, slow, 1, {}, readyM); casting = m->IsCasting(); });
+		CHECK(r == SkillResult::Ok && casting);
+		const int dmgBefore = z.Damages(1);
+		RunFx(z, [&] { z.CastSkill(*a, stunSkill, 2, {}, ready); casting = m->IsCasting(); });
+		CHECK(!casting && z.castCancelled == 1 && z.lastCancel == SkillCancelReason::Stunned);
+		SleepMs(400);
+		CHECK(z.Damages(1) == dmgBefore);							// 취소되어 효과가 나가지 않았다
+
+		// 다시 걸면 갱신(중첩 없음)
+		size_t n = 0;
+		RunFx(z, [&] { z.ApplyStatus(*m, z.statuses[1], a); z.ApplyStatus(*m, z.statuses[1], a); n = m->GetStatusCount(); });
+		CHECK(n == 1);
+
+		// 죽은 엔티티는 기절 상태가 아니다
+		RunFx(z, [&] { z.DealDamage(*m, a, 100000); stunned = z.IsStunned(*m); });
+		CHECK(!stunned);
+		z.Stop();
+	}
+
+	static void TestShieldStatus()
+	{
+		std::printf("[Skill shield]\n");
+		FxZone z(NoPvpCfg());
+		z.statuses[1] = Shield(1, 800, 0, 30);			// 흡수 30
+		z.statuses[2] = Shield(2, 800, 0, 20);			// 흡수 20
+		CZoneEntity* healer = AddFx(z, 1, EntityType::Player, { 300, 300 }, Stats(100, 20, 0));
+		CZoneEntity* ally = AddFx(z, 2, EntityType::Player, { 310, 300 }, Stats(100, 5, 0));
+		z.Start();
+
+		// 보호막을 거는 아군 스킬 (피해/치유 없이 상태 효과만)
+		SSkillTemplate ward = HealSkill(1, ESkillShape::Single);
+		ward.healPercent = 0; ward.flatHeal = 0; ward.statusId = 1;
+		uint64 ready = 0;
+		SkillResult r{};
+		RunFx(z, [&] { r = z.CastSkill(*healer, ward, 2, {}, ready); });
+		CHECK(r == SkillResult::Ok && z.applied == 1);
+
+		// 피해 20: 전부 흡수, 체력 그대로, 피해 알림 없음
+		int hp = 0;
+		bool res = false;
+		RunFx(z, [&] { res = z.DealDamage(*ally, nullptr, 20); hp = ally->GetHp(); });
+		CHECK(res && hp == 100 && z.damages.empty() && z.endedBroken == 0);
+
+		// 피해 25: 남은 10만 흡수하고 보호막이 깨진다. 체력은 15 깎인다.
+		RunFx(z, [&] { res = z.DealDamage(*ally, nullptr, 25); hp = ally->GetHp(); });
+		CHECK(res && hp == 85 && z.damages.size() == 1 && z.damages[0].second == 15 && z.endedBroken == 1);
+		bool has = true; size_t n = 1;
+		RunFx(z, [&] { has = ally->HasStatus(1); n = ally->GetStatusCount(); });
+		CHECK(!has && n == 0);
+
+		// 보호막이 둘이면 먼저 걸린 것부터 깎는다
+		z.damages.clear();
+		RunFx(z, [&] {
+			z.ApplyStatus(*ally, z.statuses[1], healer);
+			z.ApplyStatus(*ally, z.statuses[2], healer);
+			z.DealDamage(*ally, nullptr, 40);						// 30 + 10
+			hp = ally->GetHp(); n = ally->GetStatusCount();
+			});
+		CHECK(hp == 85 && n == 1 && z.endedBroken == 2 && z.damages.empty());
+		RunFx(z, [&] { z.DealDamage(*ally, nullptr, 15); hp = ally->GetHp(); n = ally->GetStatusCount(); });	// 남은 10 + 체력 5
+		CHECK(hp == 80 && n == 0 && z.endedBroken == 3);
+
+		// 지속시간이 끝난 보호막은 흡수하지 않는다
+		RunFx(z, [&] { z.ApplyStatus(*ally, z.statuses[1], healer); });
+		SleepMs(900);
+		RunFx(z, [&] { z.DealDamage(*ally, nullptr, 10); hp = ally->GetHp(); });
+		CHECK(hp == 70 && z.endedExpired == 1);
+
+		// 같은 보호막을 다시 걸면 새로 채워진다(중첩 없음)
+		RunFx(z, [&] {
+			z.ApplyStatus(*ally, z.statuses[1], healer);
+			z.DealDamage(*ally, nullptr, 20);
+			z.ApplyStatus(*ally, z.statuses[1], healer);
+			z.DealDamage(*ally, nullptr, 25);
+			hp = ally->GetHp(); n = ally->GetStatusCount();
+			});
+		CHECK(hp == 70 && n == 1);
+		z.Stop();
+	}
+
 	static void TestEffectFuzz()
 	{
 		std::printf("[Skill effect fuzz]\n");
@@ -867,6 +1283,11 @@ namespace
 		TestStatus();
 		TestStatusHolders();
 		TestSkillWithStatus();
+		TestExtData();
+		TestShapes();
+		TestHeal();
+		TestStunStatus();
+		TestShieldStatus();
 		TestEffectFuzz();
 		std::printf(g_failed ? "\nFAILED: %d\n" : "\nALL PASSED\n", g_failed);
 		return g_failed ? 1 : 0;

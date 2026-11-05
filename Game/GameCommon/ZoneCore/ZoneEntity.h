@@ -101,7 +101,7 @@ struct SActiveStatus
 	uint64			endMs = 0;			// 끝나는 존 논리 시각
 	uint64			nextTickMs = 0;		// 다음 Dot 틱 시각
 	uint32			tickMs = 0;			// Dot 틱 간격
-	int32			dotDamage = 0;		// Dot 한 틱 피해 (걸 때 정해진다)
+	int32			amount = 0;			// Dot: 한 틱 피해, Hot: 한 틱 회복량, Shield: 남은 흡수량 (걸 때 정해진다)
 	int32			attackPercent = 0;
 	int32			defensePercent = 0;
 	int32			speedPercent = 0;

@@ -83,10 +83,11 @@ namespace GameViewer.Core.Logic
             {
                 SkillRow sk = _s.Data.Skill(skills[i]);
                 if (sk == null || _s.SkillCooldownLeftMs(sk.Id, now) > 0) continue;
-                if (dist > sk.Range - 0.3) continue;
+                if (!SkillWanted(sk, self, dist)) continue;
                 if (sk.CastTimeMs > 0 && self.Moving) { _s.StopMoving(now); Note = "시전 준비(정지)"; return; }
-                bool sent = sk.IsArea ? _s.UseSkill(sk.Id, 0, tx, ty, now) : _s.UseSkill(sk.Id, target.Id, 0, 0, now);
-                if (sent) { Note = "스킬 " + sk.Name; return; }
+                SkillAimResult aim = SkillAim.Resolve(sk, w, sk.IsAlly ? null : target, false, 0f, 0f, now);
+                if (!aim.Ok) continue;
+                if (_s.UseSkill(sk.Id, aim.TargetId, aim.X, aim.Y, now)) { Note = "스킬 " + sk.Name; return; }
             }
 
             // 2) 기본 공격 사거리 안이면 멈추고 공격
@@ -106,6 +107,22 @@ namespace GameViewer.Core.Logic
         }
 
         // ------------------------------------------------------------------
+
+        /// <summary>이 스킬을 지금 쓸 만한지. 적 스킬은 대상이 효과 범위 안일 때, 아군 스킬(치유/보호막)은 체력이 줄었을 때만 쓴다.</summary>
+        private static bool SkillWanted(SkillRow sk, Entity self, float distToTarget)
+        {
+            if (sk.IsAlly)
+            {
+                float hpRatio = self.MaxHp > 0 ? self.Hp / (float)self.MaxHp : 1f;
+                if (sk.Heals) return hpRatio < 0.65f;
+                return hpRatio < 0.85f && (sk.StatusId == 0 || !self.HasStatus(sk.StatusId));       // 보호막 등 상태만 거는 아군 스킬
+            }
+            // 자기 중심 버프(전투 함성, 집중, 그림자 질주): 피해가 없고 상태만 거는 스킬. 교전 직전에 한 번 걸고, 이미 걸려 있으면 다시 쓰지 않는다.
+            if (sk.IsArea && sk.Range <= 1.5 && sk.DamagePercent == 0 && sk.FlatDamage == 0)
+                return sk.StatusId != 0 && !self.HasStatus(sk.StatusId) && distToTarget <= 9.0;
+            if (sk.IsSelf) return distToTarget <= sk.Radius - 0.3;
+            return distToTarget <= sk.Range - 0.3;
+        }
 
         private Entity ResolveTarget(long now, WorldModel w)
         {

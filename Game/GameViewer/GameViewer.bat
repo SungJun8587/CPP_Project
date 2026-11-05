@@ -20,7 +20,7 @@
 ::  조작: 좌클릭 땅=이동/적=선택·추적공격, 우클릭 누른 채 이동, 1~9 스킬, Q 기본공격, Tab 대상 전환,
 ::        A 자동전투, F 시점고정, 휠 확대/축소, Space 내 위치, F5 재접속, F1 도움말, L 로그
 SET DATA=%~dp0..\GameData
-:: (위 줄) 서버가 읽는 GameData 폴더(XlsxToJson 출력)로 고치세요. 예) SET DATA=D:\Game\GameData
+:: (위 줄) 서버가 읽는 GameData 폴더(XlsxConverter 출력)로 고치세요. 예) SET DATA=D:\Game\GameData
 SET EXE=%~dp0App\bin\Release\net48\GameViewer.App.exe
 IF NOT EXIST "%EXE%" SET EXE=%~dp0App\bin\Debug\net48\GameViewer.App.exe
 IF NOT EXIST "%EXE%" (

@@ -16,6 +16,7 @@ namespace GameViewer.App.Render
     public sealed class EffectRenderer : IDisposable
     {
         private readonly Resources _res;
+        private readonly SkillEffects _skill;
         private readonly SpriteCache _glows = new SpriteCache(200);
         private readonly SpriteCache.PaintFn _glowPaint;
         private Color _gc; private int _ga; private int _gs;
@@ -24,6 +25,7 @@ namespace GameViewer.App.Render
         public EffectRenderer(Resources res)
         {
             _res = res;
+            _skill = new SkillEffects(res, this);
             _glowPaint = delegate (Graphics g) { P.Glow(g, 0, 0, _gs / 2f - 1, _gc, _ga); };
         }
 
@@ -55,7 +57,20 @@ namespace GameViewer.App.Render
                 switch (fx.Kind)
                 {
                     case EffectKind.Telegraph: DrawTelegraph(g, w, fx, v, now, sx, sy); break;
-                    case EffectKind.Ring: DrawBurstGround(g, fx, v, now, sx, sy); break;
+                    case EffectKind.Ring:
+                    {
+                        SkillFxInfo info = fx.SkillId != 0 ? SkillFxTable.For(w.Data, fx.SkillId) : null;
+                        if (info != null && info.Style != SkillFxStyle.Default && _skill.RingGround(g, info, fx, v, now, fx.X, fx.Y, fx.Radius)) break;
+                        DrawBurstGround(g, fx, v, now, sx, sy);
+                        break;
+                    }
+                    case EffectKind.Slash:
+                    {
+                        if (fx.Variant != 1 || fx.SkillId == 0 || fx.Radius <= 0f) break;
+                        SkillFxInfo info = SkillFxTable.For(w.Data, fx.SkillId);
+                        if (info != null) _skill.SlashGround(g, info, w, fx, v, now);
+                        break;
+                    }
                     case EffectKind.RespawnRing:
                     {
                         float p = fx.Progress(now);
@@ -98,6 +113,8 @@ namespace GameViewer.App.Render
             }
         }
 
+        internal void DrawBurstGroundOnly(Graphics g, ViewEffect fx, ViewState v, long now, float sx, float sy) { DrawBurstGround(g, fx, v, now, sx, sy); }
+
         private void DrawBurstGround(Graphics g, ViewEffect fx, ViewState v, long now, float sx, float sy)
         {
             float p = fx.Progress(now);
@@ -136,7 +153,13 @@ namespace GameViewer.App.Render
                 switch (fx.Kind)
                 {
                     case EffectKind.Projectile: DrawProjectile(g, s, fx, v, now); break;
-                    case EffectKind.Slash: DrawSlash(g, w, fx, v, now, p, sx, sy); break;
+                    case EffectKind.Slash:
+                    {
+                        SkillFxInfo info = fx.Variant == 1 && fx.SkillId != 0 ? SkillFxTable.For(w.Data, fx.SkillId) : null;
+                        if (info != null && info.Style != SkillFxStyle.Default && _skill.Slash(g, info, w, fx, v, now)) break;
+                        DrawSlash(g, w, fx, v, now, p, sx, sy);
+                        break;
+                    }
                     case EffectKind.Tracer:
                     {
                         Entity c = w.Find(fx.EntityId);
@@ -147,8 +170,20 @@ namespace GameViewer.App.Render
                         g.DrawLine(_res.Pen((int)(240 * (1f - p)), 255, 250, 210, 2f), x0, y0, sx, y1);
                         break;
                     }
-                    case EffectKind.Spark: DrawSpark(g, fx, v, p, sx, sy); break;
-                    case EffectKind.Ring: DrawBurstDust(g, fx, v, p, sx, sy); break;
+                    case EffectKind.Spark:
+                    {
+                        SkillFxInfo info = fx.SkillId != 0 ? SkillFxTable.For(w.Data, fx.SkillId) : null;
+                        if (info != null && _skill.Impact(g, info, fx, v, now, p, sx, sy)) break;
+                        DrawSpark(g, fx, v, p, sx, sy);
+                        break;
+                    }
+                    case EffectKind.Ring:
+                    {
+                        SkillFxInfo info = fx.SkillId != 0 ? SkillFxTable.For(w.Data, fx.SkillId) : null;
+                        if (info != null && info.Style != SkillFxStyle.Default && _skill.RingAir(g, info, fx, v, now, fx.X, fx.Y, fx.Radius)) break;
+                        DrawBurstDust(g, fx, v, p, sx, sy);
+                        break;
+                    }
                     case EffectKind.DeathPuff: DrawDeath(g, fx, v, p, sx, sy); break;
                     case EffectKind.Heal: DrawHealSparkles(g, fx, v, w, now, p); break;
                     case EffectKind.Banner: break;      // HUD 에서 그린다
@@ -203,7 +238,7 @@ namespace GameViewer.App.Render
             }
         }
 
-        private void DrawBurstDust(Graphics g, ViewEffect fx, ViewState v, float p, float sx, float sy)
+        internal void DrawBurstDust(Graphics g, ViewEffect fx, ViewState v, float p, float sx, float sy)
         {
             float full = v.Px(fx.Radius);
             int n = fx.Radius >= 3f ? 16 : 8;
@@ -264,6 +299,8 @@ namespace GameViewer.App.Render
                 Entity target = s.World.Find(fx.TargetId);
                 if (target != null) target.PosAt(now, out ex, out ey);
             }
+            SkillFxInfo finfo = SkillFxTable.For(s.Data, fx.SkillId);
+            if (finfo != null && _skill.Projectile(g, finfo, fx, v, now, t, ex, ey)) return;
             float h = v.Px(1.4f);
             float px = v.ToScreenX(fx.X + (ex - fx.X) * t), py = v.ToScreenY(fx.Y + (ey - fx.Y) * t) - h;
             bool arrow = sk != null && sk.ProjectileSpeed >= 50;
@@ -347,6 +384,11 @@ namespace GameViewer.App.Render
                     Glow(g, Color.FromArgb(255, 150, 50), fx, fy, r * 2.5f, r * 2.5f, 0.9f * (1f - ph));
                 }
             }
+            if (e.CastSkillId != 0)
+            {
+                SkillFxInfo ci = SkillFxTable.For(s.Data, e.CastSkillId);
+                if (ci != null) _skill.Charge(g, ci, e, v, now, sx, sy, look.H, hw);
+            }
             if (e.Statuses.Count == 0) return;
             int idx = 0;
             foreach (KeyValuePair<uint, StatusInstance> st in e.Statuses)
@@ -354,6 +396,7 @@ namespace GameViewer.App.Render
                 StatusRow row = s.Data.Status(st.Key);
                 ++idx;
                 if (row == null) continue;
+                if (_skill.Status(g, row, v, now, idx, sx, sy, look.H, hw)) continue;
                 bool dot = row.IsDot;
                 bool debuff = !dot && (row.AttackPercent < 0 || row.DefensePercent < 0 || row.SpeedPercent < 0);
                 if (e.IsEnraged && e.Boss != null && st.Key == e.Boss.EnrageStatusId) continue;
@@ -365,7 +408,8 @@ namespace GameViewer.App.Render
                         float px = sx + (Noise.Hash01(k + idx, (int)(e.Id & 0xFF), 4) - 0.5f) * hw * 1.4f;
                         float py = sy - v.Px(0.4f) - ph * v.Px(look.H * 0.7f);
                         float r = v.Px(0.13f) * (1f - ph * 0.5f);
-                        Glow(g, Color.FromArgb(255, 130, 40), px, py, r * 2.4f, r * 2.4f, 0.9f * (1f - ph));
+                        int dc = SkillFxTable.DotColor(st.Key);
+                        Glow(g, Color.FromArgb((dc >> 16) & 255, (dc >> 8) & 255, dc & 255), px, py, r * 2.4f, r * 2.4f, 0.9f * (1f - ph));
                     }
                 }
                 else if (debuff)

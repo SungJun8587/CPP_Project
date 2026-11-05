@@ -9,6 +9,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using GameViewer.App.Render;
 using GameViewer.Core;
+using GameViewer.Core.Audio;
 using GameViewer.Core.Data;
 using GameViewer.Core.Logic;
 using GameViewer.Core.World;
@@ -30,6 +31,10 @@ namespace GameViewer.App
         private readonly ViewerConfig _cfg;
         private readonly GameData _data;
         private readonly bool _demoMode;
+        private readonly SoundFx _sfx = new SoundFx();
+        private readonly HashSet<ViewEffect> _sfxSeen = new HashSet<ViewEffect>();
+        private bool _sfxPrimed;
+        private readonly HeartbeatClock _heart = new HeartbeatClock();
 
         public GameCanvas(ViewerConfig cfg, GameData data, bool demoMode)
         {
@@ -51,6 +56,7 @@ namespace GameViewer.App
             _pilot = new AutoPilot(_session);
             _demo = null;
             _view.SelectedId = 0;
+            _sfxSeen.Clear(); _sfxPrimed = false;
             if (_demoMode)
             {
                 _demo = new DemoDirector(_session);
@@ -68,6 +74,8 @@ namespace GameViewer.App
             _session.Update(now);
             if (_demo != null) _demo.Update(now);
             _pilot.Update(now);
+            UpdateSeekBoss(now);
+            PlayEffectSounds(now);
 
             if (_follow || _session.World.Self == null)
             {
@@ -87,6 +95,32 @@ namespace GameViewer.App
             ++_fpsFrames;
             if (now - _fpsLast >= 500) { _view.Fps = _fpsFrames * 1000.0 / (now - _fpsLast); _fpsFrames = 0; _fpsLast = now; }
             Invalidate();
+        }
+
+        /// <summary>이번 틱에 새로 생긴 연출마다 규칙(SfxRules)에 따라 효과음을 낸다. 접속 직후 이미 있던 연출은 소리 없이 넘긴다.</summary>
+        private void PlayEffectSounds(long now)
+        {
+            WorldModel w = _session.World;
+            float sx = 0, sy = 0;
+            bool hasSelf = _session.SelfPos(now, out sx, out sy);
+            if (!hasSelf) { sx = _view.CamX; sy = _view.CamY; }
+            foreach (ViewEffect fx in w.Effects)
+            {
+                if (!_sfxSeen.Add(fx) || !_sfxPrimed || !_sfx.Enabled) continue;
+                SfxKind kind; float gain;
+                if (SfxRules.TryMap(fx, w, sx, sy, out kind, out gain)) _sfx.Play(kind, gain);
+            }
+            _sfxPrimed = true;
+            // 저체력 심장 박동: 체력이 낮을수록 빨라진다. 죽었거나 안전하면 멈춘다.
+            Entity me = w.Self;
+            bool alive = me != null && !me.Dead && _session.State == SessionState.InZone;
+            if (_heart.Tick(now, alive ? Tension.Level(me.Hp, me.MaxHp) : 0f, alive) && _sfx.Enabled)
+                _sfx.Play(SfxKind.Heartbeat, 0.4f + 0.6f * Tension.Level(me.Hp, me.MaxHp));
+            if (_sfxSeen.Count > 512)           // 지난 연출 참조가 쌓이지 않게 현재 것만 남긴다
+            {
+                _sfxSeen.Clear();
+                foreach (ViewEffect fx in w.Effects) _sfxSeen.Add(fx);
+            }
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -123,6 +157,11 @@ namespace GameViewer.App
             Focus();
             UpdateMouse(e.X, e.Y);
             long now = Now;
+            if (_view.HeroSelectOpen)
+            {
+                if (e.Button == MouseButtons.Left && !ClickHeroSelect(e.X, e.Y)) _view.HeroSelectOpen = false;
+                return;
+            }
             if (e.Button == MouseButtons.Left && ClickMiniMap(e.X, e.Y, now)) return;
             if (e.Button == MouseButtons.Left || e.Button == MouseButtons.Right)
             {
@@ -136,7 +175,7 @@ namespace GameViewer.App
                 {
                     if (e.Button == MouseButtons.Left) _view.SelectedId = 0;
                     _pilot.SetAuto(false);
-                    _session.MoveTo(_view.MouseWorldX, _view.MouseWorldY, now, true);
+                    _seekBoss = false; _session.MoveTo(_view.MouseWorldX, _view.MouseWorldY, now, true);
                 }
                 if (e.Button == MouseButtons.Right) _rightDown = true;
             }
@@ -151,7 +190,7 @@ namespace GameViewer.App
             float wx = _data.WorldMinX + (sx - r.X) / r.Width * (_data.WorldMaxX - _data.WorldMinX);
             float wy = _data.WorldMinY + (sy - r.Y) / r.Height * (_data.WorldMaxY - _data.WorldMinY);
             _pilot.SetAuto(false);
-            _session.MoveTo(wx, wy, now, true);
+            _seekBoss = false; _session.MoveTo(wx, wy, now, true);
             return true;
         }
 
@@ -160,7 +199,7 @@ namespace GameViewer.App
             UpdateMouse(e.X, e.Y);
             Entity hover = PickEntity(e.X, e.Y, Now);
             _view.HoverId = hover != null ? hover.Id : 0;
-            if (_rightDown && _pilot.Mode == PilotMode.Off) _session.MoveTo(_view.MouseWorldX, _view.MouseWorldY, Now, false);
+            if (_rightDown && _pilot.Mode == PilotMode.Off) _seekBoss = false; _session.MoveTo(_view.MouseWorldX, _view.MouseWorldY, Now, false);
             base.OnMouseMove(e);
         }
 
@@ -215,13 +254,15 @@ namespace GameViewer.App
         protected override bool IsInputKey(Keys keyData)
         {
             Keys k = keyData & Keys.KeyCode;
-            return k == Keys.Tab || k == Keys.Space || k == Keys.Escape || (k >= Keys.D1 && k <= Keys.D9) || base.IsInputKey(keyData);
+            return k == Keys.Tab || k == Keys.Space || k == Keys.Escape || k == Keys.Enter || (k >= Keys.D1 && k <= Keys.D9) || base.IsInputKey(keyData);
         }
 
         protected override void OnKeyDown(KeyEventArgs e)
         {
             long now = Now;
             Keys k = e.KeyCode;
+            if (_view.HeroSelectOpen) { HeroSelectKey(k); e.Handled = true; return; }
+            if (k == Keys.H) { OpenHeroSelect(); e.Handled = true; return; }
             if (k >= Keys.D1 && k <= Keys.D9) { UseSkillSlot(k - Keys.D1, now); e.Handled = true; }
             else if (k >= Keys.NumPad1 && k <= Keys.NumPad9) { UseSkillSlot(k - Keys.NumPad1, now); e.Handled = true; }
             else switch (k)
@@ -236,6 +277,10 @@ namespace GameViewer.App
                 case Keys.Escape: _pilot.SetAuto(false); _view.SelectedId = 0; _session.StopMoving(now); break;
                 case Keys.F1: _view.ShowHelp = !_view.ShowHelp; break;
                 case Keys.L: _view.ShowLog = !_view.ShowLog; break;
+                case Keys.M:
+                    _sfx.Enabled = !_sfx.Enabled;
+                    _session.World.AddLog(now, 0, _sfx.Failed ? "효과음을 재생할 수 없습니다(오디오 장치 확인)" : (_sfx.Enabled ? "효과음 켜짐" : "효과음 꺼짐"));
+                    break;
                 case Keys.F5: StartSession(); break;
                 case Keys.Oemplus: case Keys.Add: ZoomBy(1.15); break;
                 case Keys.OemMinus: case Keys.Subtract: ZoomBy(1 / 1.15); break;
@@ -247,11 +292,55 @@ namespace GameViewer.App
             base.OnKeyDown(e);
         }
 
-        /// <summary>가장 가까운 살아 있는 보스를 선택한다.</summary>
-        private void SelectBoss(long now)
+        // ------------------------------------------------------------------ 영웅 선택
+
+        private void OpenHeroSelect()
+        {
+            List<uint> ids = _data.HeroIds();
+            if (ids.Count == 0) { _session.World.AddLog(Now, 1, "영웅 데이터가 없습니다"); return; }
+            int cur = ids.IndexOf(_session.HeroId);
+            _view.HeroSelectIndex = cur < 0 ? 0 : cur;
+            _view.HeroSelectOpen = true;
+        }
+
+        private void HeroSelectKey(Keys k)
+        {
+            List<uint> ids = _data.HeroIds();
+            int n = ids.Count;
+            if (k == Keys.Escape || k == Keys.H) { _view.HeroSelectOpen = false; return; }
+            if (n == 0) return;
+            if (k == Keys.Up) _view.HeroSelectIndex = (_view.HeroSelectIndex + n - 1) % n;
+            else if (k == Keys.Down) _view.HeroSelectIndex = (_view.HeroSelectIndex + 1) % n;
+            else if (k >= Keys.D1 && k <= Keys.D9 && k - Keys.D1 < n) _view.HeroSelectIndex = k - Keys.D1;
+            else if (k >= Keys.NumPad1 && k <= Keys.NumPad9 && k - Keys.NumPad1 < n) _view.HeroSelectIndex = k - Keys.NumPad1;
+            else if (k == Keys.Enter || k == Keys.Return) ApplyHero(ids[Math.Max(0, Math.Min(n - 1, _view.HeroSelectIndex))]);
+        }
+
+        /// <summary>선택한 영웅으로 세션을 다시 시작한다. (서버 모드는 같은 영웅이면 다시 접속하지 않는다)</summary>
+        private void ApplyHero(uint heroId)
+        {
+            _view.HeroSelectOpen = false;
+            if (heroId == _session.HeroId && _session.State == SessionState.InZone) return;
+            _cfg.HeroId = heroId;
+            StartSession();
+        }
+
+        private bool ClickHeroSelect(int sx, int sy)
+        {
+            List<uint> ids = _data.HeroIds();
+            for (int i = 0; i < ids.Count; ++i)
+                if (HudRenderer.HeroRowRect(_view, ids.Count, i).Contains(sx, sy)) { _view.HeroSelectIndex = i; ApplyHero(ids[i]); return true; }
+            return false;
+        }
+
+        private bool _seekBoss;             // 시야에 보스가 없어 보스 출현 위치로 이동 중
+        private float _seekX, _seekY;
+
+        /// <summary>시야 안의 살아 있는 보스 중 가장 가까운 것을 고른다. 서버는 시야(AOI) 밖 엔티티를 알려주지 않으므로 없을 수 있다.</summary>
+        private Entity FindBoss(long now)
         {
             float sx, sy;
-            if (!_session.SelfPos(now, out sx, out sy)) return;
+            if (!_session.SelfPos(now, out sx, out sy)) return null;
             Entity best = null; float bd = float.MaxValue;
             foreach (KeyValuePair<ulong, Entity> kv in _session.World.Entities)
             {
@@ -261,8 +350,42 @@ namespace GameViewer.App
                 float d = (x - sx) * (x - sx) + (y - sy) * (y - sy);
                 if (d < bd) { bd = d; best = e; }
             }
-            if (best == null) { _session.World.AddLog(now, 1, "근처에 보스가 없습니다"); return; }
-            _view.SelectedId = best.Id;
+            return best;
+        }
+
+        /// <summary>B: 보스를 선택한다. 시야에 없으면 데이터(Spawn)의 가장 가까운 보스 출현 위치로 이동하고, 보스가 보이면 자동으로 선택한다.</summary>
+        private void SelectBoss(long now)
+        {
+            Entity best = FindBoss(now);
+            if (best != null) { _seekBoss = false; _view.SelectedId = best.Id; return; }
+            float sx, sy;
+            if (!_session.SelfPos(now, out sx, out sy)) return;
+            SpawnRow near = null; float bd = float.MaxValue;
+            foreach (SpawnRow sp in _data.Spawns)
+            {
+                if (!_data.Bosses.ContainsKey(sp.MonsterId)) continue;
+                float d = (sp.X - sx) * (sp.X - sx) + (sp.Y - sy) * (sp.Y - sy);
+                if (d < bd) { bd = d; near = sp; }
+            }
+            if (near == null) { _session.World.AddLog(now, 1, "이 존에는 보스가 없습니다 (Spawn 데이터에 보스 몬스터가 없음)"); return; }
+            _seekBoss = true; _seekX = near.X; _seekY = near.Y;
+            _session.MoveTo(near.X, near.Y, now, true);
+            _session.World.AddLog(now, 0, _data.Bosses[near.MonsterId].Name + " 출현 위치 (" + near.X.ToString("0") + ", " + near.Y.ToString("0") + ") 로 이동합니다 - 거리 " + ((float)Math.Sqrt(bd)).ToString("0"));
+        }
+
+        /// <summary>보스 찾아 이동 중이면 보스가 시야에 들어오는 순간 선택하고, 도착했는데 없으면 멈춘다.</summary>
+        private void UpdateSeekBoss(long now)
+        {
+            if (!_seekBoss) return;
+            Entity b = FindBoss(now);
+            if (b != null) { _seekBoss = false; _view.SelectedId = b.Id; _session.World.AddLog(now, 0, "보스 선택: " + (b.Boss != null ? b.Boss.Name : "")); return; }
+            float sx, sy;
+            if (!_session.SelfPos(now, out sx, out sy)) return;
+            if ((sx - _seekX) * (sx - _seekX) + (sy - _seekY) * (sy - _seekY) < 9f)
+            {
+                _seekBoss = false;
+                _session.World.AddLog(now, 1, "출현 위치에 도착했지만 보스가 보이지 않습니다 (이미 처치되었거나 재출현 대기 중)");
+            }
         }
 
         /// <summary>현재 화면을 PNG 로 저장한다 (실행 폴더의 screenshots).</summary>
@@ -300,24 +423,15 @@ namespace GameViewer.App
             if (index < 0 || index >= skills.Count) return;
             SkillRow sk = _data.Skill(skills[index]);
             if (sk == null) return;
-            Entity t = _session.World.Find(_view.SelectedId);
-            if (t != null && t.Dead) t = null;
-
-            if (sk.IsArea)
+            SkillAimResult a = SkillAim.Resolve(sk, _session.World, _session.World.Find(_view.SelectedId), _view.HasMouse, _view.MouseWorldX, _view.MouseWorldY, now);
+            if (!a.Ok)
             {
-                float x, y;
-                if (t != null) t.PosAt(now, out x, out y);
-                else if (!_session.SelfPos(now, out x, out y)) return;
-                else if (sk.Range > 1.5 && _view.HasMouse) { x = _view.MouseWorldX; y = _view.MouseWorldY; }
-                _session.UseSkill(sk.Id, 0, x, y, now);
+                _session.World.AddLog(now, 1, a.WhyNot);
+                if (a.Target != null && a.Target.IsMonster && !a.Target.Dead) { _view.SelectedId = a.Target.Id; _pilot.ChaseTarget(a.Target.Id); }     // 사거리 밖이면 다가간다
+                return;
             }
-            else
-            {
-                if (t == null) t = NearestEnemy(now);
-                if (t == null) { _session.World.AddLog(now, 1, "스킬 대상이 없습니다 (적을 선택하세요)"); return; }
-                _view.SelectedId = t.Id;
-                _session.UseSkill(sk.Id, t.Id, 0, 0, now);
-            }
+            if (a.Target != null && a.Target.IsMonster) _view.SelectedId = a.Target.Id;
+            _session.UseSkill(sk.Id, a.TargetId, a.X, a.Y, now);
         }
 
         private Entity NearestEnemy(long now)
@@ -363,6 +477,7 @@ namespace GameViewer.App
             {
                 if (_session != null) { _session.Leave(); _session.Dispose(); }
                 if (_frame != null) _frame.Dispose();
+                _sfx.Dispose();
                 _renderer.Dispose();
             }
             base.Dispose(disposing);

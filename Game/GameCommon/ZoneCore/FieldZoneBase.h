@@ -40,6 +40,7 @@ enum class MoveResult : uint8
 	Throttled,			// 요청 간격이 minMoveIntervalMs보다 짧아 무시됨 (보정 통지 없음)
 	Dead,				// 사망한 엔티티는 리스폰하기 전까지 이동할 수 없음
 	Blocked,			// 장애물에 막혀 한 걸음도 갈 수 없음 (목적지까지 일부만 갈 수 있으면 막히기 직전까지로 줄여 Ok)
+	Stunned,			// 기절 상태에서는 이동할 수 없음
 };
 
 //***************************************************************************
@@ -59,6 +60,7 @@ enum class AttackResult : uint8
 	Throttled,			// 같은 틱에 이미 공격 요청을 접수함 (거부 통지 없음)
 	NoLineOfSight,		// 사거리 안이지만 둘 사이를 장애물이 막고 있음
 	Casting,			// 스킬 시전 중에는 기본 공격을 할 수 없음
+	Stunned,			// 기절 상태에서는 기본 공격을 할 수 없음
 };
 
 //***************************************************************************
@@ -74,6 +76,7 @@ enum class SkillResult : uint8
 	InvalidTarget,		// 공격할 수 없는 대상 (사망, 자기 자신, PvP 금지, 무적 등)
 	Throttled,			// 같은 틱에 이미 공격/스킬 요청을 접수함 (거부 통지 없음)
 	Casting,			// 이미 다른 스킬을 시전 중
+	Stunned,			// 기절 상태에서는 스킬을 쓸 수 없음
 };
 
 //***************************************************************************
@@ -86,6 +89,7 @@ enum class SkillCancelReason : uint8
 	InvalidTarget,		// 완료 시점에 대상이 없어졌거나 사망/무적/공격 불가 상태가 됨
 	OutOfRange,			// 완료 시점에 대상이 사거리 밖으로 벗어남
 	NoLineOfSight,		// 완료 시점에 장애물이 가로막음
+	Stunned,			// 시전 중 기절함
 };
 
 //***************************************************************************
@@ -95,6 +99,7 @@ enum class StatusEndReason : uint8
 {
 	Expired,			// 지속시간이 다함
 	Died,				// 걸려 있던 엔티티가 사망함
+	Broken,				// 보호막을 다 써서 사라짐
 };
 
 //***************************************************************************
@@ -228,6 +233,8 @@ public:
 	bool Heal(CZoneEntity& entity, int32 amount);
 	bool Respawn(uint64 id);
 	bool IsInvulnerable(const CZoneEntity& entity) const;
+	bool IsStunned(const CZoneEntity& entity) const;
+	bool IsSkillTarget(const CZoneEntity& caster, const SSkillTemplate& skill, const CZoneEntity& e) const;
 
 	// ── 설정 검증 ─────────────────────────────────────────
 	float GetGuaranteedViewRange() const;
@@ -380,6 +387,7 @@ private:
 	void CollectHits(CZoneEntity& caster, const SSkillTemplate& skill, CZoneEntity* target, const Vec2& mid, std::vector<SSkillHit>& hits) const;
 	void ApplyHits(CZoneEntity& caster, const SSkillTemplate& skill, const std::vector<SSkillHit>& hits, int32 attack);
 	void ApplySelfStatus(CZoneEntity& caster, const SSkillTemplate& skill);
+	int32 AbsorbByShields(CZoneEntity& victim, int32 amount);
 	void DetachSkillState(CZoneEntity& entity);
 	void RemoveStatusHolder(CZoneEntity& entity);
 	void RecomputeStatMods(CZoneEntity& entity);

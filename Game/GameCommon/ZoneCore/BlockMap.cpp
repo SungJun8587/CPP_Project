@@ -1,4 +1,4 @@
-
+ï»¿
 //***************************************************************************
 // BlockMap.cpp : implementation of the CBlockMap class.
 //
@@ -14,20 +14,20 @@
 #include <unordered_map>
 
 //***************************************************************************
-// @brief CBlockMap Å¬·¡½ºÀÇ »ı¼ºÀÚ. Init() Àü¿¡´Â ¸ğµç ÁÂÇ¥°¡ ÀÌµ¿ °¡´ÉÀÌ´Ù.
+// @brief CBlockMap í´ë˜ìŠ¤ì˜ ìƒì„±ì. Init() ì „ì—ëŠ” ëª¨ë“  ì¢Œí‘œê°€ ì´ë™ ê°€ëŠ¥ì´ë‹¤.
 //***************************************************************************
 CBlockMap::CBlockMap()
 {
 }
 
 //***************************************************************************
-// @brief Á¸ ¿µ¿ª°ú ¼¿ Å©±â·Î °İÀÚ¸¦ ±¸¼ºÇÕ´Ï´Ù. ±âÁ¸ ³»¿ëÀº Áö¿öÁı´Ï´Ù.
-// @param minX     ¿µ¿ª ÃÖ¼Ò X
-// @param minY     ¿µ¿ª ÃÖ¼Ò Y
-// @param maxX     ¿µ¿ª ÃÖ´ë X
-// @param maxY     ¿µ¿ª ÃÖ´ë Y
-// @param cellSize ¼¿ ÇÑ º¯ÀÇ ±æÀÌ (kMinCellSize ÀÌ»ó)
-// @return ¼º°ø ½Ã true, °ªÀÌ À¯È¿ÇÏÁö ¾Ê°Å³ª ¼¿ ¼ö°¡ kMaxCells¸¦ ³ÑÀ¸¸é false
+// @brief ì¡´ ì˜ì—­ê³¼ ì…€ í¬ê¸°ë¡œ ê²©ìë¥¼ êµ¬ì„±í•©ë‹ˆë‹¤. ê¸°ì¡´ ë‚´ìš©ì€ ì§€ì›Œì§‘ë‹ˆë‹¤.
+// @param minX     ì˜ì—­ ìµœì†Œ X
+// @param minY     ì˜ì—­ ìµœì†Œ Y
+// @param maxX     ì˜ì—­ ìµœëŒ€ X
+// @param maxY     ì˜ì—­ ìµœëŒ€ Y
+// @param cellSize ì…€ í•œ ë³€ì˜ ê¸¸ì´ (kMinCellSize ì´ìƒ)
+// @return ì„±ê³µ ì‹œ true, ê°’ì´ ìœ íš¨í•˜ì§€ ì•Šê±°ë‚˜ ì…€ ìˆ˜ê°€ kMaxCellsë¥¼ ë„˜ìœ¼ë©´ false
 //***************************************************************************
 bool CBlockMap::Init(float minX, float minY, float maxX, float maxY, float cellSize)
 {
@@ -58,7 +58,7 @@ bool CBlockMap::Init(float minX, float minY, float maxX, float maxY, float cellS
 }
 
 //***************************************************************************
-// @brief ÁÂÇ¥°¡ ¼ÓÇÑ ¼¿ÀÇ X ÀÎµ¦½º¸¦ ±¸ÇÕ´Ï´Ù. ¿µ¿ª ¹ÛÀº °¡ÀåÀÚ¸® ¼¿·Î º¸Á¤ÇÕ´Ï´Ù.
+// @brief ì¢Œí‘œê°€ ì†í•œ ì…€ì˜ X ì¸ë±ìŠ¤ë¥¼ êµ¬í•©ë‹ˆë‹¤. ì˜ì—­ ë°–ì€ ê°€ì¥ìë¦¬ ì…€ë¡œ ë³´ì •í•©ë‹ˆë‹¤.
 //***************************************************************************
 int32 CBlockMap::CellX(double x) const
 {
@@ -67,7 +67,7 @@ int32 CBlockMap::CellX(double x) const
 }
 
 //***************************************************************************
-// @brief ÁÂÇ¥°¡ ¼ÓÇÑ ¼¿ÀÇ Y ÀÎµ¦½º¸¦ ±¸ÇÕ´Ï´Ù. ¿µ¿ª ¹ÛÀº °¡ÀåÀÚ¸® ¼¿·Î º¸Á¤ÇÕ´Ï´Ù.
+// @brief ì¢Œí‘œê°€ ì†í•œ ì…€ì˜ Y ì¸ë±ìŠ¤ë¥¼ êµ¬í•©ë‹ˆë‹¤. ì˜ì—­ ë°–ì€ ê°€ì¥ìë¦¬ ì…€ë¡œ ë³´ì •í•©ë‹ˆë‹¤.
 //***************************************************************************
 int32 CBlockMap::CellY(double y) const
 {
@@ -76,7 +76,7 @@ int32 CBlockMap::CellY(double y) const
 }
 
 //***************************************************************************
-// @brief ¼¿ ÇÏ³ª¸¦ Â÷´Ü ¼¿·Î Ç¥½ÃÇÕ´Ï´Ù.
+// @brief ì…€ í•˜ë‚˜ë¥¼ ì°¨ë‹¨ ì…€ë¡œ í‘œì‹œí•©ë‹ˆë‹¤.
 //***************************************************************************
 void CBlockMap::BlockCell(int32 cx, int32 cy)
 {
@@ -89,11 +89,11 @@ void CBlockMap::BlockCell(int32 cx, int32 cy)
 }
 
 //***************************************************************************
-// @brief »ç°¢Çü Àå¾Ö¹°À» µî·ÏÇÕ´Ï´Ù. »ç°¢Çü°ú Á¶±İÀÌ¶óµµ °ãÄ¡´Â ¼¿Àº ¸ğµÎ Â÷´ÜµË´Ï´Ù.
-// @param x      »ç°¢Çü ÃÖ¼Ò X (¿ŞÂÊ ¾Æ·¡ ¸ğ¼­¸®)
-// @param y      »ç°¢Çü ÃÖ¼Ò Y
-// @param width  ³Êºñ (0 ÀÌÇÏÀÌ°Å³ª À¯ÇÑÇÏÁö ¾ÊÀ¸¸é ¹«½Ã)
-// @param height ³ôÀÌ (0 ÀÌÇÏÀÌ°Å³ª À¯ÇÑÇÏÁö ¾ÊÀ¸¸é ¹«½Ã)
+// @brief ì‚¬ê°í˜• ì¥ì• ë¬¼ì„ ë“±ë¡í•©ë‹ˆë‹¤. ì‚¬ê°í˜•ê³¼ ì¡°ê¸ˆì´ë¼ë„ ê²¹ì¹˜ëŠ” ì…€ì€ ëª¨ë‘ ì°¨ë‹¨ë©ë‹ˆë‹¤.
+// @param x      ì‚¬ê°í˜• ìµœì†Œ X (ì™¼ìª½ ì•„ë˜ ëª¨ì„œë¦¬)
+// @param y      ì‚¬ê°í˜• ìµœì†Œ Y
+// @param width  ë„ˆë¹„ (0 ì´í•˜ì´ê±°ë‚˜ ìœ í•œí•˜ì§€ ì•Šìœ¼ë©´ ë¬´ì‹œ)
+// @param height ë†’ì´ (0 ì´í•˜ì´ê±°ë‚˜ ìœ í•œí•˜ì§€ ì•Šìœ¼ë©´ ë¬´ì‹œ)
 //***************************************************************************
 void CBlockMap::AddRect(float x, float y, float width, float height)
 {
@@ -106,7 +106,7 @@ void CBlockMap::AddRect(float x, float y, float width, float height)
 	if( x1 <= _minX || y1 <= _minY || x >= _maxX || y >= _maxY )
 		return;
 
-	// ÃÖ´ë °æ°è°¡ ¼¿ °æ°è¿¡ Á¤È®È÷ ´êÀ¸¸é ´ÙÀ½ ¼¿·Î ¹øÁöÁö ¾Ê°Ô °æ°è¸¦ »ìÂ¦ ¾ÈÂÊÀ¸·Î ´ç°Ü ¼¿À» ±¸ÇÑ´Ù.
+	// ìµœëŒ€ ê²½ê³„ê°€ ì…€ ê²½ê³„ì— ì •í™•íˆ ë‹¿ìœ¼ë©´ ë‹¤ìŒ ì…€ë¡œ ë²ˆì§€ì§€ ì•Šê²Œ ê²½ê³„ë¥¼ ì‚´ì§ ì•ˆìª½ìœ¼ë¡œ ë‹¹ê²¨ ì…€ì„ êµ¬í•œë‹¤.
 	const double eps = static_cast<double>(_cellSize) * 1e-6;
 	const int32 cx0 = CellX(x);
 	const int32 cy0 = CellY(y);
@@ -119,10 +119,10 @@ void CBlockMap::AddRect(float x, float y, float width, float height)
 }
 
 //***************************************************************************
-// @brief ¿øÇü Àå¾Ö¹°À» µî·ÏÇÕ´Ï´Ù. ¿ø°ú Á¶±İÀÌ¶óµµ °ãÄ¡´Â ¼¿Àº ¸ğµÎ Â÷´ÜµË´Ï´Ù.
-// @param centerX Áß½É X
-// @param centerY Áß½É Y
-// @param radius  ¹İ°æ (0 ÀÌÇÏÀÌ°Å³ª À¯ÇÑÇÏÁö ¾ÊÀ¸¸é ¹«½Ã)
+// @brief ì›í˜• ì¥ì• ë¬¼ì„ ë“±ë¡í•©ë‹ˆë‹¤. ì›ê³¼ ì¡°ê¸ˆì´ë¼ë„ ê²¹ì¹˜ëŠ” ì…€ì€ ëª¨ë‘ ì°¨ë‹¨ë©ë‹ˆë‹¤.
+// @param centerX ì¤‘ì‹¬ X
+// @param centerY ì¤‘ì‹¬ Y
+// @param radius  ë°˜ê²½ (0 ì´í•˜ì´ê±°ë‚˜ ìœ í•œí•˜ì§€ ì•Šìœ¼ë©´ ë¬´ì‹œ)
 //***************************************************************************
 void CBlockMap::AddCircle(float centerX, float centerY, float radius)
 {
@@ -150,14 +150,14 @@ void CBlockMap::AddCircle(float centerX, float centerY, float radius)
 			const double nearX = (std::min)((std::max)(cx, cellMinX), cellMinX + _cellSize);
 			const double dx = nearX - cx;
 			const double dy = nearY - cy;
-			if( dx * dx + dy * dy < r * r )		// Á¢ÇÏ±â¸¸ ÇÏ´Â ¼¿Àº ¸·Áö ¾Ê´Â´Ù
+			if( dx * dx + dy * dy < r * r )		// ì ‘í•˜ê¸°ë§Œ í•˜ëŠ” ì…€ì€ ë§‰ì§€ ì•ŠëŠ”ë‹¤
 				BlockCell(ix, iy);
 		}
 	}
 }
 
 //***************************************************************************
-// @brief ¼¿ÀÌ Â÷´Ü ¼¿ÀÎÁö È®ÀÎÇÕ´Ï´Ù. °İÀÚ ¹Û ÀÎµ¦½º´Â falseÀÔ´Ï´Ù.
+// @brief ì…€ì´ ì°¨ë‹¨ ì…€ì¸ì§€ í™•ì¸í•©ë‹ˆë‹¤. ê²©ì ë°– ì¸ë±ìŠ¤ëŠ” falseì…ë‹ˆë‹¤.
 //***************************************************************************
 bool CBlockMap::IsCellBlocked(int32 cx, int32 cy) const
 {
@@ -167,7 +167,7 @@ bool CBlockMap::IsCellBlocked(int32 cx, int32 cy) const
 }
 
 //***************************************************************************
-// @brief ÁÂÇ¥°¡ Â÷´Ü ¼¿ ¾ÈÀÎÁö È®ÀÎÇÕ´Ï´Ù. ¿µ¿ª ¹ÛÀÌ°Å³ª NaNÀÌ¸é falseÀÔ´Ï´Ù(¿µ¿ª °Ë»ç´Â È£ÃâÀÚ ¸ò).
+// @brief ì¢Œí‘œê°€ ì°¨ë‹¨ ì…€ ì•ˆì¸ì§€ í™•ì¸í•©ë‹ˆë‹¤. ì˜ì—­ ë°–ì´ê±°ë‚˜ NaNì´ë©´ falseì…ë‹ˆë‹¤(ì˜ì—­ ê²€ì‚¬ëŠ” í˜¸ì¶œì ëª«).
 //***************************************************************************
 bool CBlockMap::IsBlocked(const Vec2& pos) const
 {
@@ -177,12 +177,12 @@ bool CBlockMap::IsBlocked(const Vec2& pos) const
 }
 
 //***************************************************************************
-// @brief ¼±ºĞÀÌ Ã³À½ Â÷´Ü ¼¿¿¡ µé¾î°¡´Â ÁöÁ¡À» Ã£½À´Ï´Ù. (°İÀÚ ¼øÈ¸: Amanatides-Woo)
-//        ½ÃÀÛ ¼¿Àº °Ë»çÇÏÁö ¾Ê°í, °İÀÚ ¹ÛÀ¸·Î ³ª°¡¸é °Å±â¼­ ³¡³½´Ù.
-// @param from  ½ÃÀÛÁ¡
-// @param to    ³¡Á¡
-// @param tHit  [out] Ãæµ¹ ÁöÁ¡ÀÇ ¼±ºĞ ¸Å°³º¯¼ö (0..1)
-// @return Â÷´Ü ¼¿¿¡ µé¾î°¡¸é true
+// @brief ì„ ë¶„ì´ ì²˜ìŒ ì°¨ë‹¨ ì…€ì— ë“¤ì–´ê°€ëŠ” ì§€ì ì„ ì°¾ìŠµë‹ˆë‹¤. (ê²©ì ìˆœíšŒ: Amanatides-Woo)
+//        ì‹œì‘ ì…€ì€ ê²€ì‚¬í•˜ì§€ ì•Šê³ , ê²©ì ë°–ìœ¼ë¡œ ë‚˜ê°€ë©´ ê±°ê¸°ì„œ ëë‚¸ë‹¤.
+// @param from  ì‹œì‘ì 
+// @param to    ëì 
+// @param tHit  [out] ì¶©ëŒ ì§€ì ì˜ ì„ ë¶„ ë§¤ê°œë³€ìˆ˜ (0..1)
+// @return ì°¨ë‹¨ ì…€ì— ë“¤ì–´ê°€ë©´ true
 //***************************************************************************
 bool CBlockMap::FindHit(const Vec2& from, const Vec2& to, double& tHit) const
 {
@@ -199,7 +199,7 @@ bool CBlockMap::FindHit(const Vec2& from, const Vec2& to, double& tHit) const
 	const int32 endX = CellX(to.x);
 	const int32 endY = CellY(to.y);
 	if( cx == endX && cy == endY )
-		return false;		// °°Àº ¼¿ ¾ÈÀÇ ÀÌµ¿
+		return false;		// ê°™ì€ ì…€ ì•ˆì˜ ì´ë™
 
 	constexpr double kInf = (std::numeric_limits<double>::infinity)();
 	const int32 stepX = dx > 0.0 ? 1 : -1;
@@ -220,7 +220,7 @@ bool CBlockMap::FindHit(const Vec2& from, const Vec2& to, double& tHit) const
 		maxY = (edge - from.y) / dy;
 	}
 
-	// ¼±ºĞÀÌ Áö³ª´Â ¼¿ ¼ö´Â (|³¡-½ÃÀÛ| ¼¿ Â÷ÀÌ ÇÕ + 1) ÀÌÇÏÀÌ¹Ç·Î ±× È½¼ö¸¸ µ·´Ù.
+	// ì„ ë¶„ì´ ì§€ë‚˜ëŠ” ì…€ ìˆ˜ëŠ” (|ë-ì‹œì‘| ì…€ ì°¨ì´ í•© + 1) ì´í•˜ì´ë¯€ë¡œ ê·¸ íšŸìˆ˜ë§Œ ëˆë‹¤.
 	const int32 limit = std::abs(endX - cx) + std::abs(endY - cy);
 	for( int32 i = 0; i < limit; ++i )
 	{
@@ -252,10 +252,10 @@ bool CBlockMap::FindHit(const Vec2& from, const Vec2& to, double& tHit) const
 }
 
 //***************************************************************************
-// @brief ¼±ºĞ ÀüÃ¼°¡ Â÷´Ü ¼¿À» Áö³ªÁö ¾Ê´ÂÁö È®ÀÎÇÕ´Ï´Ù.
-// @param from ½ÃÀÛÁ¡
-// @param to   ³¡Á¡
-// @return ¸·ÈûÀÌ ¾øÀ¸¸é true
+// @brief ì„ ë¶„ ì „ì²´ê°€ ì°¨ë‹¨ ì…€ì„ ì§€ë‚˜ì§€ ì•ŠëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤.
+// @param from ì‹œì‘ì 
+// @param to   ëì 
+// @return ë§‰í˜ì´ ì—†ìœ¼ë©´ true
 //***************************************************************************
 bool CBlockMap::IsSegmentClear(const Vec2& from, const Vec2& to) const
 {
@@ -264,12 +264,12 @@ bool CBlockMap::IsSegmentClear(const Vec2& from, const Vec2& to) const
 }
 
 //***************************************************************************
-// @brief from¿¡¼­ to·Î Á÷¼± ÀÌµ¿ÇÒ ¶§ ¸·È÷±â Àü±îÁö °¥ ¼ö ÀÖ´Â °¡Àå ¸Õ ÁöÁ¡À» ±¸ÇÕ´Ï´Ù.
-//        ¸·È÷¸é Ãæµ¹ ÁöÁ¡¿¡¼­ kBackoff¸¸Å­ ¹°·¯¼± À§Ä¡¸¦ µ¹·ÁÁà, ºÎµ¿¼Ò¼öÁ¡ ¿ÀÂ÷·Î Â÷´Ü ¼¿¿¡ µé¾î°¡Áö ¾Ê°Ô ÇÕ´Ï´Ù.
-// @param from ½ÃÀÛÁ¡
-// @param to   ¸ñÀûÁö
-// @param hit  [out] ¼±ÅÃ. ¸·Çô¼­ ¸ñÀûÁö°¡ ¹Ù²î¾úÀ¸¸é true
-// @return µµ´Ş °¡´ÉÇÑ ÁöÁ¡ (¸·ÈûÀÌ ¾øÀ¸¸é to ±×´ë·Î)
+// @brief fromì—ì„œ toë¡œ ì§ì„  ì´ë™í•  ë•Œ ë§‰íˆê¸° ì „ê¹Œì§€ ê°ˆ ìˆ˜ ìˆëŠ” ê°€ì¥ ë¨¼ ì§€ì ì„ êµ¬í•©ë‹ˆë‹¤.
+//        ë§‰íˆë©´ ì¶©ëŒ ì§€ì ì—ì„œ kBackoffë§Œí¼ ë¬¼ëŸ¬ì„  ìœ„ì¹˜ë¥¼ ëŒë ¤ì¤˜, ë¶€ë™ì†Œìˆ˜ì  ì˜¤ì°¨ë¡œ ì°¨ë‹¨ ì…€ì— ë“¤ì–´ê°€ì§€ ì•Šê²Œ í•©ë‹ˆë‹¤.
+// @param from ì‹œì‘ì 
+// @param to   ëª©ì ì§€
+// @param hit  [out] ì„ íƒ. ë§‰í˜€ì„œ ëª©ì ì§€ê°€ ë°”ë€Œì—ˆìœ¼ë©´ true
+// @return ë„ë‹¬ ê°€ëŠ¥í•œ ì§€ì  (ë§‰í˜ì´ ì—†ìœ¼ë©´ to ê·¸ëŒ€ë¡œ)
 //***************************************************************************
 Vec2 CBlockMap::ClampMove(const Vec2& from, const Vec2& to, bool* hit) const
 {
@@ -285,7 +285,7 @@ Vec2 CBlockMap::ClampMove(const Vec2& from, const Vec2& to, bool* hit) const
 	const double len = std::sqrt(dx * dx + dy * dy);
 	double tt = (std::max)(0.0, t - static_cast<double>(kBackoff) / len);
 
-	// float·Î ÁÙÀÌ¸é¼­ ÁÂÇ¥°¡ Å« °÷(ulp > kBackoff)¿¡¼­´Â Â÷´Ü ¼¿ ¾ÈÀ¸·Î ¹İ¿Ã¸²µÉ ¼ö ÀÖÀ¸¹Ç·Î È®ÀÎÇÏ°í ´õ ¹°·¯¼±´Ù.
+	// floatë¡œ ì¤„ì´ë©´ì„œ ì¢Œí‘œê°€ í° ê³³(ulp > kBackoff)ì—ì„œëŠ” ì°¨ë‹¨ ì…€ ì•ˆìœ¼ë¡œ ë°˜ì˜¬ë¦¼ë  ìˆ˜ ìˆìœ¼ë¯€ë¡œ í™•ì¸í•˜ê³  ë” ë¬¼ëŸ¬ì„ ë‹¤.
 	Vec2 out = from;
 	for( int i = 0; i < 8; ++i )
 	{
@@ -299,16 +299,16 @@ Vec2 CBlockMap::ClampMove(const Vec2& from, const Vec2& to, bool* hit) const
 }
 
 //***************************************************************************
-// @brief from¿¡¼­ to±îÁö Àå¾Ö¹°À» ÇÇÇÏ´Â °æ·Î¸¦ Ã£½À´Ï´Ù. (8¹æÇâ A*, ´ë°¢¼±Àº ¾çÂÊ ÀÌ¿ô ¼¿ÀÌ ºñ¾î ÀÖÀ» ¶§¸¸)
-//        Á÷¼±ÀÌ ºñ¾î ÀÖÀ¸¸é [to] ÇÑ Á¡¸¸ µ¹·ÁÁØ´Ù. ±×·¸Áö ¾ÊÀ¸¸é ¼¿ °æ·Î¸¦ ±¸ÇÑ µÚ, ¼­·Î Á÷¼±À¸·Î °¥ ¼ö ÀÖ´Â
-//        °æÀ¯Á¡À» °Ç³Ê¶Ù¾î ÇÕÄ£´Ù. ¹İÈ¯°ªÀÇ °¢ ±¸°£Àº IsSegmentClear()¸¦ Åë°úÇÏµµ·Ï ¸¸µé¾îÁö¹Ç·Î
-//        ¼­¹ö°¡ °æÀ¯Á¡À» Â÷·Ê·Î ÀÌµ¿ ¸í·ÉÀ¸·Î ³»·Áµµ ClampMove()¿¡ °É¸®Áö ¾Ê´Â´Ù.
-//        ÆîÄ£ ¼¿ ¼ö°¡ maxNodes¸¦ ³ÑÀ¸¸é ½ÇÆĞÇÑ´Ù(µµ´Ş ºÒ°¡ ¸ñÀûÁö¿¡¼­ ¸Ê ÀüÃ¼¸¦ µÚÁöÁö ¾Êµµ·Ï ºñ¿ëÀ» ¹­´Â´Ù).
-// @param from     ½ÃÀÛÁ¡
-// @param to       ¸ñÀûÁö (Â÷´Ü ¼¿ ¾ÈÀÌ¸é ½ÇÆĞ)
-// @param out      [out] °æÀ¯Á¡. fromÀº Æ÷ÇÔÇÏÁö ¾Ê°í ¸¶Áö¸·Àº to
-// @param maxNodes ÆîÄ¥ ¼ö ÀÖ´Â ¼¿ ¼ö »óÇÑ
-// @return °æ·Î¸¦ Ã£À¸¸é true
+// @brief fromì—ì„œ toê¹Œì§€ ì¥ì• ë¬¼ì„ í”¼í•˜ëŠ” ê²½ë¡œë¥¼ ì°¾ìŠµë‹ˆë‹¤. (8ë°©í–¥ A*, ëŒ€ê°ì„ ì€ ì–‘ìª½ ì´ì›ƒ ì…€ì´ ë¹„ì–´ ìˆì„ ë•Œë§Œ)
+//        ì§ì„ ì´ ë¹„ì–´ ìˆìœ¼ë©´ [to] í•œ ì ë§Œ ëŒë ¤ì¤€ë‹¤. ê·¸ë ‡ì§€ ì•Šìœ¼ë©´ ì…€ ê²½ë¡œë¥¼ êµ¬í•œ ë’¤, ì„œë¡œ ì§ì„ ìœ¼ë¡œ ê°ˆ ìˆ˜ ìˆëŠ”
+//        ê²½ìœ ì ì„ ê±´ë„ˆë›°ì–´ í•©ì¹œë‹¤. ë°˜í™˜ê°’ì˜ ê° êµ¬ê°„ì€ IsSegmentClear()ë¥¼ í†µê³¼í•˜ë„ë¡ ë§Œë“¤ì–´ì§€ë¯€ë¡œ
+//        ì„œë²„ê°€ ê²½ìœ ì ì„ ì°¨ë¡€ë¡œ ì´ë™ ëª…ë ¹ìœ¼ë¡œ ë‚´ë ¤ë„ ClampMove()ì— ê±¸ë¦¬ì§€ ì•ŠëŠ”ë‹¤.
+//        í¼ì¹œ ì…€ ìˆ˜ê°€ maxNodesë¥¼ ë„˜ìœ¼ë©´ ì‹¤íŒ¨í•œë‹¤(ë„ë‹¬ ë¶ˆê°€ ëª©ì ì§€ì—ì„œ ë§µ ì „ì²´ë¥¼ ë’¤ì§€ì§€ ì•Šë„ë¡ ë¹„ìš©ì„ ë¬¶ëŠ”ë‹¤).
+// @param from     ì‹œì‘ì 
+// @param to       ëª©ì ì§€ (ì°¨ë‹¨ ì…€ ì•ˆì´ë©´ ì‹¤íŒ¨)
+// @param out      [out] ê²½ìœ ì . fromì€ í¬í•¨í•˜ì§€ ì•Šê³  ë§ˆì§€ë§‰ì€ to
+// @param maxNodes í¼ì¹  ìˆ˜ ìˆëŠ” ì…€ ìˆ˜ ìƒí•œ
+// @return ê²½ë¡œë¥¼ ì°¾ìœ¼ë©´ true
 //***************************************************************************
 bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& out, uint32 maxNodes) const
 {
@@ -338,10 +338,10 @@ bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& ou
 	{
 		float	f;
 		int32	node;
-		bool operator<(const Entry& other) const { return f > other.f; }		// ÃÖ¼Ò Èü
+		bool operator<(const Entry& other) const { return f > other.f; }		// ìµœì†Œ í™
 	};
 
-	// È£Ãâ¸¶´Ù ÇÒ´çÇÏÁö ¾Êµµ·Ï ½º·¹µåº° ÀÛ¾÷ °ø°£À» Àç»ç¿ëÇÑ´Ù.
+	// í˜¸ì¶œë§ˆë‹¤ í• ë‹¹í•˜ì§€ ì•Šë„ë¡ ìŠ¤ë ˆë“œë³„ ì‘ì—… ê³µê°„ì„ ì¬ì‚¬ìš©í•œë‹¤.
 	thread_local std::vector<Node> nodes;
 	thread_local std::unordered_map<int64, int32> best;
 	thread_local std::vector<uint8> closed;
@@ -355,7 +355,7 @@ bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& ou
 		{
 			const float dx = static_cast<float>(std::abs(x - gx));
 			const float dy = static_cast<float>(std::abs(y - gy));
-			// °¡ÁßÄ¡ 1.5: ÃÖ´ÜÀº ¾Æ´Ï¾îµµ ÆîÄ¡´Â ¼¿ ¼ö¸¦ Å©°Ô ÁÙÀÎ´Ù. °á°ú´Â °æÀ¯Á¡ º´ÇÕÀ¸·Î ´Ùµë¾îÁø´Ù.
+			// ê°€ì¤‘ì¹˜ 1.5: ìµœë‹¨ì€ ì•„ë‹ˆì–´ë„ í¼ì¹˜ëŠ” ì…€ ìˆ˜ë¥¼ í¬ê²Œ ì¤„ì¸ë‹¤. ê²°ê³¼ëŠ” ê²½ìœ ì  ë³‘í•©ìœ¼ë¡œ ë‹¤ë“¬ì–´ì§„ë‹¤.
 			return kHeuristicWeight * ((dx > dy ? dx : dy) + (kDiag - 1.0f) * (dx > dy ? dy : dx));
 		};
 	auto Key = [&](int32 x, int32 y) { return static_cast<int64>(y) * _cellsX + x; };
@@ -381,7 +381,7 @@ bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& ou
 
 		const Node cur = nodes[idx];
 		if( best[Key(cur.x, cur.y)] != idx )
-			continue;		// ´õ ÁÁÀº °æ·Î·Î °»½ÅµÇ¾î µÚÃ³Áø Áßº¹ ³ëµå (´Ù½Ã ÆîÄ¡Áö ¾Ê´Â´Ù)
+			continue;		// ë” ì¢‹ì€ ê²½ë¡œë¡œ ê°±ì‹ ë˜ì–´ ë’¤ì²˜ì§„ ì¤‘ë³µ ë…¸ë“œ (ë‹¤ì‹œ í¼ì¹˜ì§€ ì•ŠëŠ”ë‹¤)
 		if( cur.x == gx && cur.y == gy )
 		{
 			goalNode = idx;
@@ -402,7 +402,7 @@ bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& ou
 				if( nx < 0 || ny < 0 || nx >= _cellsX || ny >= _cellsY || IsCellBlocked(nx, ny) )
 					continue;
 				if( dx != 0 && dy != 0 && (IsCellBlocked(cur.x + dx, cur.y) || IsCellBlocked(cur.x, cur.y + dy)) )
-					continue;		// ¸ğ¼­¸® °¡·ÎÁö¸£±â ±İÁö
+					continue;		// ëª¨ì„œë¦¬ ê°€ë¡œì§€ë¥´ê¸° ê¸ˆì§€
 
 				const float ng = cur.g + (dx != 0 && dy != 0 ? kDiag : 1.0f);
 				const int64 key = Key(nx, ny);
@@ -422,7 +422,7 @@ bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& ou
 	if( goalNode < 0 )
 		return false;
 
-	// ¼¿ °æ·Î¸¦ °Å²Ù·Î µû¶ó°¡ Á¡ ¸ñ·Ï(from, ¼¿ Áß½Éµé, to)À» ¸¸µç´Ù.
+	// ì…€ ê²½ë¡œë¥¼ ê±°ê¾¸ë¡œ ë”°ë¼ê°€ ì  ëª©ë¡(from, ì…€ ì¤‘ì‹¬ë“¤, to)ì„ ë§Œë“ ë‹¤.
 	thread_local std::vector<Vec2> pts;
 	pts.clear();
 	for( int32 n = goalNode; n >= 0 && nodes[n].parent >= 0; n = nodes[n].parent )
@@ -434,11 +434,11 @@ bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& ou
 	}
 	if( pts.empty() )
 		pts.push_back(to);
-	pts.front() = to;		// ¸¶Áö¸· ¼¿ÀÇ Áß½É ´ë½Å ½ÇÁ¦ ¸ñÀûÁö
+	pts.front() = to;		// ë§ˆì§€ë§‰ ì…€ì˜ ì¤‘ì‹¬ ëŒ€ì‹  ì‹¤ì œ ëª©ì ì§€
 	std::reverse(pts.begin(), pts.end());
 	pts.insert(pts.begin(), from);
 
-	// Á÷¼±À¸·Î °¥ ¼ö ÀÖ´Â °¡Àå ¸Õ Á¡À¸·Î °Ç³Ê¶Ú´Ù.
+	// ì§ì„ ìœ¼ë¡œ ê°ˆ ìˆ˜ ìˆëŠ” ê°€ì¥ ë¨¼ ì ìœ¼ë¡œ ê±´ë„ˆë›´ë‹¤.
 	size_t i = 0;
 	while( i + 1 < pts.size() )
 	{

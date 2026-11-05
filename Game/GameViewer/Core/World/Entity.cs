@@ -32,6 +32,8 @@ namespace GameViewer.Core.World
         public float FaceX = 1, FaceY = 0;      // 바라보는 방향(단위벡터 아님, 길이 0이면 무시)
         public long HitFlashMs = -100000;       // 마지막 피격 시각
         public long AttackAnimMs = -100000;     // 마지막 공격 동작 시각
+        public byte AttackKind;                 // 마지막 공격의 종류: 0 근접 기본, 1 스킬, 2 원거리(발사)
+        public float HitDirX, HitDirY;          // 마지막 피격의 방향(공격자 -> 피격자 단위벡터, 0이면 방향 모름)
         public long InvulnUntilMs;
 
         // 시전 중 스킬

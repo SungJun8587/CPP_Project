@@ -439,7 +439,7 @@ namespace GameViewer.Core.Logic
             {
                 c.Casting = true;
                 int token = ++c.CastToken;
-                Emit(ServerPackets.Cast(c.Id, sk.Id, sk.IsArea ? 0 : targetId, x, y, sk.CastTimeMs), now);
+                Emit(ServerPackets.Cast(c.Id, sk.Id, sk.IsSingle ? targetId : 0, x, y, sk.CastTimeMs), now);
                 Schedule(now + sk.CastTimeMs, delegate
                 {
                     if (c.Dead || !c.Casting || c.CastToken != token) return;
@@ -460,12 +460,13 @@ namespace GameViewer.Core.Logic
         private void ResolveSkill(Sim c, SkillRow sk, ulong targetId, float x, float y, long now)
         {
             Sim t = null;
-            if (!sk.IsArea)
+            if (sk.IsSingle)
             {
                 t = Find(targetId);
                 if (t == null || t.Dead) { Emit(ServerPackets.Cancel(c.Id, sk.Id, SkillCancelReason.InvalidTarget), now); return; }
                 x = t.X; y = t.Y;
             }
+            else if (sk.IsSelf) { x = c.X; y = c.Y; }
 
             if (sk.ProjectileSpeed > 0 && t != null)
             {
@@ -486,19 +487,29 @@ namespace GameViewer.Core.Logic
             }
 
             List<Sim> hits = new List<Sim>();
-            if (sk.IsArea)
+            if (sk.IsSingle) hits.Add(t);
+            else
             {
+                // 서버 CollectHits 와 같은 규칙: Area/Self 는 중심에서 반경, Cone 은 시전자에서 방향 부채꼴, Line 은 방향 직선(좌우 반경 폭)
+                float ax = x - c.X, ay = y - c.Y, al = (float)Math.Sqrt(ax * ax + ay * ay);
+                float ux = al > 0.0001f ? ax / al : 1f, uy = al > 0.0001f ? ay / al : 0f;
+                float cosHalf = (float)Math.Cos((sk.Angle > 0 ? sk.Angle : 90.0) * 0.5 * Math.PI / 180.0);
+                float fromX = sk.IsBurst ? x : c.X, fromY = sk.IsBurst ? y : c.Y;
                 foreach (Sim o in _sims)
                 {
-                    if (o.Dead || o.Type == c.Type) continue;
-                    if (Dist(o.X, o.Y, x, y) <= sk.Radius) hits.Add(o);
+                    if (o.Dead || (sk.IsAlly ? o.Type != c.Type : o.Type == c.Type)) continue;
+                    float dx = o.X - c.X, dy = o.Y - c.Y, d = (float)Math.Sqrt(dx * dx + dy * dy);
+                    bool inside;
+                    if (sk.IsBurst) inside = Dist(o.X, o.Y, x, y) <= sk.Radius;
+                    else if (sk.IsCone) inside = d <= sk.Range && (d < 0.0001f || (dx * ux + dy * uy) / d >= cosHalf);
+                    else { float along = dx * ux + dy * uy, side = Math.Abs(-dx * uy + dy * ux); inside = along >= 0f && along <= sk.Range && side <= sk.Radius; }
+                    if (inside) hits.Add(o);
                 }
-                hits.Sort(delegate (Sim a, Sim b) { return Dist(a.X, a.Y, x, y).CompareTo(Dist(b.X, b.Y, x, y)); });
+                hits.Sort(delegate (Sim a, Sim b) { return Dist(a.X, a.Y, fromX, fromY).CompareTo(Dist(b.X, b.Y, fromX, fromY)); });
                 if (sk.MaxTargets > 0 && hits.Count > sk.MaxTargets) hits.RemoveRange((int)sk.MaxTargets, hits.Count - (int)sk.MaxTargets);
             }
-            else hits.Add(t);
 
-            Emit(ServerPackets.Skill(c.Id, sk.Id, sk.IsArea ? 0 : targetId, x, y, (uint)hits.Count), now);
+            Emit(ServerPackets.Skill(c.Id, sk.Id, sk.IsSingle ? targetId : 0, x, y, (uint)hits.Count), now);
             for (int i = 0; i < hits.Count; ++i) ApplyHit(c, sk, hits[i], now);
             StatusRow st = _d.Status(sk.StatusId);
             if (st != null && st.TargetsSelf) ApplyStatus(c, c, st, now);
@@ -506,6 +517,11 @@ namespace GameViewer.Core.Logic
 
         private void ApplyHit(Sim c, SkillRow sk, Sim t, long now)
         {
+            if (sk.Heals)
+            {
+                int amt = (int)(c.Attack * (long)sk.HealPercent / 100) + sk.FlatHeal;
+                if (amt > 0 && !t.Dead) { t.Hp = Math.Min(t.MaxHp, t.Hp + amt); Emit(ServerPackets.Heal(t.Id, amt, t.Hp, t.MaxHp), now); }
+            }
             if (sk.DamagePercent > 0 || sk.FlatDamage > 0)
                 Hurt(c, t, RollDamage(c.Attack * (int)sk.DamagePercent + sk.FlatDamage * 100, t, now), now);
             StatusRow st = _d.Status(sk.StatusId);
@@ -591,13 +607,14 @@ namespace GameViewer.Core.Logic
                     if (sk == null || !me.Skills.Contains(skillId)) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.UnknownSkill), now); return true; }
                     if (me.Casting) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.Casting), now); return true; }
                     if (!SkillReadyAt(me, sk, now)) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.Cooldown), now); return true; }
-                    if (!sk.IsArea)
+                    if (sk.IsSingle)
                     {
                         Sim t = Find(targetId);
-                        if (t == null || t.Dead || t.Type == me.Type) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.InvalidTarget), now); return true; }
+                        if (t == null || t.Dead || (sk.IsAlly ? t.Type != me.Type : t.Type == me.Type)) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.InvalidTarget), now); return true; }
                         if (Dist(me, t) > sk.Range) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.OutOfRange), now); return true; }
                     }
-                    else if (Dist(me.X, me.Y, x, y) > sk.Range + 0.01f && sk.Range > 1.5f) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.OutOfRange), now); return true; }
+                    else if (sk.IsAimed) { if (Dist(me.X, me.Y, x, y) < 0.01f) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.InvalidTarget), now); return true; } }
+                    else if (sk.IsArea && Dist(me.X, me.Y, x, y) > sk.Range + 0.01f && sk.Range > 1.5f) { Emit(ServerPackets.SkillReject(skillId, SkillRejectReason.OutOfRange), now); return true; }
                     if (sk.CastTimeMs > 0) StopNow(me, now);
                     CastSkill(me, sk, targetId, x, y, now);
                     return true;

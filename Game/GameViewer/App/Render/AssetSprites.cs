@@ -5,11 +5,12 @@
 //   kind     monster | hero          template  Monster/Hero 시트의 Id
 //   pattern  이미지 경로(sprites.json 기준). {0} 에 각도(도, 정수)가 들어간다. 각도 = 번호 * 360 / angles
 //   angles   방향 수(1..72). 0도는 화면 아래(카메라 쪽)를 보는 모습이고, 각도가 커지면 화면 오른쪽 -> 위 -> 왼쪽 순으로 돈다.
+//   walkFrames / walkPattern (선택)  걷기 애니메이션. walkPattern 의 {0}=각도, {1}=프레임 번호(0부터), walkFrames 장(2..32). 걸을 때만 쓰고 설 때는 pattern 그림.
 //   height   그림의 실제 내용(투명하지 않은 부분)이 차지할 높이(단위). 가로는 같은 비율로 정해진다.
 //   kind "tree" 는 template 이 없고, Block 의 원(나무) 하나를 이 이미지로 그린다. height 는 반경 1 일 때의 높이이고 실제 높이는 반경에 비례한다.
 //            방향 번호는 나무마다 다른 모양을 고르는 데 쓴다(회전 렌더 한 벌을 그대로 쓰면 된다).
 // 모든 방향의 투명하지 않은 영역을 합친 상자를 기준으로 발 밑(아래 가운데)과 크기를 잡으므로, 돌 때 흔들리거나 크기가 변하지 않는다.
-// 걷기/대기 움직임은 이미지를 위아래로 튀기고 눌러서 흉내 낸다(프레임 애니메이션 시트는 지원하지 않는다).
+// 걷기 프레임이 없으면 걷기/대기 움직임은 이미지를 위아래로 튀기고 눌러서 흉내 낸다.
 //***************************************************************************
 using System;
 using System.Collections.Generic;
@@ -26,6 +27,9 @@ namespace GameViewer.App.Render
     public sealed class AssetSet
     {
         public Bitmap[] Frames;
+        public Bitmap[] Attack;     // 공격/시전 중에 쓰는 그림 [방향] (무기를 흐리게 한 것). 없으면 null
+        public Bitmap[][] Walk;     // 걷기 프레임 [방향][프레임]. 없으면 null (그러면 서 있는 그림을 튀겨서 걷는 것처럼 보인다)
+        public int WalkCount { get { return Walk == null || Walk.Length == 0 ? 0 : Walk[0].Length; } }
         public float Scale;         // 원본 픽셀 하나가 차지하는 단위
         public float Cx, Foot;      // 기준점(원본 픽셀): 가로 중심, 발 밑
         public Look Look;
@@ -74,7 +78,7 @@ namespace GameViewer.App.Render
             Dictionary<long, AssetSet> m = _sets;
             _sets = null;
             if (m == null) return;
-            foreach (AssetSet s in m.Values) foreach (Bitmap b in s.Frames) b.Dispose();
+            foreach (AssetSet s in m.Values) Dispose(s);
         }
 
         /// <summary>
@@ -106,7 +110,12 @@ namespace GameViewer.App.Render
             return sets.Count;
         }
 
-        private static void Dispose(AssetSet s) { foreach (Bitmap b in s.Frames) if (b != null) b.Dispose(); }
+        private static void Dispose(AssetSet s)
+        {
+            foreach (Bitmap b in s.Frames) if (b != null) b.Dispose();
+            if (s.Attack != null) foreach (Bitmap b in s.Attack) if (b != null) b.Dispose();
+            if (s.Walk != null) foreach (Bitmap[] row in s.Walk) if (row != null) foreach (Bitmap b in row) if (b != null) b.Dispose();
+        }
 
         private static AssetSet LoadOne(string dir, Dictionary<string, object> o, out long key, out string why)
         {
@@ -124,7 +133,17 @@ namespace GameViewer.App.Render
             string pattern = MiniJson.Str(o, "pattern", "");
             if (pattern.Length == 0) { why = "pattern 이 없습니다"; return null; }
 
+            // 걷기 애니메이션(선택): walkFrames 장씩, walkPattern 의 {0}=각도, {1}=프레임 번호(0부터)
+            int walkN = (int)MiniJson.Num(o, "walkFrames", 0);
+            string walkPattern = MiniJson.Str(o, "walkPattern", "");
+            if (walkN != 0 && (walkN < 2 || walkN > 32)) { why = "walkFrames 는 2..32"; return null; }
+            if (walkN > 0 && walkPattern.Length == 0) { why = "walkFrames 가 있으면 walkPattern 도 필요합니다"; return null; }
+
+            // 공격 그림(선택): attackPattern 의 {0}=각도. 몸에 그려진 무기를 흐리게 한 그림으로, 공격/시전 동안 코드로 그린 무기와 겹쳐 보이지 않게 바꿔 쓴다.
+            string attackPattern = MiniJson.Str(o, "attackPattern", "");
+            Bitmap[] attack = attackPattern.Length > 0 ? new Bitmap[n] : null;
             Bitmap[] frames = new Bitmap[n];
+            Bitmap[][] walk = walkN > 0 ? new Bitmap[n][] : null;
             try
             {
                 int w = 0, h = 0;
@@ -140,21 +159,55 @@ namespace GameViewer.App.Render
                     if (i == 0) { w = frames[0].Width; h = frames[0].Height; }
                     else if (frames[i].Width != w || frames[i].Height != h) { why = "이미지 크기가 서로 다릅니다: " + rel; return Fail(frames); }
                 }
+                if (walkN > 0)
+                    for (int i = 0; i < n; ++i)
+                    {
+                        walk[i] = new Bitmap[walkN];
+                        for (int k = 0; k < walkN; ++k)
+                        {
+                            string rel;
+                            try { rel = string.Format(CultureInfo.InvariantCulture, walkPattern, (int)Math.Round(i * 360.0 / n), k); }
+                            catch (FormatException) { why = "walkPattern 형식이 잘못됨: " + walkPattern; return Fail(frames); }
+                            string path = Path.GetFullPath(Path.Combine(dir, rel));
+                            if (!File.Exists(path)) { why = "파일이 없습니다: " + rel; return Fail(frames); }
+                            walk[i][k] = ReadArgb(path, out why);
+                            if (walk[i][k] == null) return Fail(frames);
+                            if (walk[i][k].Width != w || walk[i][k].Height != h) { why = "걷기 이미지 크기가 기본 이미지와 다릅니다: " + rel; return Fail(frames); }
+                        }
+                    }
+                if (attack != null)
+                    for (int i = 0; i < n; ++i)
+                    {
+                        string rel;
+                        try { rel = string.Format(CultureInfo.InvariantCulture, attackPattern, (int)Math.Round(i * 360.0 / n)); }
+                        catch (FormatException) { why = "attackPattern 형식이 잘못됨: " + attackPattern; return Fail(frames); }
+                        string path = Path.GetFullPath(Path.Combine(dir, rel));
+                        if (!File.Exists(path)) { why = "파일이 없습니다: " + rel; return Fail(frames); }
+                        attack[i] = ReadArgb(path, out why);
+                        if (attack[i] == null) return Fail(frames);
+                        if (attack[i].Width != w || attack[i].Height != h) { why = "공격 이미지 크기가 기본 이미지와 다릅니다: " + rel; return Fail(frames); }
+                    }
                 int x0 = w, y0 = h, x1 = -1, y1 = -1;
                 foreach (Bitmap b in frames) Bounds(b, ref x0, ref y0, ref x1, ref y1);
+                if (walk != null) foreach (Bitmap[] row in walk) foreach (Bitmap b in row) Bounds(b, ref x0, ref y0, ref x1, ref y1);
                 if (x1 < 0) { why = "투명하지 않은 픽셀이 없습니다"; return Fail(frames); }
                 AssetSet s = new AssetSet();
-                s.Frames = frames;
+                s.Frames = frames; s.Walk = walk; s.Attack = attack; attack = null;
                 int contentH = y1 - y0 + 1;
                 s.Scale = (float)height / contentH;
                 s.Cx = w / 2f; s.Foot = y1 + 1;
                 float half = Math.Max(s.Cx - x0, x1 + 1 - s.Cx) * s.Scale;
                 s.Look = new Look(half, (float)height);
                 key = tree ? TreeKey : Key(kind == "monster", (uint)tpl);
-                frames = null;
+                frames = null; walk = null;
                 return s;
             }
-            finally { if (frames != null) for (int i = 0; i < frames.Length; ++i) if (frames[i] != null) frames[i].Dispose(); }
+            finally
+            {
+                if (frames != null) for (int i = 0; i < frames.Length; ++i) if (frames[i] != null) frames[i].Dispose();
+                if (walk != null) foreach (Bitmap[] row in walk) if (row != null) foreach (Bitmap b in row) if (b != null) b.Dispose();
+                if (attack != null) foreach (Bitmap b in attack) if (b != null) b.Dispose();
+            }
         }
 
         private static AssetSet Fail(Bitmap[] frames) { return null; }

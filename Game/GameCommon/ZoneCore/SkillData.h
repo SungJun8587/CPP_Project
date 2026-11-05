@@ -18,11 +18,13 @@
 //***************************************************************************
 // 스킬/상태 효과의 enum과 일부 상한은 기획 데이터(GameData.xlsx의 Enum, Const 시트)에서 XlsxToJson이 생성한다.
 // 서버, 클라이언트, 데이터 로더가 같은 정의를 쓰도록 여기서 이름만 가져온다.
-//   ESkillShape   스킬 효과 범위 형태 (Single: 대상 하나, Area: 지정 지점 중심 원형 범위)
-//   EStatusKind   상태 효과 종류 (Dot: 지속 피해, Buff: 능력치 보정)
+//   ESkillShape   스킬 효과 범위 형태 (Single: 대상 하나, Area: 지정 지점 중심 원형, Self: 시전자 중심 원형, Cone: 부채꼴, Line: 직선)
+//   ESkillTarget  스킬이 효과를 내는 쪽 (Enemy: 공격 가능한 적, Ally: 아군 - 시전자 포함)
+//   EStatusKind   상태 효과 종류 (Dot: 지속 피해, Buff: 능력치 보정, Stun: 기절, Shield: 보호막, Hot: 지속 치유)
 //   EStatusTarget 상태 효과 적용 대상 (Hit: 맞은 대상, Self: 시전자)
 //***************************************************************************
 using GameDataEnums::ESkillShape;
+using GameDataEnums::ESkillTarget;
 using GameDataEnums::EStatusKind;
 using GameDataEnums::EStatusTarget;
 
@@ -31,6 +33,11 @@ using GameDataEnums::EStatusTarget;
 // @details 즉시 발동 스킬이다. 시전 시간, 투사체, 지속 효과는 없다.
 //          피해량 = max(minDamage, 공격력 * damagePercent / 100 + flatDamage - 방어력)
 //          Area는 중심이 시전자로부터 range 안이어야 하고, 중심에서 radius 안의 공격 가능한 엔티티가 maxTargets까지 맞는다.
+//          Self는 시전자 위치가 중심이고 radius 안이 효과 범위다(지정 좌표 무시, range 0).
+//          Cone은 시전자에서 지정 좌표 방향으로 range 길이, angle(도) 부채꼴. Line은 같은 방향으로 range 길이, 좌우 radius 폭의 직선이다.
+//          Cone/Line의 좌표는 방향만 정하며 거리는 보지 않는다. 투사체(projectileSpeed)는 Single/Area에서만 쓸 수 있다.
+//          target이 Ally면 공격할 수 없는 대상(시전자 본인 포함)에게 효과를 낸다. 치유량 = 공격력 * healPercent / 100 + flatHeal.
+//          Enemy 스킬은 시전자를 맞히지 않고, Ally 스킬은 피해를 줄 수 없다. 사망한 대상은 어느 쪽이든 제외한다.
 //          시전 가능한 최대 거리는 range + radius이므로 AOI 보장 시야 안에 들어와야 한다(CBattleZone::ValidateMonsters가 검사).
 //***************************************************************************
 struct SSkillTemplate
@@ -47,6 +54,10 @@ struct SSkillTemplate
 	uint32			castTimeMs = 0;			// 시전 시간. 0이면 즉시 발동. 시전 중 이동하면 취소되고, 시전 중에는 기본 공격/다른 스킬을 쓸 수 없다
 	float			projectileSpeed = 0.0f;	// 투사체 속도(units/sec). 0이면 즉시 적중. 양수면 비행 시간(거리/속도) 뒤 착탄 시점에 판정한다
 	uint32			statusId = 0;			// 적중(또는 시전)할 때 거는 상태 효과 ID. 0이면 없음
+	ESkillTarget	target = ESkillTarget::Enemy;
+	uint32			healPercent = 0;		// 치유: 시전자 공격력에 곱하는 비율(%)
+	int32			flatHeal = 0;			// 치유: 더하는 고정 회복량
+	float			angle = 0.0f;			// Cone의 전체 각도(도, 0 초과 360 이하). 다른 형태는 0
 };
 
 //***************************************************************************
@@ -54,6 +65,9 @@ struct SSkillTemplate
 // @details 같은 ID의 효과가 이미 걸려 있으면 지속시간을 새로 시작하고 값을 갱신한다(중첩 없음).
 //          Dot의 틱 피해는 건 순간의 시전자 공격력으로 정해진다: max(1, 공격력 * damagePercent / 100 + flatDamage).
 //          Buff는 percent 합산으로 적용되며 엔티티당 합계는 kMin/kMaxStatPercent로 묶는다.
+//          Stun은 지속시간 동안 이동/기본 공격/스킬 시전을 막고, 걸리는 순간 이동과 시전을 중단시킨다(수치 필드 없음).
+//          Shield는 받는 피해를 amount만큼 대신 흡수하고 다 쓰면 사라진다. Hot은 tickMs마다 amount만큼 회복한다.
+//          amount = 건 순간의 시전자 공격력 * healPercent / 100 + flatHeal (최소 1). Hot의 틱 회복량과 Shield의 총 흡수량이다.
 //***************************************************************************
 struct SStatusTemplate
 {
@@ -68,6 +82,8 @@ struct SStatusTemplate
 	int32			attackPercent = 0;		// Buff: 공격력 증감(%)
 	int32			defensePercent = 0;		// Buff: 방어력 증감(%)
 	int32			speedPercent = 0;		// Buff: 이동속도 증감(%)
+	uint32			healPercent = 0;		// Hot/Shield: 공격력에 곱하는 비율(%)
+	int32			flatHeal = 0;			// Hot/Shield: 더하는 고정량
 };
 
 constexpr uint32 kMaxSkillTargets = 32;		// Area 한 번에 맞을 수 있는 수의 절대 상한
@@ -107,6 +123,40 @@ inline int32 CalcSkillDamage(const SSkillTemplate& skill, int32 attack, int32 de
 inline bool SkillHasDamage(const SSkillTemplate& skill)
 {
 	return skill.damagePercent != 0 || skill.flatDamage != 0;
+}
+
+//***************************************************************************
+// @brief 스킬이 치유하는지 확인합니다.
+//***************************************************************************
+inline bool SkillHasHeal(const SSkillTemplate& skill)
+{
+	return skill.healPercent != 0 || skill.flatHeal != 0;
+}
+
+//***************************************************************************
+// @brief 스킬 치유량입니다. 방어력과 무관하며 64비트로 계산해 오버플로를 막습니다. 결과는 0 이상입니다.
+//***************************************************************************
+inline int32 CalcSkillHeal(const SSkillTemplate& skill, int32 attack)
+{
+	int64 amount = static_cast<int64>(attack) * skill.healPercent / 100 + skill.flatHeal;
+	if( amount < 0 )
+		amount = 0;
+	if( amount > INT32_MAX )
+		amount = INT32_MAX;
+	return static_cast<int32>(amount);
+}
+
+//***************************************************************************
+// @brief Hot 한 틱 회복량 / Shield 총 흡수량입니다. 최소 1입니다.
+//***************************************************************************
+inline int32 CalcStatusAmount(const SStatusTemplate& status, int32 attack)
+{
+	int64 amount = static_cast<int64>(attack) * status.healPercent / 100 + status.flatHeal;
+	if( amount < 1 )
+		amount = 1;
+	if( amount > INT32_MAX )
+		amount = INT32_MAX;
+	return static_cast<int32>(amount);
 }
 
 //***************************************************************************

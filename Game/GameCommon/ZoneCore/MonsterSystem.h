@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "FieldZoneBase.h"
+#include "HeroData.h"
 #include "Monster.h"
 #include "MonsterData.h"
 
@@ -71,6 +72,9 @@ public:
 
 	// 보스 시스템을 붙입니다 (nullptr이면 떼어냄). 보스 시스템은 이 객체보다 오래 살거나 존 파괴 전에 떼어야 한다. 존 구동 전에 한 번 호출한다.
 	void SetBossSystem(CBossSystem* boss) { _boss = boss; }
+
+	// 몬스터 스킬(SMonsterTemplate::skillId)을 찾을 스킬 데이터를 붙입니다. 스킬을 쓰는 몬스터가 있으면 존 구동 전에 반드시 호출한다(Validate가 확인).
+	void SetSkillData(std::shared_ptr<const CHeroData> skills) { _skills = std::move(skills); }
 	const std::shared_ptr<const CMonsterData>& GetData() const { return _data; }
 	CMonster* SpawnSummon(uint32 monsterId, const Vec2& center, float spreadRadius, uint64 ownerId, uint64 threatTargetId);
 
@@ -102,6 +106,8 @@ private:
 	void GiveUpTarget(CMonster& monster, CZoneEntity& target, uint64 nowMs);
 	CZoneEntity* PickTarget(CMonster& monster);
 	CZoneEntity* FindAggroCandidate(CMonster& monster);
+	void AlertAllies(CMonster& source, uint64 targetId);
+	bool TryUseSkill(CMonster& monster, CZoneEntity& target, uint64 nowMs);
 	Vec2 RandomPointInDisc(const Vec2& center, float radius) const;
 	Vec2 PickFreePoint(const Vec2& center, float radius) const;
 
@@ -114,6 +120,7 @@ private:
 	std::vector<CMonster*>				_active;		// AI 활성 몬스터 목록
 	uint32								_pathBudget = 0;	// 이번 틱에 남은 경로탐색 횟수
 	CBossSystem* _boss = nullptr;	// 보스 시스템 (없으면 일반 몬스터만)
+	std::shared_ptr<const CHeroData>	_skills;		// 스킬 데이터 (몬스터 스킬 조회용. 없으면 몬스터 스킬 없음)
 	std::vector<Vec2>					_pathScratch;	// 경로탐색 결과 작업 공간 (존 스레드 전용)
 };
 

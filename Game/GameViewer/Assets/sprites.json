@@ -2,7 +2,13 @@
   "sprites": [
     { "kind": "monster", "template": 9, "pattern": "demon/{0:000}.png", "angles": 18, "height": 4.6 },
     { "kind": "monster", "template": 2, "pattern": "mushroom/{0:000}.png", "angles": 18, "height": 3.2 },
-    { "kind": "hero", "template": 1, "pattern": "dragonkid/{0:000}.png", "angles": 18, "height": 3.4 },
+    { "kind": "monster", "template": 3, "pattern": "wolf4/{0:000}.png", "angles": 4, "height": 2.3 },
+    { "kind": "monster", "template": 4, "pattern": "bat/{0:000}.png", "angles": 4, "height": 2.3 },
+    { "kind": "hero", "template": 1, "pattern": "warrior/{0:000}.png", "attackPattern": "warrior/atk_{0:000}.png", "angles": 18, "height": 3.33, "walkFrames": 6, "walkPattern": "warrior/walk_{0:000}_{1:00}.png" },
+    { "kind": "hero", "template": 2, "pattern": "archer/{0:000}.png", "attackPattern": "archer/atk_{0:000}.png", "angles": 18, "height": 3.14, "walkFrames": 6, "walkPattern": "archer/walk_{0:000}_{1:00}.png" },
+    { "kind": "hero", "template": 3, "pattern": "mage/{0:000}.png", "attackPattern": "mage/atk_{0:000}.png", "angles": 18, "height": 3.55, "walkFrames": 6, "walkPattern": "mage/walk_{0:000}_{1:00}.png" },
+    { "kind": "hero", "template": 4, "pattern": "rogue/{0:000}.png", "attackPattern": "rogue/atk_{0:000}.png", "angles": 18, "height": 3.30, "walkFrames": 6, "walkPattern": "rogue/walk_{0:000}_{1:00}.png" },
+    { "kind": "monster", "template": 11, "pattern": "skelwing/{0:000}.png", "angles": 4, "height": 3.4 },
     { "kind": "monster", "template": 1, "pattern": "slime/{0:000}.png", "angles": 18, "height": 2.8 },
     { "kind": "tree", "pattern": "spruce/{0:000}.png", "angles": 18, "height": 2.6 }
   ]

@@ -28,18 +28,72 @@ namespace GameViewer.Tests
             }
         }
 
+        /// <summary>파일 시스템 없이(Unity Resources/어드레서블처럼) 읽어도 폴더에서 읽은 것과 같은 데이터가 나온다.</summary>
+        public static void GameDataLoadsWithoutFiles()
+        {
+            string dir = Program.Dir("GameData");
+            int calls = 0;
+            GameData d = GameData.Load(delegate (string table)
+            {
+                ++calls;
+                string path = Path.Combine(dir, table + ".json");
+                return File.Exists(path) ? File.ReadAllText(path) : null;
+            }, 1);
+            GameData f = GameData.Load(dir, 1);
+            T.Check(calls >= 7, "reader is asked for each table (" + calls + ")");
+            T.Eq(f.Heroes.Count, d.Heroes.Count, "same hero count");
+            T.Eq(f.Monsters.Count, d.Monsters.Count, "same monster count");
+            T.Eq(f.Skills.Count, d.Skills.Count, "same skill count");
+            T.Eq(f.Blocks.Count, d.Blocks.Count, "same block count");
+            T.Eq(f.Warnings.Count, d.Warnings.Count, "same warnings");
+
+            GameData none = GameData.Load(delegate (string table) { return null; }, 1);
+            T.Check(none.Warnings.Count > 0 && none.Heroes.Count == 0, "missing tables only warn");
+            GameData broken = GameData.Load(delegate (string table) { return "{ not json"; }, 1);
+            T.Check(broken.Warnings.Count > 0, "broken json only warns");
+            GameData thrown = GameData.Load(delegate (string table) { throw new InvalidOperationException("io"); }, 1);
+            T.Check(thrown.Warnings.Count > 0, "reader exception only warns");
+        }
+
+        public static void HeroIdsSorted()
+        {
+            GameData d = GameData.Load(Program.Dir("GameData"), 1);
+            List<uint> ids = d.HeroIds();
+            T.Eq(d.Heroes.Count, ids.Count, "all heroes listed");
+            for (int i = 1; i < ids.Count; ++i) T.Check(ids[i - 1] < ids[i], "ascending hero ids");
+        }
+
+        /// <summary>Core 는 UI/엔진에 의존하지 않아야 Unity 에서 그대로 쓸 수 있다. 참조하는 어셈블리로 확인한다.</summary>
+        public static void CoreHasNoUiDependency()
+        {
+            System.Reflection.Assembly core = typeof(GameData).Assembly;
+            foreach (System.Reflection.AssemblyName n in core.GetReferencedAssemblies())
+            {
+                string name = n.Name;
+                T.Check(!name.StartsWith("System.Drawing") && !name.StartsWith("System.Windows.Forms") && !name.StartsWith("UnityEngine") && !name.StartsWith("WindowsBase"),
+                    "Core must not reference " + name);
+            }
+        }
+
         public static void GameDataLoads()
         {
             GameData d = GameData.Load(Program.Dir("GameData"), 1);
             T.Eq(0, d.Warnings.Count, "no warnings: " + string.Join("; ", d.Warnings.ToArray()));
-            T.Eq(3, d.Heroes.Count, "heroes");
+            T.Eq(4, d.Heroes.Count, "heroes");
             T.Eq("전사", d.HeroName(1), "hero name (Korean)");
             T.Eq(10, d.Monsters.Count, "monsters");
-            T.Eq(7, d.Skills.Count, "skills");
+            T.Eq(14, d.Skills.Count, "skills");
             T.Check(d.Skill(2).IsArea && d.Skill(2).Radius == 4.0, "skill 2 area radius 4");
             T.Check(!d.Skill(1).IsArea, "skill 1 single");
             T.Eq(3, d.SkillsOf(1).Count, "hero 1 skills");
+            T.Eq(2, d.SkillsOf(4).Count, "hero 4 (rogue) skills");
+            T.Check(d.Skill(18).Range < 3f && d.Skill(18).StatusId == 2 && !d.Skill(18).IsArea, "rogue skill 18 is a short-range single hit with bleed");
             T.Check(d.Status(1).IsDot && !d.Status(3).IsDot, "status kinds");
+            T.Check(SkillFxTable.For(d, 5).Style == SkillFxStyle.Fireball && SkillFxTable.For(d, 4).Style == SkillFxStyle.Volley, "skill fx styles by id");
+            T.Check(SkillFxTable.For(d, 18).Style == SkillFxStyle.Pierce && SkillFxTable.For(d, 6).Shake > 0f, "rogue pierce, boss blast shakes");
+            T.Check(SkillFxTable.For(d, 9999) != null, "unknown skill still gets a style");
+            T.Check(SkillFxTable.For(d, 23).Style == SkillFxStyle.Blade && SkillFxTable.For(d, 27).Shake > 0f && SkillFxTable.For(d, 21).Style == SkillFxStyle.Arrow, "new archer/rogue skills have fx");
+            T.Check(SkillFxTable.DotColor(11) != SkillFxTable.DotColor(1) && SkillFxTable.DotColor(2) != SkillFxTable.DotColor(1), "poison/bleed embers differ from burn");
             T.Eq(3, d.Blocks.Count, "blocks for zone 1");
             T.Check(d.Blocks[1].IsCircle && d.Blocks[1].R == 5.0f, "circle block");
             T.Eq(11, d.Spawns.Count, "spawns of zone 1 only (fixture has 14 rows over zones 1 and 2)");

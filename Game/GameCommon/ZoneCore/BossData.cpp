@@ -192,9 +192,19 @@ bool CBossData::Validate(const CMonsterData& monsters, const CHeroData& skills, 
 						error = Where(boss.id, pn, a, "Cast needs a valid SkillId");
 						return false;
 					}
-					if( act.target == EBossTarget::Self && skill->shape != ESkillShape::Area )
+					if( act.target == EBossTarget::Self && skill->shape != ESkillShape::Area && skill->shape != ESkillShape::Self )
 					{
-						error = Where(boss.id, pn, a, "Target=Self needs an Area skill");
+						error = Where(boss.id, pn, a, "Target=Self needs an Area skill (or a Self-shape skill)");
+						return false;
+					}
+					if( skill->shape == ESkillShape::Self && act.target != EBossTarget::Self )
+					{
+						error = Where(boss.id, pn, a, "a Self skill needs Target=Self");
+						return false;
+					}
+					if( skill->target == ESkillTarget::Ally && act.target != EBossTarget::Self )
+					{
+						error = Where(boss.id, pn, a, "an Ally skill needs Target=Self (bosses only target players otherwise)");
 						return false;
 					}
 					castMs = skill->castTimeMs;

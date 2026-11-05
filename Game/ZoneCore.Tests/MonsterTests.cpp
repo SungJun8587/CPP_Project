@@ -333,6 +333,93 @@ namespace
 		z.Stop();
 	}
 
+	static std::shared_ptr<CHeroData> MonSkills(uint32 id, ESkillShape shape, uint32 pct, float range, float radius, uint32 castMs, uint32 cdMs)
+	{
+		auto h = std::make_shared<CHeroData>();
+		SSkillTemplate k;
+		k.id = id; k.name = "ms"; k.shape = shape; k.damagePercent = pct; k.flatDamage = 0;
+		k.range = range; k.radius = radius; k.cooldownMs = cdMs; k.castTimeMs = castMs;
+		k.maxTargets = shape == ESkillShape::Single ? 1 : 8;
+		h->AddSkill(k);
+		return h;
+	}
+
+	static void TestPackAssist()
+	{
+		std::printf("[Monster pack assist]\n");
+		SMonsterTemplate t = Tmpl(1); t.aggroRange = 0.0f; t.assistRange = 12.0f;
+		auto d = std::make_shared<CMonsterData>();
+		d->AddMonster(t);
+		{ SSpawnEntry s; s.zoneId = 1; s.monsterId = 1; s.count = 3; s.x = 500; s.y = 500; s.radius = 3; d->AddSpawn(s); }		// 무리
+		{ SSpawnEntry s; s.zoneId = 1; s.monsterId = 1; s.count = 1; s.x = 560; s.y = 500; s.radius = 0; d->AddSpawn(s); }		// 멀리(60): 도움 범위 밖
+		MonZone z(Cfg());
+		Setup(z, d);
+		z.sys->SpawnAll();
+		AddPlayer(z, 1, { 520, 500 });
+		z.Start();
+		SleepMs(100);
+		int idle = 0; Run(z, [&] { for( uint64 i = 1; i <= 4; ++i ) idle += Mon(z, i)->GetState() == EMonsterState::Idle; });
+		CHECK(idle == 4);								// 선공이 없으니 모두 가만히 있다
+
+		Run(z, [&] { z.DealDamage(*Mon(z, 1), z.FindEntity(1), 5); });
+		SleepMs(150);
+		int chase = 0, chaseFar = 0; uint64 tg = 0;
+		Run(z, [&] {
+			for( uint64 i = 1; i <= 3; ++i ) { chase += Mon(z, i)->GetState() == EMonsterState::Chase; if( Mon(z, i)->GetTargetId() == 1 ) ++tg; }
+			chaseFar = Mon(z, 4)->GetState() == EMonsterState::Chase;
+			});
+		CHECK(chase == 3 && tg == 3);					// 한 마리가 맞으면 이웃이 같은 대상을 쫓는다
+		CHECK(chaseFar == 0);							// 도움 범위 밖은 깨어나지 않는다
+		z.Stop();
+	}
+
+	static void TestMonsterSkill()
+	{
+		std::printf("[Monster skill cast / cooldown / validate]\n");
+		SMonsterTemplate t = Tmpl(1); t.skillId = 77; t.stats.attackIntervalMs = 100000;
+		MonZone z(Cfg());
+		Setup(z, Data(t, 1, 500, 500, 0));
+		z.sys->SetSkillData(MonSkills(77, ESkillShape::Area, 500, 3.0f, 3.0f, 100, 100000));
+		std::string err;
+		CHECK(z.sys->Validate(err));
+		z.sys->SpawnAll();
+		AddPlayer(z, 1, { 506, 500 });
+		z.Start();
+		SleepMs(700);
+		int hp = 1000; Run(z, [&] { hp = z.FindEntity(1)->GetHp(); });
+		const int lost = 1000 - hp;
+		CHECK(lost >= 50 && lost <= 60);				// 스킬 500% 1회(+기본 공격 최대 1회). 쿨다운 동안 반복하지 않는다
+		z.Stop();
+
+		// 검증 실패
+		{
+			MonZone a(Cfg()); Setup(a, Data(t, 1, 500, 500, 0));
+			a.sys->SetSkillData(MonSkills(78, ESkillShape::Area, 100, 3.0f, 3.0f, 0, 1000));
+			CHECK(!a.sys->Validate(err));				// 없는 스킬
+		}
+		{
+			auto h = MonSkills(77, ESkillShape::Single, 0, 5.0f, 0.0f, 0, 1000);
+			SSkillTemplate k = *h->FindSkill(77); k.target = ESkillTarget::Ally; k.healPercent = 10;
+			auto h2 = std::make_shared<CHeroData>(); h2->AddSkill(k);
+			MonZone a(Cfg()); Setup(a, Data(t, 1, 500, 500, 0));
+			a.sys->SetSkillData(h2);
+			CHECK(!a.sys->Validate(err));				// 아군 대상 스킬
+		}
+		{
+			auto h = MonSkills(77, ESkillShape::Single, 100, 5.0f, 0.0f, 0, 1000);
+			SSkillTemplate k = *h->FindSkill(77); k.projectileSpeed = 10.0f;
+			auto h2 = std::make_shared<CHeroData>(); h2->AddSkill(k);
+			MonZone a(Cfg()); Setup(a, Data(t, 1, 500, 500, 0));
+			a.sys->SetSkillData(h2);
+			CHECK(!a.sys->Validate(err));				// 투사체 스킬
+		}
+		{
+			SMonsterTemplate w = Tmpl(1); w.assistRange = 1000.0f;
+			MonZone a(Cfg()); Setup(a, Data(w, 1, 500, 500, 0));
+			CHECK(!a.sys->Validate(err));				// 도움 범위가 시야 초과
+		}
+	}
+
 	int Main()
 	{
 		TestValidateAndSpawn();
@@ -345,6 +432,8 @@ namespace
 		TestValidateOpponentSpeed();
 		TestMaxMonsterLimit();
 		TestRemoveActiveMonster();
+		TestPackAssist();
+		TestMonsterSkill();
 		std::printf(g_failed ? "\nFAILED: %d\n" : "\nALL PASSED\n", g_failed);
 		return g_failed ? 1 : 0;
 	}

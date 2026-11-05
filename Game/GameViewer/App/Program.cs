@@ -66,6 +66,7 @@ namespace GameViewer.App
             // Assets/sprites.json 에 지정된 종류는 이미지로, 나머지는 코드로 그린 그림으로 그린다.
             System.Collections.Generic.List<string> assetWarn = new System.Collections.Generic.List<string>();
             AssetSprites.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets"), assetWarn);
+            Backdrop.Load(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets"), assetWarn);       // 영웅 선택 화면 뒷배경 (선택)
             foreach (string w in assetWarn) Console.Error.WriteLine("assets: " + w);
 
             Application.Run(new MainForm(cfg, data, demo));

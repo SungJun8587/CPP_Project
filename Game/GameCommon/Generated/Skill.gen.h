@@ -32,6 +32,10 @@ namespace GameDataRows
 		uint32	castTimeMs = 0;
 		double	projectileSpeed = 0;
 		uint32	statusId = 0;
+		GameDataEnums::ESkillTarget	target = GameDataEnums::ESkillTarget::Enemy;
+		uint32	healPercent = 0;
+		int32	flatHeal = 0;
+		double	angle = 0;
 		bool	enumOk = true;		// FromJSON에서 enum 이름을 모르는 값을 만나면 false
 
 		static constexpr const TCHAR* kFile = _T("Skill.json");
@@ -53,6 +57,10 @@ namespace GameDataRows
 				{ _T("CastTimeMs"), EFieldType::UInt, 0ll, 4294967295ll, false },
 				{ _T("ProjectileSpeed"), EFieldType::Number, (std::numeric_limits<int64>::min)(), (std::numeric_limits<int64>::max)(), false },
 				{ _T("StatusId"), EFieldType::UInt, 0ll, 4294967295ll, false },
+				{ _T("Target"), EFieldType::String, (std::numeric_limits<int64>::min)(), (std::numeric_limits<int64>::max)(), false },
+				{ _T("HealPercent"), EFieldType::UInt, 0ll, 4294967295ll, false },
+				{ _T("FlatHeal"), EFieldType::Int, 0ll, 2147483647ll, false },
+				{ _T("Angle"), EFieldType::Number, (std::numeric_limits<int64>::min)(), (std::numeric_limits<int64>::max)(), false },
 			};
 			return specs;
 		}
@@ -72,6 +80,10 @@ namespace GameDataRows
 			value.AddMember(_T("CastTimeMs"), this->castTimeMs, allocator);
 			value.AddMember(_T("ProjectileSpeed"), this->projectileSpeed, allocator);
 			value.AddMember(_T("StatusId"), this->statusId, allocator);
+			value.AddMember(_T("Target"), _tValue(GameDataEnums::ToString(this->target), allocator), allocator);
+			value.AddMember(_T("HealPercent"), this->healPercent, allocator);
+			value.AddMember(_T("FlatHeal"), this->flatHeal, allocator);
+			value.AddMember(_T("Angle"), this->angle, allocator);
 		}
 
 		void FromJSON(const _tValue& value)
@@ -88,6 +100,10 @@ namespace GameDataRows
 			if( value.HasMember(_T("CastTimeMs")) ) this->castTimeMs = value[_T("CastTimeMs")].GetUint();
 			if( value.HasMember(_T("ProjectileSpeed")) ) this->projectileSpeed = value[_T("ProjectileSpeed")].GetDouble();
 			if( value.HasMember(_T("StatusId")) ) this->statusId = value[_T("StatusId")].GetUint();
+			if( value.HasMember(_T("Target")) && !GameDataEnums::TryParse(value[_T("Target")].GetString(), this->target) ) this->enumOk = false;
+			if( value.HasMember(_T("HealPercent")) ) this->healPercent = value[_T("HealPercent")].GetUint();
+			if( value.HasMember(_T("FlatHeal")) ) this->flatHeal = value[_T("FlatHeal")].GetInt();
+			if( value.HasMember(_T("Angle")) ) this->angle = value[_T("Angle")].GetDouble();
 		}
 	};
 }

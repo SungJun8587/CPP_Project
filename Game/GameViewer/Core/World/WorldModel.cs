@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using GameViewer.Core.Data;
+using GameViewer.Core.Logic;
 using GameViewer.Core.Protocol;
 
 namespace GameViewer.Core.World
@@ -24,6 +25,8 @@ namespace GameViewer.Core.World
         // 통계(화면 표시용)
         public long PacketCount, UnknownPacketCount, MalformedPacketCount;
         public long DamageDealtBySelf, DamageTakenBySelf, KillsBySelf, SelfDeaths;
+        public readonly KillStreak Streak = new KillStreak();
+        private readonly HashSet<ulong> _bossWarned = new HashSet<ulong>();      // 이미 경고를 낸 보스(죽으면 빠져서 다시 나오면 또 경고)
         public long TotalDeaths, TotalRespawns, TotalDamageEvents;
         public float LastCorrectX, LastCorrectY;
         public long LastCorrectMs = -100000;
@@ -100,6 +103,16 @@ namespace GameViewer.Core.World
             b.Text = e.Boss.Name + " - " + p + "페이즈"; b.EntityId = e.Id; b.Value = p;
             AddLog(now, 0, e.Boss.Name + " " + p + "페이즈 돌입");
             Shake(now, 600, 8f);
+        }
+
+        /// <summary>보스 경고: 붉은 경보 배너(Variant 1)와 화면 흔들림.</summary>
+        private void WarnBoss(Entity e, long now, string text, int durMs)
+        {
+            float x, y; e.PosAt(now, out x, out y);
+            ViewEffect b = NewFx(EffectKind.Banner, now, durMs, x, y);
+            b.Text = text; b.EntityId = e.Id; b.Variant = 1;
+            AddLog(now, 1, text);
+            Shake(now, 500, 5f);
         }
 
         public Entity Find(ulong id)
@@ -199,6 +212,7 @@ namespace GameViewer.Core.World
             e.Boss = e.IsMonster ? Data.BossOf(e.TemplateId) : null;
             e.GhostHp = e.Hp;
             UpdateBossPhase(e, now, true);
+            if (e.Boss != null && !e.Dead && _bossWarned.Add(e.Id)) WarnBoss(e, now, "경고  " + e.Boss.Name + " 출현!", 2800);
             if (p.Dead && e.DeadAtMs == 0) e.DeadAtMs = now;
             if (p.Moving) e.Face(p.DestX, p.DestY, now);
             if (p.EntityId == SelfId) Self = e;
@@ -247,6 +261,7 @@ namespace GameViewer.Core.World
             {
                 target.Hp = p.Hp < 0 ? 0 : p.Hp; target.MaxHp = p.MaxHp;
                 target.HitFlashMs = now;
+                SetHitDir(target, attacker, now);
                 UpdateBossPhase(target, now, false);
                 if (p.TargetId == SelfId && target.MaxHp > 0 && dmg * 100 >= target.MaxHp * 12) Shake(now, 260, 4f);
                 target.PosAt(now, out tx, out ty);
@@ -267,19 +282,31 @@ namespace GameViewer.Core.World
 
             if (attacker != null && target != null)
             {
-                attacker.AttackAnimMs = now;
                 attacker.Face(tx, ty, now);
                 long lastSkill;
                 bool fromSkill = _lastSkillMs.TryGetValue(p.AttackerId, out lastSkill) && now - lastSkill < 400;
+                // 스킬의 동작은 시전/발사 알림 때 이미 시작했다. 적중 알림(투사체는 한참 뒤)으로 다시 시작하지 않는다.
+                if (!fromSkill) attacker.AttackAnimMs = now;
                 if (!fromSkill)
                 {
                     float ax, ay; attacker.PosAt(now, out ax, out ay);
                     float dx = tx - ax, dy = ty - ay;
                     bool ranged = dx * dx + dy * dy > 4.0f * 4.0f;
+                    attacker.AttackKind = (byte)(ranged ? 2 : 0);
                     ViewEffect t = NewFx(ranged ? EffectKind.Tracer : EffectKind.Slash, now, ranged ? 160 : 200, tx, ty);
                     t.EntityId = p.AttackerId;
                 }
             }
+        }
+
+        /// <summary>피격 방향(공격자 -> 피격자)을 기록한다. 공격자를 모르면(지속 피해 등) 0 으로 두어 반동 없이 번쩍임만 보인다.</summary>
+        private static void SetHitDir(Entity target, Entity attacker, long now)
+        {
+            target.HitDirX = 0; target.HitDirY = 0;
+            if (attacker == null || attacker == target) return;
+            float ax, ay, tx, ty; attacker.PosAt(now, out ax, out ay); target.PosAt(now, out tx, out ty);
+            float dx = tx - ax, dy = ty - ay, l = (float)Math.Sqrt(dx * dx + dy * dy);
+            if (l > 0.01f) { target.HitDirX = dx / l; target.HitDirY = dy / l; }
         }
 
         private void OnDeath(ZcDeathNotify p, long now)
@@ -291,12 +318,17 @@ namespace GameViewer.Core.World
             ++TotalDeaths;
             e.Hp = 0; e.Dead = true; e.DeadAtMs = now;
             UpdateBossPhase(e, now, true);
-            if (e.Boss != null) { Shake(now, 700, 7f); AddLog(now, 0, e.Boss.Name + " 처치"); }
+            if (e.Boss != null) { Shake(now, 700, 7f); AddLog(now, 0, e.Boss.Name + " 처치"); _bossWarned.Remove(e.Id); }
             e.Statuses.Clear();                 // 사망 시 해제 알림은 오지 않으므로 여기서 비운다
             EndCast(e);
             NewFx(EffectKind.DeathPuff, now, 700, x, y);
-            if (p.EntityId == SelfId) { ++SelfDeaths; AddLog(now, 1, "사망"); }
-            else if (p.KillerId == SelfId) { ++KillsBySelf; AddLog(now, 0, NameOf(e) + " 처치"); }
+            if (p.EntityId == SelfId) { ++SelfDeaths; Streak.Reset(); AddLog(now, 1, "사망"); }
+            else if (p.KillerId == SelfId)
+            {
+                ++KillsBySelf; AddLog(now, 0, NameOf(e) + " 처치");
+                int n = Streak.Register(now);
+                if (n >= 2) { ViewEffect st = NewFx(EffectKind.Streak, now, 1900, x, y); st.Value = n; st.Text = KillStreak.Title(n); }
+            }
         }
 
         private void OnRespawn(ZcRespawnNotify p, long now)
@@ -309,6 +341,7 @@ namespace GameViewer.Core.World
             UpdateBossPhase(e, now, true);
             e.InvulnUntilMs = p.InvulnerableMs > 0 ? now + p.InvulnerableMs : 0;
             NewFx(EffectKind.RespawnRing, now, 800, p.PosX, p.PosY);
+            if (e.Boss != null && _bossWarned.Add(e.Id)) WarnBoss(e, now, "경고  " + e.Boss.Name + " 재출현!", 2800);
             if (p.EntityId == SelfId) AddLog(now, 0, "부활 (무적 " + p.InvulnerableMs + "ms)");
         }
 
@@ -343,7 +376,7 @@ namespace GameViewer.Core.World
             c.Face(p.X, p.Y, now);
 
             SkillRow sk = Data.Skill(p.SkillId);
-            if (sk != null && sk.IsArea)
+            if (sk != null && sk.IsBurst)
             {
                 ViewEffect t = NewFx(EffectKind.Telegraph, now, (int)p.CastTimeMs + 300, p.X, p.Y);
                 t.Radius = (float)sk.Radius; t.EntityId = p.CasterId; t.SkillId = p.SkillId;
@@ -365,30 +398,54 @@ namespace GameViewer.Core.World
             if (c != null)
             {
                 EndCast(c);
-                c.AttackAnimMs = now;
+                c.AttackAnimMs = now; c.AttackKind = 1;
                 c.Face(p.X, p.Y, now);
             }
             SkillRow sk = Data.Skill(p.SkillId);
-            if (sk != null && sk.IsArea)
+            SkillFxInfo fxi = SkillFxTable.For(Data, p.SkillId);
+            if (sk != null && sk.IsBurst)
             {
-                ViewEffect r = NewFx(EffectKind.Ring, now, 450, p.X, p.Y);
+                ViewEffect r = NewFx(EffectKind.Ring, now, fxi.BurstMs > 0 ? fxi.BurstMs : 450, p.X, p.Y);
                 r.Radius = (float)sk.Radius; r.SkillId = p.SkillId; r.EntityId = p.CasterId;
-                if (c != null && c.Boss != null) { Shake(now, 450, 5f); r.DurMs = 1100; }          // 보스의 범위 스킬 폭발은 균열이 오래 남는다
+                if (c != null && c.Boss != null) { Shake(now, 450, 5f); r.DurMs = Math.Max(r.DurMs, 1100); }          // 보스의 범위 스킬 폭발은 균열이 오래 남는다
+                ShakeForSkill(fxi, c, p.X, p.Y, now);
             }
             else
             {
-                ViewEffect s = NewFx(EffectKind.Slash, now, 260, p.X, p.Y);
+                // 베기 계열은 짧게, 범위형 양식(치유/충격파 등)을 단일 대상 형태로 쓰는 스킬은 그 양식의 길이만큼 남긴다.
+                bool burst = fxi.BurstMs > 0;
+                ViewEffect s = NewFx(EffectKind.Slash, now, burst ? fxi.BurstMs : (fxi.Style == SkillFxStyle.Blade || fxi.Style == SkillFxStyle.Pierce ? 420 : 260), p.X, p.Y);
                 s.EntityId = p.CasterId; s.SkillId = p.SkillId; s.Variant = 1;
+                if (burst) s.Radius = sk != null && sk.Radius > 0 ? (float)sk.Radius : 3.5f;
+                if (sk != null && sk.IsAimed)
+                {
+                    // 부채꼴/직선: 시전자에서 (p.X, p.Y) 방향으로 사거리만큼. Value=사거리*100, X2=부채꼴 각도(도), Y2=직선 폭(반경)
+                    s.DurMs = Math.Max(s.DurMs, 520); s.Radius = 0f;
+                    s.Value = (int)Math.Round(sk.Range * 100.0); s.X2 = sk.IsCone ? (float)(sk.Angle > 0 ? sk.Angle : 90.0) : 0f; s.Y2 = sk.IsLine ? (float)Math.Max(0.5, sk.Radius) : 0f;
+                }
+                ShakeForSkill(fxi, c, p.X, p.Y, now);
             }
             if (p.CasterId == SelfId && SelfSkillUsed != null && (sk == null || sk.CastTimeMs == 0))
                 SelfSkillUsed(p.SkillId, false, now);
+        }
+
+        /// <summary>양식에 정해진 화면 흔들림을 건다. 내가 시전했거나 내 가까이에서 터질 때만 흔든다.</summary>
+        private void ShakeForSkill(SkillFxInfo info, Entity caster, float x, float y, long now)
+        {
+            if (info.Shake <= 0f) return;
+            Entity me = Self;
+            if (me == null) return;
+            float mx, my; me.PosAt(now, out mx, out my);
+            float dx = mx - x, dy = my - y;
+            if (caster != me && dx * dx + dy * dy > 14f * 14f) return;
+            Shake(now, 320, info.Shake);
         }
 
         private void OnProjectile(ZcProjectileNotify p, long now)
         {
             Entity c = Find(p.CasterId);
             _lastSkillMs[p.CasterId] = now;
-            if (c != null) { EndCast(c); c.AttackAnimMs = now; c.Face(p.X1, p.Y1, now); }
+            if (c != null) { EndCast(c); c.AttackAnimMs = now; c.AttackKind = 2; c.Face(p.X1, p.Y1, now); }
             ViewEffect fx = NewFx(EffectKind.Projectile, now, (int)p.FlightMs + 600, p.X0, p.Y0);
             fx.X2 = p.X1; fx.Y2 = p.Y1; fx.EntityId = p.CasterId; fx.TargetId = p.TargetId;
             fx.SkillId = p.SkillId; fx.ProjectileId = p.ProjectileId; fx.Value = (int)p.FlightMs;
@@ -404,15 +461,18 @@ namespace GameViewer.Core.World
             if (_projectiles.TryGetValue(p.ProjectileId, out pr)) { pr.DurMs = 0; _projectiles.Remove(p.ProjectileId); }
             _lastSkillMs[p.CasterId] = now;
             SkillRow sk = Data.Skill(p.SkillId);
-            if (sk != null && sk.IsArea)
+            SkillFxInfo fxi = SkillFxTable.For(Data, p.SkillId);
+            if (sk != null && sk.IsBurst)
             {
-                ViewEffect r = NewFx(EffectKind.Ring, now, 450, p.X, p.Y);
+                ViewEffect r = NewFx(EffectKind.Ring, now, fxi.BurstMs > 0 ? fxi.BurstMs : 450, p.X, p.Y);
                 r.Radius = (float)sk.Radius; r.SkillId = p.SkillId; r.EntityId = p.CasterId;
+                ShakeForSkill(fxi, Find(p.CasterId), p.X, p.Y, now);
             }
             else
             {
-                ViewEffect s = NewFx(EffectKind.Spark, now, 260, p.X, p.Y);
+                ViewEffect s = NewFx(EffectKind.Spark, now, fxi.Style == SkillFxStyle.Fireball ? 800 : (fxi.Style == SkillFxStyle.Arrow ? 420 : 260), p.X, p.Y);
                 s.SkillId = p.SkillId;
+                if (fxi.Style == SkillFxStyle.Fireball) Shake(now, 220, 2.5f);
             }
         }
 
@@ -424,6 +484,8 @@ namespace GameViewer.Core.World
             if (p.Applied)
             {
                 StatusInstance s;
+                bool enrageStart = e.Boss != null && e.Boss.EnrageStatusId != 0 && p.StatusId == e.Boss.EnrageStatusId && !e.Statuses.ContainsKey(p.StatusId);
+                if (enrageStart) WarnBoss(e, now, "경고  " + e.Boss.Name + " 격노!", 2400);
                 if (!e.Statuses.TryGetValue(p.StatusId, out s)) { s = new StatusInstance(); s.StatusId = p.StatusId; e.Statuses[p.StatusId] = s; }
                 s.CasterId = p.CasterId; s.ExpireMs = now + p.DurationMs;
                 ViewEffect t = NewFx(EffectKind.Text, now, 1000, x, y);

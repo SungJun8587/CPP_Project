@@ -25,6 +25,8 @@ namespace Game.Data
 		public int AttackPercent { get; set; }
 		public int DefensePercent { get; set; }
 		public int SpeedPercent { get; set; }
+		public uint HealPercent { get; set; }
+		public int FlatHeal { get; set; }
 
 		/// <summary>헤더의 [min..max]를 벗어난 값을 errors에 덧붙인다.</summary>
 		public void Validate(string where, List<string> errors)
@@ -35,6 +37,7 @@ namespace Game.Data
 			if( this.AttackPercent < -1000 || this.AttackPercent > 1000 ) errors.Add(where + ".AttackPercent=" + this.AttackPercent + " (허용 범위 -1000..1000)");
 			if( this.DefensePercent < -1000 || this.DefensePercent > 1000 ) errors.Add(where + ".DefensePercent=" + this.DefensePercent + " (허용 범위 -1000..1000)");
 			if( this.SpeedPercent < -1000 || this.SpeedPercent > 1000 ) errors.Add(where + ".SpeedPercent=" + this.SpeedPercent + " (허용 범위 -1000..1000)");
+			if( this.FlatHeal < 0 ) errors.Add(where + ".FlatHeal=" + this.FlatHeal + " (허용 범위 0..)");
 		}
 	}
 

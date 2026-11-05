@@ -16,6 +16,7 @@ namespace GameViewer.App.Render
     {
         public readonly Resources Res = new Resources();
         private readonly GroundRenderer _ground = new GroundRenderer();
+        private readonly Atmosphere _air;
         private readonly System.Diagnostics.Stopwatch _sw = new System.Diagnostics.Stopwatch();
         /// <summary>구간별 누적 시간(ms): 바닥, 월드 밖 나무, 월드, 비네트, HUD. 성능 확인용.</summary>
         public readonly double[] PartMs = new double[5];
@@ -23,11 +24,14 @@ namespace GameViewer.App.Render
         private void Lap(int i) { PartMs[i] += _sw.Elapsed.TotalMilliseconds; _sw.Restart(); }
         private readonly WorldRenderer _world;
         private readonly HudRenderer _hud;
+        private readonly TensionHud _tension;
 
         public SceneRenderer()
         {
             _world = new WorldRenderer(Res);
+            _air = new Atmosphere(Res);
             _hud = new HudRenderer(Res);
+            _tension = new TensionHud(Res);
         }
 
         public void Draw(Graphics g, ViewerSession s, AutoPilot pilot, ViewState v, long now)
@@ -44,7 +48,9 @@ namespace GameViewer.App.Render
             _ground.DrawBorderTrees(g, v, _world.Trees, s.Data.WorldMinX, s.Data.WorldMinY, s.Data.WorldMaxX, s.Data.WorldMaxY); Lap(1);
             _world.DrawScene(g, s, v, now); Lap(2);
             g.ResetTransform();
-            DrawVignette(g, v); Lap(3);
+            _air.Draw(g, v, now);
+            DrawVignette(g, v);
+            _tension.Draw(g, s, v, now); Lap(3);
             _hud.Draw(g, s, pilot, v, now); Lap(4);
         }
 
@@ -63,6 +69,6 @@ namespace GameViewer.App.Render
                 g.FillRectangle(r, v.Width - e, 0, e, v.Height);
         }
 
-        public void Dispose() { _world.Dispose(); _ground.Dispose(); Res.Dispose(); }
+        public void Dispose() { _world.Dispose(); _ground.Dispose(); _air.Dispose(); Res.Dispose(); }
     }
 }

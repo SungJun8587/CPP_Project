@@ -9,12 +9,24 @@ namespace Game.Data
 	{
 		Single = 0,	// 스킬 효과 범위 형태 - 대상 하나 (대상 ID를 지정)
 		Area = 1,	// 지정한 지점을 중심으로 한 원형 범위 (좌표를 지정)
+		Self = 2,	// 시전자 자신을 중심으로 한 원형 범위 (지정 불필요. Radius가 반경이고 Range는 0)
+		Cone = 3,	// 시전자에서 지정한 방향으로 Range 길이, Angle 각도의 부채꼴 (좌표는 방향을 가리키는 용도)
+		Line = 4,	// 시전자에서 지정한 방향으로 Range 길이, 좌우 Radius 폭의 직선
+	}
+
+	public enum ESkillTarget : byte
+	{
+		Enemy = 0,	// 스킬이 효과를 내는 쪽 - 공격 가능한 적에게 효과를 낸다 (피해/상태 효과)
+		Ally = 1,	// 공격할 수 없는 아군(시전자 본인 포함)에게 효과를 낸다 (치유/상태 효과)
 	}
 
 	public enum EStatusKind : byte
 	{
 		Dot = 0,	// 지속 피해: tickMs마다 고정 피해(방어력 무시)를 준다
 		Buff = 1,	// 능력치 보정: 지속시간 동안 공격력/방어력/이동속도를 %로 바꾼다 (음수면 디버프)
+		Stun = 2,	// 기절: 지속시간 동안 이동, 기본 공격, 스킬 시전을 할 수 없다 (걸린 순간 이동과 시전 중단)
+		Shield = 3,	// 보호막: 지속시간 동안 받는 피해를 amount(HealPercent/FlatHeal)만큼 대신 흡수한다
+		Hot = 4,	// 지속 치유: TickMs마다 amount(HealPercent/FlatHeal)만큼 체력을 회복한다
 	}
 
 	public enum EStatusTarget : byte

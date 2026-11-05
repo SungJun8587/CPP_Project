@@ -17,7 +17,7 @@ namespace GameViewer.Core
         public ulong CharId = 900001;       // 봇(100000+)과 겹치지 않는 값. 몬스터 전용 대역(최상위 비트)은 쓰지 말 것
         public uint ZoneId = 1;
         public uint HeroId = 1;             // 0 = 서버 기본 영웅
-        public string DataDir = "GameData"; // XlsxToJson 출력(Hero/Monster/Skill/Status/HeroSkill/Block/Spawn .json) 폴더
+        public string DataDir = "GameData"; // XlsxConverter 출력(Hero/Monster/Skill/Status/HeroSkill/Block/Spawn .json) 폴더
         public bool Auto = false;           // 시작하자마자 자동 전투
         public double PixelsPerUnit = 20;   // 화면 배율(월드 1 unit = N 픽셀)
         public int WindowWidth = 1280;

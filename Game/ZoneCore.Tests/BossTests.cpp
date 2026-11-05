@@ -30,6 +30,9 @@ namespace
 	constexpr uint32 kRoar = 2;		// 보스 중심 범위 공격 (즉시)
 	constexpr uint32 kBite = 3;		// 단일 공격 (즉시, 사거리 12)
 	constexpr uint32 kHuge = 4;		// 사거리가 AOI 시야를 넘는 스킬 (검증 실패용)
+	constexpr uint32 kNova = 5;		// 보스 중심 Self 모양 범위 공격 (즉시)
+	constexpr uint32 kMend = 6;		// 보스 자신을 치유하는 Ally Self 스킬
+	constexpr uint32 kBless = 7;	// 단일 아군 치유 (플레이어를 고르는 행동에는 쓸 수 없다)
 	constexpr uint32 kRage = 1;		// Self 버프 공격력 +100%
 	constexpr uint32 kEnrage = 2;	// Self 버프 공격력 +200%
 	constexpr uint32 kSlow = 3;		// Hit 디버프 (Self가 아님)
@@ -109,6 +112,15 @@ namespace
 		h->AddSkill(Skill(kRoar, ESkillShape::Area, 100, 1.0f, 6.0f, 0));
 		h->AddSkill(Skill(kBite, ESkillShape::Single, 100, 12.0f, 0.0f, 0));
 		h->AddSkill(Skill(kHuge, ESkillShape::Single, 100, 200.0f, 0.0f, 0));
+		h->AddSkill(Skill(kNova, ESkillShape::Self, 100, 0.0f, 6.0f, 0));
+		{
+			SSkillTemplate mend = Skill(kMend, ESkillShape::Self, 0, 0.0f, 6.0f, 0);
+			mend.target = ESkillTarget::Ally; mend.damagePercent = 0; mend.flatDamage = 0; mend.healPercent = 50;
+			h->AddSkill(mend);
+			SSkillTemplate bless = Skill(kBless, ESkillShape::Single, 0, 12.0f, 0.0f, 0);
+			bless.target = ESkillTarget::Ally; bless.damagePercent = 0; bless.healPercent = 50;
+			h->AddSkill(bless);
+		}
 		h->AddStatus(Buff(kRage, EStatusTarget::Self, 100));
 		h->AddStatus(Buff(kEnrage, EStatusTarget::Self, 200));
 		h->AddStatus(Buff(kSlow, EStatusTarget::Hit, -30));
@@ -268,6 +280,10 @@ namespace
 		CHECK(Has(withAction(Cast(EBossTarget::Current, 99, 600)), "SkillId"));
 		CHECK(Has(withAction(Cast(EBossTarget::Self, kBite, 600)), "Area skill"));			// Self는 범위 스킬 전용
 		CHECK(withAction(Cast(EBossTarget::Self, kRoar, 600)).empty());
+		CHECK(withAction(Cast(EBossTarget::Self, kNova, 600)).empty());						// Self 모양도 Target=Self로 쓸 수 있다
+		CHECK(Has(withAction(Cast(EBossTarget::Current, kNova, 600)), "Target=Self"));		// 대상을 고르는 행동에는 쓸 수 없다
+		CHECK(withAction(Cast(EBossTarget::Self, kMend, 600)).empty());						// 보스 자신을 치유
+		CHECK(Has(withAction(Cast(EBossTarget::Current, kBless, 600)), "Ally"));			// 아군 스킬은 플레이어를 고르는 행동에 쓸 수 없다
 		CHECK(Has(withAction(Cast(EBossTarget::Current, kBite, 600000 + 1)), "DelayMs"));
 		CHECK(Has(withAction(Cast(EBossTarget::Current, kBite, 100)), "500ms"));			// 한 바퀴가 너무 짧음
 		CHECK(withAction(Cast(EBossTarget::Current, kBite, 500)).empty());

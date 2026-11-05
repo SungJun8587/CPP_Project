@@ -26,6 +26,10 @@ namespace Game.Data
 		public uint CastTimeMs { get; set; }
 		public double ProjectileSpeed { get; set; }
 		public uint StatusId { get; set; }
+		public ESkillTarget Target { get; set; } = ESkillTarget.Enemy;
+		public uint HealPercent { get; set; }
+		public int FlatHeal { get; set; }
+		public double Angle { get; set; }
 
 		/// <summary>헤더의 [min..max]를 벗어난 값을 errors에 덧붙인다.</summary>
 		public void Validate(string where, List<string> errors)
@@ -34,6 +38,7 @@ namespace Game.Data
 			if( this.FlatDamage < 0 ) errors.Add(where + ".FlatDamage=" + this.FlatDamage + " (허용 범위 0..)");
 			if( this.CooldownMs < 1u ) errors.Add(where + ".CooldownMs=" + this.CooldownMs + " (허용 범위 1..)");
 			if( this.MaxTargets < 1u ) errors.Add(where + ".MaxTargets=" + this.MaxTargets + " (허용 범위 1..)");
+			if( this.FlatHeal < 0 ) errors.Add(where + ".FlatHeal=" + this.FlatHeal + " (허용 범위 0..)");
 		}
 	}
 

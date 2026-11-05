@@ -19,6 +19,7 @@ namespace GameViewer.App.Render
 
     public sealed class CreatureRenderer : IDisposable
     {
+        public const int AttackSprite = 255;        // 이미지 영웅의 공격 그림(무기를 흐리게 한 것) 프레임 번호
         public const int FrameIdle = 8, FrameAttack0 = 9, AttackFrames = 5, WalkFrames = 8;
         private const float PadTop = 0.25f, PadBottom = 0.55f;
 
@@ -87,7 +88,15 @@ namespace GameViewer.App.Render
             bool left = e.FaceX < -0.05f;
             float ppuQ = QuantizePpu(v.Scale);
             int dir = 0;
-            if (asset != null) { dir = asset.IndexFor(e.FaceX, e.FaceY); left = false; frame = 0; }
+            bool walkAnim = false;
+            if (asset != null)
+            {
+                dir = asset.IndexFor(e.FaceX, e.FaceY); left = false; frame = 0;
+                // 걷기 프레임이 있으면 걸은 거리에 맞춰 넘긴다 (frame 0 은 서 있는 그림이라 1부터)
+                if (walking && !e.Dead && asset.WalkCount > 0) { frame = 1 + ((int)(walked / (monster ? 0.34f : 0.4f)) % asset.WalkCount); walkAnim = true; }
+                // 공격/시전 중인 영웅: 코드로 그린 무기(HeroWeapons)가 휘둘러지는 동안 몸에 그려진 무기는 흐리게 한 그림으로 바꾼다
+                if (!monster && !e.Dead && asset.Attack != null && (e.Casting || (atkAge >= 0 && atkAge < HeroWeapons.TotalMs))) { frame = AttackSprite; walkAnim = false; }
+            }
 
             int w = (int)Math.Ceiling((look.HalfW + 0.25f) * 2 * ppuQ), h = (int)Math.Ceiling((look.H + PadTop + PadBottom) * ppuQ);
             float ax = w / 2f, ay = h - PadBottom * ppuQ;
@@ -107,7 +116,9 @@ namespace GameViewer.App.Render
             if (asset != null)
             {
                 // 프레임 애니메이션이 없으므로 걸을 땐 튀고, 설 땐 숨 쉬듯 눌러서 움직임을 흉내 낸다. 발 밑은 고정.
-                float hop = walking ? Math.Abs((float)Math.Sin(walked * 3.4f)) * 0.16f : 0f;
+                float hop = walking && !walkAnim ? Math.Abs((float)Math.Sin(walked * 3.4f)) * 0.16f : 0f;
+                // 날아다니는 몬스터(박쥐, 날개 해골 기사)는 땅에서 떠서 위아래로 일렁인다. 그림자는 땅에 남는다.
+                if (monster && (tpl == 4 || tpl == 11)) hop += 0.45f + 0.14f * (float)Math.Sin(now / 230.0 + (e.Id & 15));
                 float sq = walking ? 1f : 1f + (float)Math.Sin(now / 380.0 + (e.Id & 15)) * 0.018f;
                 float dh = h * k * sq, dy = sy - ay * k * sq - hop * (float)v.Scale;
                 g.DrawImage(en.Bmp, sx - ax * k, dy, w * k, dh);
@@ -131,7 +142,7 @@ namespace GameViewer.App.Render
             {
                 AssetSet a = _pAsset;
                 g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-                Bitmap src = a.Frames[_pDir];
+                Bitmap src = (_pFrame == AttackSprite && a.Attack != null) ? a.Attack[_pDir] : (_pFrame > 0 && a.WalkCount > 0) ? a.Walk[_pDir][(_pFrame - 1) % a.WalkCount] : a.Frames[_pDir];
                 g.DrawImage(src, new RectangleF(-a.Cx * a.Scale, -a.Foot * a.Scale, src.Width * a.Scale, src.Height * a.Scale),
                     new RectangleF(0, 0, src.Width, src.Height), GraphicsUnit.Pixel);
                 return;
@@ -163,6 +174,7 @@ namespace GameViewer.App.Render
                 case 1: Warrior(g, sn, cs, bob, atk); break;
                 case 2: Archer(g, sn, cs, bob, atk); break;
                 case 3: Mage(g, sn, cs, bob, atk); break;
+                case 4: Rogue(g, sn, cs, bob, atk); break;
                 default: Adventurer(g, sn, cs, bob, atk); break;
             }
         }
@@ -209,6 +221,7 @@ namespace GameViewer.App.Render
             float hx = 0.62f + dx * 0.34f, hy = -1.6f + bob + dy * 0.34f + 0.3f * (atk < 0 ? 1f : 0.5f);
             P.Limb(g, 0.6f, -1.62f + bob, hx, hy, 0.3f, Col.Dark(tunic, 0.1f), Ol);
             float nx = -dy, ny = dx;
+            if (atk >= 0.15f) Trail(g, hx, hy, Math.Max(-150f, th - 75f), th, 0.45f, 1.42f, Color.FromArgb(200, 225, 255), (int)(170 * (1f - atk * 0.55f)));
             PointF[] blade = {
                 new PointF(hx + dx * 0.12f + nx * 0.075f, hy + dy * 0.12f + ny * 0.075f),
                 new PointF(hx + dx * 1.18f + nx * 0.05f, hy + dy * 1.18f + ny * 0.05f),
@@ -305,6 +318,92 @@ namespace GameViewer.App.Render
             P.Ball(g, 0f, -2.3f + bob, 0.66f, 0.17f, Col.Light(robe, 0.1f), robeD, Ol, 0.05f);
             P.Poly(g, new PointF[] { new PointF(-0.4f, -2.3f + bob), new PointF(0.4f, -2.3f + bob), new PointF(0.3f + sn * 0.05f, -2.95f + bob), new PointF(0.12f + sn * 0.1f, -3.4f + bob), new PointF(-0.12f, -3.0f + bob) }, robe, robeD, Ol, 0.05f);
             P.Line(g, -0.38f, -2.38f + bob, 0.38f, -2.38f + bob, 0.1f, Gold);
+        }
+
+        /// <summary>
+        /// 휘두른 궤적: (cx,cy) 를 중심으로 th0 -> th1 도 사이를 r0..r1 반지름의 반달 모양으로 채운다(칼날 잔상).
+        /// 바깥쪽이 가장 진하고 안쪽으로 갈수록 투명하다.
+        /// </summary>
+        private static void Trail(Graphics g, float cx, float cy, float th0, float th1, float r0, float r1, Color c, int alpha)
+        {
+            if (th1 - th0 < 2f || alpha < 6) return;
+            const int N = 8;
+            PointF[] pts = new PointF[(N + 1) * 2];
+            for (int i = 0; i <= N; ++i)
+            {
+                float a = (th0 + (th1 - th0) * i / N) * 0.017453f;
+                pts[i] = new PointF(cx + (float)Math.Cos(a) * r1, cy + (float)Math.Sin(a) * r1);
+                pts[(N + 1) * 2 - 1 - i] = new PointF(cx + (float)Math.Cos(a) * r0, cy + (float)Math.Sin(a) * r0);
+            }
+            using (GraphicsPath gp = new GraphicsPath())
+            {
+                gp.AddPolygon(pts);
+                using (SolidBrush b = new SolidBrush(Color.FromArgb(alpha / 2, c))) g.FillPath(b, gp);
+                // 날 끝이 지나간 가장자리
+                using (Pen p = new Pen(Color.FromArgb(Math.Min(255, alpha + 40), 255, 255, 255), 0.05f)) { p.StartCap = LineCap.Round; p.EndCap = LineCap.Round; g.DrawLines(p, new PointF[] { pts[0], pts[N / 2], pts[N] }); }
+            }
+        }
+
+        /// <summary>단검 한 자루: 손(hx,hy)에서 thDeg 방향으로 len 길이.</summary>
+        private static void Dagger(Graphics g, float hx, float hy, float thDeg, float len)
+        {
+            float rad = thDeg * 0.017453f;
+            float dx = (float)Math.Cos(rad), dy = (float)Math.Sin(rad), nx = -dy, ny = dx;
+            PointF[] blade = {
+                new PointF(hx + dx * 0.1f + nx * 0.065f, hy + dy * 0.1f + ny * 0.065f),
+                new PointF(hx + dx * len * 0.8f + nx * 0.05f, hy + dy * len * 0.8f + ny * 0.05f),
+                new PointF(hx + dx * len, hy + dy * len),
+                new PointF(hx + dx * len * 0.8f - nx * 0.05f, hy + dy * len * 0.8f - ny * 0.05f),
+                new PointF(hx + dx * 0.1f - nx * 0.065f, hy + dy * 0.1f - ny * 0.065f) };
+            P.Poly(g, blade, Color.White, Color.FromArgb(150, 170, 190), Ol, 0.03f);
+            P.Limb(g, hx + dx * 0.1f + nx * 0.16f, hy + dy * 0.1f + ny * 0.16f, hx + dx * 0.1f - nx * 0.16f, hy + dy * 0.1f - ny * 0.16f, 0.07f, Color.FromArgb(120, 90, 160), Ol);
+            P.Ball(g, hx, hy, 0.12f, 0.12f, Skin, SkinD, Ol, 0.03f);
+        }
+
+        private static void Rogue(Graphics g, float sn, float cs, float bob, float atk)
+        {
+            Color cloth = Color.FromArgb(78, 84, 112), clothD = Color.FromArgb(34, 36, 56);
+            Color scarf = Color.FromArgb(176, 120, 210), scarfD = Color.FromArgb(94, 56, 140);
+            // 짧은 망토(휘날림)
+            P.Poly(g, new PointF[] { new PointF(-0.5f, -1.72f + bob), new PointF(0.5f, -1.72f + bob), new PointF(0.62f + sn * 0.12f, -0.7f), new PointF(-0.62f + sn * 0.12f, -0.7f) },
+                Color.FromArgb(60, 52, 84), Color.FromArgb(26, 22, 44), Ol, 0.05f);
+            Legs(g, sn, cs, bob, Color.FromArgb(52, 54, 76), LeatherD);
+            P.Round(g, -0.5f, -1.8f + bob, 1.0f, 0.92f, 0.24f, cloth, clothD, Ol, 0.05f);
+            // 가죽 가슴띠 + 허리띠 + 단검집
+            P.Line(g, -0.44f, -1.72f + bob, 0.38f, -1.0f + bob, 0.1f, Leather);
+            P.Line(g, -0.46f, -0.98f + bob, 0.46f, -0.98f + bob, 0.11f, Leather);
+            P.Fill(g, 0.05f, -0.98f + bob, 0.09f, 0.07f, Gold);
+            // 양손 단검. 대기: 거꾸로 쥐고 낮게. 공격: 오른손이 먼저 베고 왼손이 이어서 교차해 벤다
+            float ra = atk < 0 ? 0f : Math.Min(1f, atk / 0.6f);
+            float la = atk < 0 ? 0f : Math.Max(0f, Math.Min(1f, (atk - 0.3f) / 0.7f));
+            float thR = atk < 0 ? 40f : -150f + 190f * ra;
+            float thL = atk < 0 ? 140f : -160f + 190f * la;
+            float rr = thR * 0.017453f, lr = thL * 0.017453f;
+            float rhx = 0.6f + (float)Math.Cos(rr) * 0.34f, rhy = -1.6f + bob + (float)Math.Sin(rr) * 0.34f + (atk < 0 ? 0.3f : 0.15f);
+            float lhx = -0.6f + (float)Math.Cos(lr) * 0.34f, lhy = -1.6f + bob + (float)Math.Sin(lr) * 0.34f + (atk < 0 ? 0.3f : 0.15f);
+            P.Limb(g, -0.58f, -1.62f + bob, lhx, lhy, 0.28f, Col.Dark(cloth, 0.05f), Ol);
+            P.Limb(g, 0.58f, -1.62f + bob, rhx, rhy, 0.28f, Col.Dark(cloth, 0.05f), Ol);
+            if (atk >= 0.1f && ra > 0.05f && ra < 1f) Trail(g, rhx, rhy, Math.Max(-150f, thR - 80f), thR, 0.3f, 0.95f, Color.FromArgb(200, 170, 255), 190);
+            if (atk >= 0.1f && la > 0.05f && la < 1f) Trail(g, lhx, lhy, Math.Max(-160f, thL - 80f), thL, 0.3f, 0.95f, Color.FromArgb(200, 170, 255), 190);
+            Dagger(g, lhx, lhy, thL, 0.78f);
+            Dagger(g, rhx, rhy, thR, 0.78f);
+            // 스카프
+            P.Poly(g, new PointF[] { new PointF(-0.34f, -1.86f + bob), new PointF(0.34f, -1.86f + bob), new PointF(0.3f, -1.62f + bob), new PointF(-0.3f, -1.62f + bob) }, scarf, scarfD, Ol, 0.04f);
+            P.Poly(g, new PointF[] { new PointF(-0.3f, -1.72f + bob), new PointF(-0.14f, -1.72f + bob), new PointF(-0.2f - sn * 0.12f, -1.1f), new PointF(-0.42f - sn * 0.12f, -1.15f) }, scarf, scarfD, Ol, 0.03f);
+            // 머리: 복면 + 후드
+            P.Ball(g, 0f, -2.1f + bob, 0.36f, 0.38f, Skin, SkinD, Ol, 0.05f);
+            P.Fill(g, -0.12f, -2.12f + bob, 0.05f, 0.04f, Color.FromArgb(250, 250, 255));
+            P.Fill(g, 0.12f, -2.12f + bob, 0.05f, 0.04f, Color.FromArgb(250, 250, 255));
+            P.Fill(g, -0.12f, -2.12f + bob, 0.025f, 0.035f, Color.FromArgb(30, 20, 40));
+            P.Fill(g, 0.12f, -2.12f + bob, 0.025f, 0.035f, Color.FromArgb(30, 20, 40));
+            P.Poly(g, new PointF[] { new PointF(-0.34f, -2.0f + bob), new PointF(0.34f, -2.0f + bob), new PointF(0.26f, -1.82f + bob), new PointF(-0.26f, -1.82f + bob) }, cloth, clothD, Ol, 0.03f);
+            using (GraphicsPath hood = new GraphicsPath())
+            {
+                hood.AddArc(-0.42f, -2.58f + bob, 0.84f, 0.74f, 180, 180); hood.CloseFigure();
+                using (LinearGradientBrush b = new LinearGradientBrush(new PointF(0, -2.58f + bob), new PointF(0, -2.2f + bob), Col.Light(cloth, 0.15f), clothD)) g.FillPath(b, hood);
+                using (Pen p = new Pen(Ol, 0.05f)) g.DrawPath(p, hood);
+            }
+            P.Poly(g, new PointF[] { new PointF(-0.12f, -2.5f + bob), new PointF(0.1f, -2.5f + bob), new PointF(-0.3f - sn * 0.1f, -2.0f + bob), new PointF(-0.42f - sn * 0.1f, -2.2f + bob) }, clothD, clothD, Ol, 0.03f);
         }
 
         private static void Adventurer(Graphics g, float sn, float cs, float bob, float atk)

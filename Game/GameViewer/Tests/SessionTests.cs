@@ -339,6 +339,10 @@ namespace GameViewer.Tests
                     T.Near(40, r.F32(), 1e-3, "area skill centered on monster x");
                 }
                 gw.Send(Pk.Skill(777, 2, 0, 40, 20, 1));
+                // 자기 중심 버프(스킬 7)는 교전 직전에 한 번 건다: 다른 스킬 요청 다음에 온다
+                int before = gw.Count((ushort)ZonePacketType.ZcSkillReq);
+                Pump(s, pilot, delegate { return gw.Count((ushort)ZonePacketType.ZcSkillReq) > before || gw.Count((ushort)ZonePacketType.ZcAttackReq) > 0; }, 3000);
+                if (gw.Count((ushort)ZonePacketType.ZcSkillReq) > before) gw.Send(Pk.Skill(777, 7, 0, 38, 20, 1));
                 Pump(s, pilot, delegate { return gw.Count((ushort)ZonePacketType.ZcAttackReq) > 0; }, 3000);
                 T.Check(gw.Count((ushort)ZonePacketType.ZcAttackReq) > 0, "basic attack when skills are cooling down");
 

@@ -8,6 +8,7 @@
 #include "FieldZoneBase.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <vector>
@@ -179,6 +180,12 @@ MoveResult CFieldZoneBase::RequestMove(CZoneEntity& entity, const Vec2& clientPo
 		return MoveResult::Dead;
 	}
 
+	if( IsStunned(entity) )
+	{
+		HandleMoveRejected(entity, MoveResult::Stunned);
+		return MoveResult::Stunned;
+	}
+
 	if( !(entity._speed > 0.0f) )		// NaN도 이동 불가로 본다
 	{
 		HandleMoveRejected(entity, MoveResult::Immobile);
@@ -257,7 +264,7 @@ bool CFieldZoneBase::MoveEntity(CZoneEntity& entity, const Vec2& dest)
 	assert(entity._inZone);
 	assert(!_updatingMovement && "CFieldZoneBase::MoveEntity called during movement update");
 
-	if( entity._dead || !(entity._speed > 0.0f) || !IsInBounds(dest) )
+	if( entity._dead || IsStunned(entity) || !(entity._speed > 0.0f) || !IsInBounds(dest) )
 		return false;
 
 	Vec2 resolved;
@@ -469,6 +476,12 @@ AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetI
 		return AttackResult::AttackerDead;
 	}
 
+	if( IsStunned(attacker) )
+	{
+		HandleAttackRejected(attacker, targetId, AttackResult::Stunned);
+		return AttackResult::Stunned;
+	}
+
 	if( attacker._cast != nullptr )
 	{
 		HandleAttackRejected(attacker, targetId, AttackResult::Casting);
@@ -569,6 +582,11 @@ bool CFieldZoneBase::DealDamage(CZoneEntity& victim, CZoneEntity* source, int32 
 	if( amount <= 0 || victim._dead || IsInvulnerable(victim) )
 		return false;
 
+	// 보호막이 먼저 피해를 받는다. 전부 흡수하면 체력은 그대로이고 피해 훅도 없다(보호막 해제 훅만 나간다).
+	amount = AbsorbByShields(victim, amount);
+	if( amount <= 0 )
+		return true;
+
 	victim._hp = amount >= victim._hp ? 0 : victim._hp - amount;
 
 	HandleDamaged(source, victim, amount);
@@ -609,6 +627,67 @@ bool CFieldZoneBase::Heal(CZoneEntity& entity, int32 amount)
 bool CFieldZoneBase::IsInvulnerable(const CZoneEntity& entity) const
 {
 	return GetNowMs() < entity._invulnerableUntilMs;
+}
+
+//***************************************************************************
+// @brief 엔티티가 기절 상태인지 확인합니다. 아직 정리되지 않은 만료된 효과는 세지 않는다.
+//***************************************************************************
+bool CFieldZoneBase::IsStunned(const CZoneEntity& entity) const
+{
+	if( entity._statuses.empty() )
+		return false;
+
+	const uint64 nowMs = GetNowMs();
+	for( const SActiveStatus& s : entity._statuses )
+		if( s.kind == EStatusKind::Stun && s.endMs > nowMs )
+			return true;
+	return false;
+}
+
+//***************************************************************************
+// @brief 보호막이 피해를 대신 받습니다. 오래된 것부터 차례로 깎고, 다 쓴 보호막은 해제합니다.
+// @return 흡수하고 남은 피해량 (0이면 전부 흡수)
+//***************************************************************************
+int32 CFieldZoneBase::AbsorbByShields(CZoneEntity& victim, int32 amount)
+{
+	if( victim._statuses.empty() )
+		return amount;
+
+	const uint64 nowMs = GetNowMs();
+	std::array<uint32, kMaxStatusesPerEntity> broken;
+	size_t brokenCount = 0;
+
+	for( size_t i = 0; i < victim._statuses.size() && amount > 0; ++i )
+	{
+		SActiveStatus& s = victim._statuses[i];
+		if( s.kind != EStatusKind::Shield || s.endMs <= nowMs || s.amount <= 0 )
+			continue;
+
+		const int32 take = (std::min)(s.amount, amount);
+		s.amount -= take;
+		amount -= take;
+		if( s.amount == 0 )
+			broken[brokenCount++] = s.id;
+	}
+
+	if( brokenCount == 0 )
+		return amount;
+
+	for( size_t b = 0; b < brokenCount; ++b )
+		for( size_t i = 0; i < victim._statuses.size(); ++i )
+			if( victim._statuses[i].id == broken[b] )
+			{
+				victim._statuses.erase(victim._statuses.begin() + static_cast<std::ptrdiff_t>(i));
+				break;
+			}
+
+	if( victim._statuses.empty() )
+		RemoveStatusHolder(victim);
+
+	for( size_t b = 0; b < brokenCount; ++b )
+		HandleStatusEnded(victim, broken[b], StatusEndReason::Broken);
+
+	return amount;
 }
 
 //***************************************************************************

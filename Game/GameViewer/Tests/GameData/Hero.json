@@ -29,6 +29,16 @@
       "AttackRange": 8.0,
       "AttackIntervalMs": 1500,
       "Speed": 5.5
+    },
+    {
+      "Id": 4,
+      "Name": "도적",
+      "MaxHp": 90,
+      "Attack": 18,
+      "Defense": 1,
+      "AttackRange": 2.0,
+      "AttackIntervalMs": 600,
+      "Speed": 7.5
     }
   ]
 }

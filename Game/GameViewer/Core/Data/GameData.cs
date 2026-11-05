@@ -1,5 +1,5 @@
 ﻿//***************************************************************************
-// GameData.cs : XlsxToJson 이 만든 JSON 표(Hero/Monster/Skill/Status/HeroSkill/Block/Spawn)를 읽어 뷰어용으로 보관.
+// GameData.cs : XlsxConverter 이 만든 JSON 표(Hero/Monster/Skill/Status/HeroSkill/Block/Spawn)를 읽어 뷰어용으로 보관.
 // 서버와 같은 JSON 을 쓰므로 이름/사거리/반경/쿨다운이 서버 값과 항상 일치한다.
 // 파일이 없거나 비어 있어도 동작한다(이름은 "#id"로 표시). 경고는 Warnings 에 모인다.
 //***************************************************************************
@@ -12,8 +12,25 @@ namespace GameViewer.Core.Data
 {
     public sealed class HeroRow { public uint Id; public string Name; public int MaxHp; public int Attack, Defense; public double AttackRange; public uint AttackIntervalMs; public double Speed; }
     public sealed class MonsterRow { public uint Id; public string Name; public int MaxHp, Attack, Defense; public double AttackRange, Speed, AggroRange; public uint AttackIntervalMs; }
-    public sealed class SkillRow { public uint Id; public string Name; public bool IsArea; public double Range, Radius, ProjectileSpeed; public uint CooldownMs, CastTimeMs, StatusId, MaxTargets, DamagePercent; public int FlatDamage; }
-    public sealed class StatusRow { public uint Id; public string Name; public bool IsDot, TargetsSelf; public uint TickMs; public uint DamagePercent; public int AttackPercent, DefensePercent, SpeedPercent; public uint DurationMs; }
+    public sealed class SkillRow
+    {
+        public uint Id; public string Name;
+        public string Shape = "Single";         // Single / Area / Self / Cone / Line (서버 ESkillShape)
+        public bool IsAlly;                     // Target == Ally: 아군(시전자 포함)에게 효과를 낸다
+        public bool IsArea;                     // Shape == Area: 지정한 지점 중심 (기존 코드가 쓰는 값)
+        public double Range, Radius, ProjectileSpeed, Angle;
+        public uint CooldownMs, CastTimeMs, StatusId, MaxTargets, DamagePercent, HealPercent; public int FlatDamage, FlatHeal;
+        public bool IsSingle { get { return Shape == "Single"; } }
+        public bool IsSelf { get { return Shape == "Self"; } }
+        public bool IsCone { get { return Shape == "Cone"; } }
+        public bool IsLine { get { return Shape == "Line"; } }
+        /// <summary>Cone/Line: 좌표는 방향만 정한다(거리는 보지 않는다).</summary>
+        public bool IsAimed { get { return IsCone || IsLine; } }
+        /// <summary>시전자 중심으로 퍼지는지 (Self). 연출은 범위(Area)와 같은 폭발로 그린다.</summary>
+        public bool IsBurst { get { return IsArea || IsSelf; } }
+        public bool Heals { get { return HealPercent != 0 || FlatHeal != 0; } }
+    }
+    public sealed class StatusRow { public uint Id; public string Name; public bool IsDot, TargetsSelf; public string Kind; public uint TickMs; public uint DamagePercent; public int AttackPercent, DefensePercent, SpeedPercent; public uint DurationMs; }
     public sealed class BlockRow { public bool IsCircle; public float X, Y, W, H, R; }
     public sealed class SpawnRow { public uint MonsterId, Count; public float X, Y, Radius; }
     public sealed class BossPhaseRow { public uint Phase, HpBelowPercent, EnterStatusId; }
@@ -48,16 +65,31 @@ namespace GameViewer.Core.Data
         // 서버 FieldZoneConfig 기본 영역과 같다(0..1000). 필요하면 뷰어 설정으로 덮어쓴다.
         public float WorldMinX = 0, WorldMinY = 0, WorldMaxX = 1000, WorldMaxY = 1000;
 
+        /// <summary>폴더의 &lt;표&gt;.json 파일들을 읽는다.</summary>
         public static GameData Load(string dir, uint zoneId)
         {
-            GameData d = new GameData();
             if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir))
             {
-                d.Warnings.Add("GameData folder not found: " + dir + " (names/ranges unavailable)");
-                return d;
+                GameData d0 = new GameData();
+                d0.Warnings.Add("GameData folder not found: " + dir + " (names/ranges unavailable)");
+                return d0;
             }
+            return Load(delegate (string table)
+            {
+                string path = Path.Combine(dir, table + ".json");
+                return File.Exists(path) ? File.ReadAllText(path, Encoding.UTF8) : null;
+            }, zoneId);
+        }
 
-            foreach (Dictionary<string, object> o in Rows(d, dir, "Hero"))
+        /// <summary>
+        /// 파일 시스템 없이 읽는다. readTable 은 표 이름("Hero", "Monster" ...)을 받아 그 JSON 텍스트를 돌려주고, 없으면 null 이다.
+        /// Unity 에서는 Resources.Load&lt;TextAsset&gt;(name)?.text 나 어드레서블/StreamingAssets 읽기를 넘기면 된다.
+        /// </summary>
+        public static GameData Load(Func<string, string> readTable, uint zoneId)
+        {
+            GameData d = new GameData();
+
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "Hero"))
             {
                 HeroRow r = new HeroRow();
                 r.Id = U(o, "Id"); r.Name = MiniJson.Str(o, "Name", "#" + r.Id);
@@ -65,7 +97,7 @@ namespace GameViewer.Core.Data
                 r.AttackRange = MiniJson.Num(o, "AttackRange", 2); r.AttackIntervalMs = U(o, "AttackIntervalMs"); r.Speed = MiniJson.Num(o, "Speed", 5);
                 d.Heroes[r.Id] = r;
             }
-            foreach (Dictionary<string, object> o in Rows(d, dir, "Monster"))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "Monster"))
             {
                 MonsterRow r = new MonsterRow();
                 r.Id = U(o, "Id"); r.Name = MiniJson.Str(o, "Name", "#" + r.Id);
@@ -73,32 +105,34 @@ namespace GameViewer.Core.Data
                 r.AttackIntervalMs = U(o, "AttackIntervalMs"); r.Speed = MiniJson.Num(o, "Speed", 3); r.AggroRange = MiniJson.Num(o, "AggroRange", 8);
                 d.Monsters[r.Id] = r;
             }
-            foreach (Dictionary<string, object> o in Rows(d, dir, "Skill"))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "Skill"))
             {
                 SkillRow r = new SkillRow();
                 r.Id = U(o, "Id"); r.Name = MiniJson.Str(o, "Name", "#" + r.Id);
-                r.IsArea = MiniJson.Str(o, "Shape", "Single") == "Area";
+                r.Shape = MiniJson.Str(o, "Shape", "Single"); r.IsArea = r.Shape == "Area";
+                r.IsAlly = MiniJson.Str(o, "Target", "Enemy") == "Ally";
+                r.Angle = MiniJson.Num(o, "Angle", 0); r.HealPercent = U(o, "HealPercent"); r.FlatHeal = (int)MiniJson.Num(o, "FlatHeal", 0);
                 r.Range = MiniJson.Num(o, "Range", 3); r.Radius = MiniJson.Num(o, "Radius", 0); r.ProjectileSpeed = MiniJson.Num(o, "ProjectileSpeed", 0);
                 r.DamagePercent = U(o, "DamagePercent"); r.FlatDamage = (int)MiniJson.Num(o, "FlatDamage", 0); r.CooldownMs = U(o, "CooldownMs"); r.CastTimeMs = U(o, "CastTimeMs"); r.StatusId = U(o, "StatusId"); r.MaxTargets = U(o, "MaxTargets");
                 d.Skills[r.Id] = r;
             }
-            foreach (Dictionary<string, object> o in Rows(d, dir, "Status"))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "Status"))
             {
                 StatusRow r = new StatusRow();
                 r.Id = U(o, "Id"); r.Name = MiniJson.Str(o, "Name", "#" + r.Id);
-                r.IsDot = MiniJson.Str(o, "Kind", "Dot") == "Dot"; r.TargetsSelf = MiniJson.Str(o, "Target", "Hit") == "Self"; r.TickMs = U(o, "TickMs"); r.DamagePercent = U(o, "DamagePercent");
+                r.Kind = MiniJson.Str(o, "Kind", "Dot"); r.IsDot = r.Kind == "Dot"; r.TargetsSelf = MiniJson.Str(o, "Target", "Hit") == "Self"; r.TickMs = U(o, "TickMs"); r.DamagePercent = U(o, "DamagePercent");
                 r.AttackPercent = (int)MiniJson.Num(o, "AttackPercent", 0); r.DefensePercent = (int)MiniJson.Num(o, "DefensePercent", 0);
                 r.SpeedPercent = (int)MiniJson.Num(o, "SpeedPercent", 0); r.DurationMs = U(o, "DurationMs");
                 d.Statuses[r.Id] = r;
             }
-            foreach (Dictionary<string, object> o in Rows(d, dir, "HeroSkill"))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "HeroSkill"))
             {
                 uint hero = U(o, "HeroId");
                 List<uint> list;
                 if (!d.HeroSkills.TryGetValue(hero, out list)) { list = new List<uint>(); d.HeroSkills[hero] = list; }
                 list.Add(U(o, "SkillId"));
             }
-            foreach (Dictionary<string, object> o in Rows(d, dir, "Block"))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "Block"))
             {
                 if (U(o, "ZoneId") != zoneId) continue;
                 BlockRow r = new BlockRow();
@@ -107,7 +141,7 @@ namespace GameViewer.Core.Data
                 r.W = (float)MiniJson.Num(o, "W", 0); r.H = (float)MiniJson.Num(o, "H", 0); r.R = (float)MiniJson.Num(o, "R", 0);
                 d.Blocks.Add(r);
             }
-            foreach (Dictionary<string, object> o in Rows(d, dir, "Spawn"))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "Spawn"))
             {
                 if (U(o, "ZoneId") != zoneId) continue;
                 SpawnRow r = new SpawnRow();
@@ -117,14 +151,14 @@ namespace GameViewer.Core.Data
             }
             // 보스 정의는 선택 사항이다 (서버가 보스 없이 구동할 수도 있으므로 파일이 없어도 경고하지 않는다).
             Dictionary<uint, BossRow> byId = new Dictionary<uint, BossRow>();
-            foreach (Dictionary<string, object> o in Rows(d, dir, "Boss", true))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "Boss", true))
             {
                 BossRow r = new BossRow();
                 r.Id = U(o, "Id"); r.MonsterId = U(o, "MonsterId"); r.Name = MiniJson.Str(o, "Name", "#" + r.Id);
                 r.EnrageAfterMs = U(o, "EnrageAfterMs"); r.EnrageStatusId = U(o, "EnrageStatusId");
                 byId[r.Id] = r; d.Bosses[r.MonsterId] = r;
             }
-            foreach (Dictionary<string, object> o in Rows(d, dir, "BossPhase", true))
+            foreach (Dictionary<string, object> o in Rows(d, readTable, "BossPhase", true))
             {
                 BossRow b;
                 if (!byId.TryGetValue(U(o, "BossId"), out b)) continue;
@@ -142,15 +176,15 @@ namespace GameViewer.Core.Data
             return v < 0 ? 0u : (uint)v;
         }
 
-        // <dir>/<table>.json 의 {"<table>":[ {...}, ... ]} 행을 돌려준다. 없거나 깨지면 경고만 남기고 빈 목록.
-        private static List<Dictionary<string, object>> Rows(GameData d, string dir, string table, bool optional = false)
+        // 표 하나의 {"<table>":[ {...}, ... ]} 행을 돌려준다. 없거나 깨지면 경고만 남기고 빈 목록.
+        private static List<Dictionary<string, object>> Rows(GameData d, Func<string, string> readTable, string table, bool optional = false)
         {
             List<Dictionary<string, object>> rows = new List<Dictionary<string, object>>();
-            string path = Path.Combine(dir, table + ".json");
-            if (!File.Exists(path)) { if (!optional) d.Warnings.Add(table + ".json not found"); return rows; }
             try
             {
-                Dictionary<string, object> root = MiniJson.AsObject(MiniJson.Parse(File.ReadAllText(path, Encoding.UTF8)));
+                string text = readTable(table);
+                if (text == null) { if (!optional) d.Warnings.Add(table + ".json not found"); return rows; }
+                Dictionary<string, object> root = MiniJson.AsObject(MiniJson.Parse(text));
                 object arrObj;
                 List<object> arr = (root != null && root.TryGetValue(table, out arrObj)) ? MiniJson.AsArray(arrObj) : null;
                 if (arr == null) { d.Warnings.Add(table + ".json has no \"" + table + "\" array"); return rows; }
@@ -176,6 +210,14 @@ namespace GameViewer.Core.Data
         public MonsterRow Monster(uint id) { MonsterRow r; return Monsters.TryGetValue(id, out r) ? r : null; }
         public BossRow BossOf(uint monsterId) { BossRow r; return Bosses.TryGetValue(monsterId, out r) ? r : null; }
         public StatusRow Status(uint id) { StatusRow r; return Statuses.TryGetValue(id, out r) ? r : null; }
+
+        /// <summary>영웅 ID 목록(오름차순). 영웅 선택 화면과 같은 순서가 필요한 곳에서 쓴다.</summary>
+        public List<uint> HeroIds()
+        {
+            List<uint> ids = new List<uint>(Heroes.Keys);
+            ids.Sort();
+            return ids;
+        }
 
         public List<uint> SkillsOf(uint heroId)
         {

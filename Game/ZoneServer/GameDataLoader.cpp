@@ -21,7 +21,8 @@ using namespace GameDataRows;
 // SkillData.h가 예전 방식(수동 enum)이면 아래 대입에서 알 수 없는 변환 오류가 나므로 원인을 바로 알 수 있게 확인한다.
 static_assert(std::is_same_v<decltype(SStatusRow::kind), EStatusKind>
 	&& std::is_same_v<decltype(SStatusRow::target), EStatusTarget>
-	&& std::is_same_v<decltype(SSkillRow::shape), ESkillShape>,
+	&& std::is_same_v<decltype(SSkillRow::shape), ESkillShape>
+	&& std::is_same_v<decltype(SSkillRow::target), ESkillTarget>,
 	"SkillData.h must use the generated enums: using GameDataEnums::ESkillShape / EStatusKind / EStatusTarget (replace SkillData.h)");
 
 namespace
@@ -143,6 +144,8 @@ std::shared_ptr<const CHeroData> CGameDataLoader::LoadHeroes(const _tstring& dir
 			t.attackPercent = r.attackPercent;
 			t.defensePercent = r.defensePercent;
 			t.speedPercent = r.speedPercent;
+			t.healPercent = r.healPercent;
+			t.flatHeal = r.flatHeal;
 
 			if( !data->AddStatus(t) )
 			{
@@ -175,6 +178,10 @@ std::shared_ptr<const CHeroData> CGameDataLoader::LoadHeroes(const _tstring& dir
 			s.castTimeMs = r.castTimeMs;
 			s.projectileSpeed = static_cast<float>(r.projectileSpeed);
 			s.statusId = r.statusId;
+			s.target = r.target;
+			s.healPercent = r.healPercent;
+			s.flatHeal = r.flatHeal;
+			s.angle = static_cast<float>(r.angle);
 
 			if( !data->AddSkill(s) )
 			{
@@ -248,6 +255,8 @@ std::shared_ptr<const CMonsterData> CGameDataLoader::LoadMonsters(const _tstring
 		t.aggroRange = static_cast<float>(r.aggroRange);
 		t.leashRange = static_cast<float>(r.leashRange);
 		t.respawnMs = r.respawnMs;
+		t.assistRange = static_cast<float>(r.assistRange);
+		t.skillId = r.skillId;
 
 		if( !data->AddMonster(t) )
 		{

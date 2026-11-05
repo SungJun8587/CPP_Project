@@ -1,7 +1,17 @@
 @ECHO OFF
-:: XlsxConverter.exe [엑셀 파일] --out [출력 폴더] [--cpp-out [폴더]] [--cs-out [폴더]] [--cs-namespace [이름]] [--proto-cs-out [폴더]] [--proto-cs-namespace [이름]] [--proto-sizes-out [파일]] [--sheets 시트이름 ...] [--incremental]
+chcp 65001 >nul
+Bin\x64\Release\XlsxConverter64.exe "K:\GitHub\CPP\Project\Game\GameData" --out "K:\GitHub\CPP\Project\Game\GameData" --cpp-out "K:\GitHub\CPP\Project\Game\GameCommon\Generated" --cs-out "K:\GitHub\CPP\Project\Game\GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "K:\GitHub\CPP\Project\Game\GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "K:\GitHub\CPP\Project\Game\GameViewer\Tests\cpp_packet_sizes.txt"
+SET RC=%ERRORLEVEL%
+ECHO.
+IF %RC%==0 (ECHO [XlsxConverter] 완료) ELSE (ECHO [XlsxConverter] 실패. 종료 코드=%RC%)
+PAUSE
+EXIT /B %RC%
+
+:: ---- 아래는 설명(실행되지 않음. EXIT 이후라 인코딩과 무관) ----
+:: XlsxConverter.exe [GameData 폴더 | 엑셀 파일] --out [출력 폴더] [--cpp-out [폴더]] [--cs-out [폴더]] [--cs-namespace [이름]] [--proto-cs-out [폴더]] [--proto-cs-namespace [이름]] [--proto-sizes-out [파일]] [--sheets 시트이름 ...] [--incremental]
 :: [설명]
 ::  - 기획 데이터 엑셀(.xlsx)의 시트를 시트별 JSON 파일로 변환(시트 이름이 곧 파일 이름, Monster 시트 -> Monster.json)
+::  - 입력이 폴더면 바로 아래의 *.xlsx 전부를 읽어 하나로 합침(하위 폴더, ~$ 임시 파일 제외). 시트 이름은 전체 파일에서 유일해야 하며 겹치면 실패. Enum/Const/Packet* 시트는 어느 파일에 있어도 됨
 ::  - 1행은 헤더("필드명:타입[min..max]?", 타입은 int/uint/float/string/bool), 2행부터 데이터. 첫 칸이 #로 시작하는 행과 빈 행은 건너뜀
 ::      [min..max] int/uint 허용 범위(한쪽 생략 가능) 예) uint[1..]  int[-1000..1000]   ? 선택 열(빈 칸이면 JSON 필드 생략)
 ::  - 코드 생성은 출력 폴더를 준 언어만 만듦: --cpp-out만 = C++, --cs-out만 = C#, 둘 다 주면 둘 다. 내용이 같으면 다시 쓰지 않음
@@ -10,10 +20,10 @@
 ::  - 패킷 정의 시트(PacketEnum/PacketConst/PacketGroup/Packet/PacketField)가 있으면 --cpp-out 폴더에 ZonePacketTypes.gen.h, ZonePacketStructs.gen.h 도 생성
 ::      --proto-cs-out 은 패킷 C# 코드(ProtocolTypes.gen.cs, Packets.gen.cs), --proto-sizes-out 은 C++ sizeof 대조용 목록 파일. --cs-out 과 다른 폴더여야 함
 ::  - _로 시작하는 시트는 변환하지 않음(--sheets로 직접 지정하면 변환, 단 --cpp-out/--cs-out과는 함께 쓸 수 없음). 오류가 하나라도 있으면 아무 파일도 쓰지 않음
-::  - --incremental: 엑셀의 수정 시각/크기가 마지막 실행 때와 같고 출력이 모두 있으면 엑셀을 열지 않고 종료. 엑셀이 열려 읽을 수 없으면 경고만 내고 기존 출력 사용(.XlsxConverter.stamp는 버전 관리 제외)
+::  - --incremental: 엑셀 파일(들)의 이름/수정 시각/크기가 마지막 실행 때와 같고 출력이 모두 있으면 엑셀을 열지 않고 종료. 엑셀이 열려 읽을 수 없으면 경고만 내고 기존 출력 사용(.XlsxConverter.stamp는 버전 관리 제외)
 ::  - 종료 코드: 0 성공, 1 변환 실패(데이터 오류), 2 사용법/파일 오류
 :: [파라미터 설명]
-::      - 1. 엑셀 파일 : K:\GitHub\CPP\Project\Game\GameData\GameData.xlsx
+::      - 1. GameData 폴더(그 안의 모든 .xlsx를 읽어 하나로 합침) : K:\GitHub\CPP\Project\Game\GameData
 ::      - 2. --out 출력 폴더 : K:\GitHub\CPP\Project\Game\GameData
 ::      - 3. --cpp-out 헤더 출력 폴더 : K:\GitHub\CPP\Project\Game\GameCommon\Generated
 ::      - 4. --cs-out C# 출력 폴더 : K:\GitHub\CPP\Project\Game\GameCommon\Generated\CSharp
@@ -23,4 +33,3 @@
 ::      - 8. --proto-sizes-out : K:\GitHub\CPP\Project\Game\GameViewer\Tests\cpp_packet_sizes.txt
 ::      - 9. --sheets 변환할 시트 이름(생략 시 _로 시작하지 않는 모든 시트) : Monster Spawn
 ::      - 10. --incremental (Pre-Build 이벤트용)
-Bin\x64\Release\XlsxConverter64.exe "K:\GitHub\CPP\Project\Game\GameData\GameData.xlsx" --out "K:\GitHub\CPP\Project\Game\GameData" --cpp-out "K:\GitHub\CPP\Project\Game\GameCommon\Generated" --cs-out "K:\GitHub\CPP\Project\Game\GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "K:\GitHub\CPP\Project\Game\GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "K:\GitHub\CPP\Project\Game\GameViewer\Tests\cpp_packet_sizes.txt"

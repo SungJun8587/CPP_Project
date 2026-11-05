@@ -1,16 +1,16 @@
 # XlsxConverter 적용 가이드
 
-XlsxConverter는 기획 데이터 엑셀(GameData.xlsx) 하나에서 시트별 JSON, 그 JSON을 읽는 C++/C# 행 코드, enum·상수 정의를 한 번에 만드는 변환 도구입니다. 엑셀 헤더가 스키마이고 코드는 그 스키마에서 나오므로 데이터와 코드가 항상 일치합니다.
+XlsxConverter는 GameData 폴더의 기획 데이터 엑셀(.xlsx) 여러 개를 합쳐 시트별 JSON, 그 JSON을 읽는 C++/C# 행 코드, enum·상수 정의를 한 번에 만드는 변환 도구입니다. 엑셀 헤더가 스키마이고 코드는 그 스키마에서 나오므로 데이터와 코드가 항상 일치합니다.
 
 ## 1. 전체 구조
 
 ```
-GameData.xlsx ──► XlsxConverter ──┬─► <시트>.json                                              (--out)
-   데이터 시트 + 패킷 정의 시트     ├─► <시트>.gen.h, Enums/EnumStrings/Consts.gen.h, GeneratedCommon.h   (--cpp-out)
-                                  ├─► ZonePacketTypes.gen.h, ZonePacketStructs.gen.h                  (--cpp-out)
-                                  ├─► <시트>.gen.cs, Enums.gen.cs, Consts.gen.cs                      (--cs-out)
-                                  ├─► ProtocolTypes.gen.cs, Packets.gen.cs                            (--proto-cs-out)
-                                  └─► cpp_packet_sizes.txt                                            (--proto-sizes-out)
+GameData\*.xlsx ──► XlsxConverter ──┬─► <시트>.json                                              (--out)
+(기능별 파일 여러 개)                  ├─► <시트>.gen.h, Enums/EnumStrings/Consts.gen.h, GeneratedCommon.h   (--cpp-out)
+데이터 시트 + 패킷 정의 시트          ├─► ZonePacketTypes.gen.h, ZonePacketStructs.gen.h                  (--cpp-out)
+                                     ├─► <시트>.gen.cs, Enums.gen.cs, Consts.gen.cs                      (--cs-out)
+                                     ├─► ProtocolTypes.gen.cs, Packets.gen.cs                            (--proto-cs-out)
+                                     └─► cpp_packet_sizes.txt                                            (--proto-sizes-out)
 ```
 
 - 시트 하나가 JSON 파일 하나, C++ 구조체 하나(`S<시트>Row`), C# 클래스 둘(`<시트>Row`, `<시트>Table`)이 됩니다.
@@ -99,7 +99,7 @@ enum 기반형(`Base` 열)은 `uint8`, `uint16`, `uint32`, `int32`이고 C++에�
 
 ### 패킷 정의 시트
 
-패킷 프로토콜은 시트 5개로 정의합니다. 이 시트들은 JSON으로 변환되지 않고 코드 생성에만 쓰이며, 시트 이름은 예약어입니다.
+패킷 프로토콜은 시트 5개로 정의합니다. 이 시트들은 JSON으로 변환되지 않고 코드 생성에만 쓰이며, 시트 이름은 예약어입니다. 5개를 한 파일에 모을 필요는 없고, GameData 폴더 전체에서 각각 한 번씩만 있으면 됩니다.
 
 | 시트 | 내용 | 열 |
 | --- | --- | --- |
@@ -118,10 +118,12 @@ enum 기반형(`Base` 열)은 `uint8`, `uint16`, `uint32`, `int32`이고 C++에�
 ## 4. 명령행
 
 ```
-XlsxConverter64.exe <file.xlsx> --out <dir> [--cpp-out <dir>] [--cs-out <dir>] [--cs-namespace <name>]
+XlsxConverter64.exe <GameData 폴더 | file.xlsx> --out <dir> [--cpp-out <dir>] [--cs-out <dir>] [--cs-namespace <name>]
                     [--proto-cs-out <dir>] [--proto-cs-namespace <name>] [--proto-sizes-out <file>]
                     [--sheets Name ...] [--incremental]
 ```
+
+첫 인자가 폴더이면 그 폴더 바로 아래의 .xlsx를 모두 읽어 하나로 합쳐 처리하고, 파일이면 그 파일만 처리합니다. 규칙은 아래 "GameData 폴더 읽기"에 있습니다.
 
 | 옵션 | 설명 |
 | --- | --- |
@@ -130,7 +132,7 @@ XlsxConverter64.exe <file.xlsx> --out <dir> [--cpp-out <dir>] [--cs-out <dir>] [
 | `--cs-out` | C# 출력 폴더 |
 | `--cs-namespace` | C# 네임스페이스 (기본 `GameDataRows`) |
 | `--sheets` | 일부 시트만 JSON 변환. 코드 생성과 함께 쓸 수 없음 (일부 시트만으로 만든 헤더는 다른 구조체를 지우기 때문) |
-| `--incremental` | 엑셀의 수정 시각/크기가 마지막 실행 때와 같고 출력 파일이 모두 있으면 엑셀을 열지 않고 종료 |
+| `--incremental` | 모든 xlsx의 파일 이름/수정 시각/크기가 마지막 실행 때와 같고 출력 파일이 모두 있으면 엑셀을 열지 않고 종료 |
 | --proto-cs-out | 패킷 프로토콜 C# 출력 폴더. --cs-out과 다른 폴더여야 함 (3절 패킷 정의 시트) |
 | --proto-cs-namespace | 패킷 C# 네임스페이스 (기본은 --cs-namespace 값) |
 | --proto-sizes-out | "<구조체> <바이트>" 목록 파일. C# 테스트가 C++ sizeof와 대조하는 입력. 폴더 없이 파일 이름만 줘도 현재 폴더에 만듦 |
@@ -147,9 +149,39 @@ XlsxConverter64.exe <file.xlsx> --out <dir> [--cpp-out <dir>] [--cs-out <dir>] [
 ### 증분 실행
 
 - 상태는 `--out` 폴더의 `.XlsxConverter.stamp`에 저장합니다. 버전 관리에서 제외하세요.
-- 상태에는 실행 인자, 실행 파일의 수정 시각, 엑셀의 수정 시각/크기, 만들어진 출력 파일 목록을 기록하고, 모든 출력이 끝난 뒤 마지막에 씁니다.
-- 인자가 바뀌었거나 도구를 다시 빌드했거나 엑셀이 달라졌거나 출력 파일이 하나라도 없으면 다시 변환합니다.
+- 상태에는 실행 인자, 실행 파일의 수정 시각, 각 xlsx의 파일 이름/수정 시각/크기, 만들어진 출력 파일 목록을 기록하고, 모든 출력이 끝난 뒤 마지막에 씁니다.
+- 인자가 바뀌었거나 도구를 다시 빌드했거나 xlsx가 추가·삭제·수정됐거나 출력 파일이 하나라도 없으면 다시 변환합니다.
 - 엑셀을 읽을 수 없으면(Excel에 열려 있는 경우 등) 같은 인자로 만든 출력이 있을 때 **경고만 내고 종료 코드 0**으로 끝나 기존 출력으로 빌드를 계속합니다.
+
+### GameData 폴더 읽기
+
+- 폴더를 주면 그 폴더 바로 아래의 `*.xlsx`를 모두 읽습니다. 하위 폴더는 보지 않습니다. 파일을 주면 그 파일 하나만 처리합니다.
+- Excel 임시 파일(`~$`로 시작)과 `.`로 시작하는 파일은 건너뛰고, 나머지는 파일 이름(대소문자 무시) 순서로 읽습니다.
+- 파일이 여러 개여도 데이터 시트, Enum, Const, 패킷 정의 시트는 폴더 전체에서 하나로 모입니다. 파일을 나눠도 JSON과 생성 코드는 달라지지 않습니다.
+- 시트 이름은 폴더 전체에서 유일해야 합니다. `_`로 시작하는 시트(`_README` 등)는 여러 파일에 있어도 됩니다. 같은 이름이 두 파일에 있으면 `<시트>: 시트 이름이 두 파일에 있습니다 (A.xlsx, B.xlsx)` 오류가 나고 파일은 쓰지 않습니다.
+- 폴더에 xlsx가 하나도 없거나 한 파일을 열 수 없으면 파일 이름을 담은 오류로 중단합니다.
+
+### 기능별 파일 나누기
+
+시트가 늘어도 관리하기 쉽도록 기능 단위로 파일을 나눕니다. 현재 구성은 다섯 개입니다.
+
+| 파일 | 시트 |
+| --- | --- |
+| Definitions.xlsx | Enum, Const, \_README |
+| Hero.xlsx | Hero, Skill, Status, HeroSkill |
+| Monster.xlsx | Monster, Boss, BossPhase, BossAction |
+| World.xlsx | Spawn, Block |
+| Packet.xlsx | PacketEnum, PacketConst, PacketGroup, Packet, PacketField |
+
+시트 하나는 한 파일에만 둡니다. 시트를 다른 파일로 옮기면 원본 파일에서 반드시 지우세요. 남겨 두면 시트 이름 중복 오류가 납니다.
+
+### XlsxConverter.bat
+
+수동 실행용 배치 파일은 GameData 폴더를 통째로 넘기고, 결과를 확인할 수 있게 종료 전에 멈춥니다.
+
+- 파일은 BOM 없는 UTF-8이고 줄바꿈은 CRLF입니다. 첫 줄 다음의 `chcp 65001 >nul`로 콘솔을 UTF-8로 바꿔 한글 메시지가 깨지지 않습니다.
+- 실행 코드를 먼저 두고 한글 설명 주석(`::`)은 `EXIT /B` 아래에 둡니다. 실행되지 않는 영역이라 인코딩과 상관없이 명령으로 해석되지 않습니다.
+- 종료 코드를 `RC`에 저장해 성공/실패 메시지를 출력하고, `PAUSE` 후 `EXIT /B %RC%`로 같은 종료 코드를 돌려줍니다.
 
 ## 5. 생성되는 C++ 코드
 
@@ -248,7 +280,7 @@ using namespace GameDataRows;
 3. **빌드 이벤트 → 빌드 전 이벤트**의 **명령줄**에 아래를 넣습니다.
 
 ```
-"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData\GameData.xlsx" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental
+"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental
 ```
 
 경로는 실제 폴더 구조에 맞게 고칩니다. `$(SolutionDir)`은 끝에 `\`가 포함되어 있습니다.
@@ -257,8 +289,8 @@ using namespace GameDataRows;
 
 | 상황 | 동작 |
 | --- | --- |
-| 엑셀 변경 없음 | `up to date`로 엑셀을 열지 않고 종료, 빌드 계속 |
-| 엑셀 변경됨 | 다시 변환. 내용이 같은 생성 파일은 다시 쓰지 않아 재빌드가 늘지 않음 |
+| 모든 xlsx 변경 없음 | `up to date`로 엑셀을 열지 않고 종료, 빌드 계속 |
+| xlsx 변경·추가·삭제됨 | 다시 변환. 내용이 같은 생성 파일은 다시 쓰지 않아 재빌드가 늘지 않음 |
 | 데이터 오류 | 종료 코드 1로 빌드 실패. 오류 목록이 출력 창에 나오고 파일은 쓰지 않음 |
 | 엑셀이 열려 읽을 수 없음 | 같은 인자로 만든 출력이 있으면 경고 후 종료 코드 0 |
 
@@ -328,7 +360,7 @@ Pre-Build가 쓰는 `XlsxConverter64.exe`가 ZoneServer보다 먼저 빌드되�
 
 1. XlsxConverter 프로젝트를 Windows에서 빌드합니다. (xlnt 필요)
 2. 회귀 테스트를 실행해 모두 통과하는지 확인합니다. (10절)
-3. `XlsxConverter.bat`을 실행해 JSON과 생성 파일을 만들고 생성 파일의 한글 주석이 정상인지 확인합니다.
+3. 기능별 xlsx를 GameData 폴더에 두고 `XlsxConverter.bat`을 실행해 JSON과 생성 파일을 만들고 생성 파일의 한글 주석이 정상인지 확인합니다.
 4. 생성 헤더는 프로젝트에 등록하지 않아도 빌드됩니다. 솔루션 탐색기에 표시하려면 8절의 방법으로 `Generated` 필터에 추가합니다. (선택)
 5. 로더는 `GeneratedCommon.h` 하나만 include합니다.
 6. 솔루션을 빌드합니다.
@@ -378,12 +410,15 @@ python run_tests.py --exe ..\Bin\x64\Release\XlsxConverter64.exe
 | 종료 코드 2 | 인자 또는 파일 오류. 경로와 인자 확인 |
 | 엑셀을 고쳤는데 `up to date` | 인자가 같고 엑셀 수정 시각/크기가 같은 경우. `--incremental`을 빼고 실행해 강제 변환 |
 | `--cpp-out`과 `--sheets` 오류 | 함께 쓸 수 없음. 코드 생성은 모든 시트로 해야 함 |
-| --proto-\* 사용 시 "패킷 정의 시트가 없습니다" | 엑셀에 PacketEnum, PacketConst, PacketGroup, Packet, PacketField 시트가 없음. 시트를 추가하거나 --proto-\* 옵션을 뺍니다 |
+| --proto-\* 사용 시 "패킷 정의 시트가 없습니다" | GameData 폴더의 xlsx에 PacketEnum, PacketConst, PacketGroup, Packet, PacketField 시트가 없음. 시트를 추가하거나 --proto-\* 옵션을 뺍니다 |
 | Packet!행 오류: Id 범위 밖, Id가 같음 | PacketGroup의 Min/Max 구간과 Packet의 Id를 확인. 패킷 번호는 전체에서 유일해야 함 |
 | C2338 …Packet: wire size differs from the Packet sheet | 생성 헤더를 손으로 고친 경우이거나 오래된 생성물. 엑셀을 고치고 XlsxConverter를 다시 실행 |
 | --proto-cs-out 오류: --cs-out과 다른 폴더여야 함 | C# 생성물 두 묶음이 같은 폴더에 섞이면 서로의 \*.gen.cs를 지움. 폴더를 분리 |
 | 테스트에서 차이가 나옴 | 골든 파일은 xlnt 없는 환경에서 TSV 스텁으로 만든 것. xlnt의 셀 값 해석 차이(숫자 표기, 빈 셀)인지 diff로 확인 |
 | 서버 시작 시 game data does not fit the zone ... spawn center of monster N is inside an obstacle | 변환 도구 오류가 아니라 서버의 시작 검증. Spawn 시트의 해당 몬스터 스폰 중심 좌표가 Block 맵의 막힌 칸 안에 있음. 좌표를 막히지 않은 칸으로 옮기고 다시 변환 |
+| <시트>: 시트 이름이 두 파일에 있습니다 (A.xlsx, B.xlsx) | 같은 시트가 두 xlsx에 있음. 한 파일에서 지움. \_로 시작하는 시트는 해당 없음 |
+| no .xlsx file in: ... | 첫 인자 폴더에 .xlsx가 없음. 경로 확인. \~$로 시작하는 임시 파일과 하위 폴더의 파일은 읽지 않음 |
+| XlsxConverter.bat 실행 시 한글이 깨지거나 주석이 명령으로 실행됨 | 배치 파일이 BOM 없는 UTF-8이 아니거나 chcp 65001이 없음, 또는 한글 주석이 EXIT /B 위에 있음. 실행 코드를 위, 주석을 EXIT /B 아래로 둠 |
 
 ### 알려진 제한 사항
 

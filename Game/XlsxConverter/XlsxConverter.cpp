@@ -2,8 +2,13 @@
 //***************************************************************************
 // XlsxConverter.cpp : 기획 데이터 엑셀(.xlsx) -> 시트별 JSON 변환기 (C++17)
 //
-// 사용법:  XlsxConverter GameData.xlsx --out ../GameData [--cpp-out ../Server/Generated] [--cs-out ../Client/Generated] [--sheets Monster Spawn]
+// 사용법:  XlsxConverter <GameData 폴더 | file.xlsx> --out ../GameData [--cpp-out ../Server/Generated] [--cs-out ../Client/Generated] [--sheets Monster Spawn]
 //
+//   - 첫 인자가 폴더이면 그 폴더 바로 아래의 모든 .xlsx를 읽어 하나의 데이터 집합으로 합친다. (기능별로 엑셀을 나눠 관리할 수 있다)
+//       하위 폴더는 보지 않고, 엑셀이 만든 임시 파일(~$로 시작)은 건너뛴다. 파일은 이름순(대소문자 무시)으로 읽는다.
+//       시트 이름은 파일에 상관없이 전체에서 유일해야 한다. 같은 이름이 두 파일에 있으면 두 파일 이름을 보여 주고 실패한다. ('_'로 시작하는 시트는 변환하지 않으므로 겹쳐도 된다)
+//       Enum, Const, Packet* 정의 시트도 아무 파일에나 둘 수 있다. (파일 하나를 줘도 이전처럼 동작한다)
+//       생성 코드와 JSON의 시트 순서는 파일 이름순, 파일 안에서는 시트 탭 순서다.
 //   - 1행은 헤더이며 각 칸은 "필드명:타입[min..max]?" (타입: int, uint, float, string, bool).
 //       [min..max]  int/uint 허용 범위, 한쪽 생략 가능.  예) uint[1..]  int[-1000..1000]  uint[..100]
 //       ?           선택 열. 빈 칸이면 오류 없이 그 행의 JSON 필드를 생략한다.
@@ -46,6 +51,7 @@
 #include <atomic>
 #include <chrono>
 #include <map>
+#include <memory>
 #include <set>
 
 namespace fs = std::filesystem;
@@ -103,6 +109,103 @@ namespace
 		return TStringToUtf8(path.string());
 #endif
 	}
+
+	//***************************************************************************
+	// @brief 소문자 변환 (ASCII). 파일 이름 정렬/확장자 비교용.
+	//***************************************************************************
+	std::string LowerAscii(std::string s)
+	{
+		for( char& c : s ) if( c >= 'A' && c <= 'Z' ) c = static_cast<char>(c - 'A' + 'a');
+		return s;
+	}
+
+	//***************************************************************************
+	// @brief 입력 경로에서 읽을 엑셀 파일 목록을 만듭니다.
+	// @param input 엑셀 파일 또는 폴더
+	// @return 파일이면 그 파일 하나, 폴더면 바로 아래의 .xlsx 전부 (이름순, ~$ 임시 파일 제외)
+	//***************************************************************************
+	std::vector<fs::path> ListWorkbookFiles(const fs::path& input)
+	{
+		std::vector<fs::path> files;
+		std::error_code ec;
+		if( !fs::is_directory(input, ec) )
+		{
+			files.push_back(input);
+			return files;
+		}
+
+		for( fs::directory_iterator it(input, ec), end; !ec && it != end; it.increment(ec) )
+		{
+			const std::string name = PathToUtf8(it->path().filename());
+			if( name.empty() || name.compare(0, 2, "~$") == 0 || name[0] == '.' ) continue;
+			if( LowerAscii(PathToUtf8(it->path().extension())) != ".xlsx" ) continue;
+			files.push_back(it->path());
+		}
+		std::sort(files.begin(), files.end(), [](const fs::path& a, const fs::path& b)
+		{
+			const std::string x = LowerAscii(PathToUtf8(a.filename())), y = LowerAscii(PathToUtf8(b.filename()));
+			return x != y ? x < y : a.filename() < b.filename();
+		});
+		return files;
+	}
+
+	//***************************************************************************
+	// @class CWorkbookSet
+	// @brief 여러 엑셀 파일을 시트 이름 하나로 찾을 수 있게 합칩니다.
+	//***************************************************************************
+	class CWorkbookSet
+	{
+	public:
+		// @exception std::runtime_error 파일을 하나도 못 찾았거나 열지 못했을 때
+		explicit CWorkbookSet(const fs::path& input)
+		{
+			const std::vector<fs::path> files = ListWorkbookFiles(input);
+			if( files.empty() )
+				throw std::runtime_error("no .xlsx file in: " + PathToUtf8(input));
+
+			for( const fs::path& f : files )
+			{
+				const std::string fname = PathToUtf8(f.filename());
+				std::unique_ptr<CXlntWorkbookReader> wb;
+				try { wb.reset(new CXlntWorkbookReader(f.native())); }
+				catch( const std::exception& e ) { throw std::runtime_error(fname + ": " + e.what()); }
+
+				for( const std::string& sheet : wb->GetSheetNames() )
+				{
+					const auto it = _owner.find(sheet);
+					if( it != _owner.end() )
+					{
+						// '_' 시트는 변환하지 않으므로 겹쳐도 상관없다. (먼저 나온 것만 남긴다)
+						if( sheet.empty() || sheet[0] != '_' )
+							_duplicates.push_back(sheet + U8(": 시트 이름이 두 파일에 있습니다 (") + _fileNames[it->second] + ", " + fname + ")");
+						continue;
+					}
+					_owner.emplace(sheet, _books.size());
+					_names.push_back(sheet);
+				}
+				_fileNames.push_back(fname);
+				_books.push_back(std::move(wb));
+			}
+		}
+
+		const std::vector<std::string>& GetSheetNames() const { return _names; }
+		const std::vector<std::string>& Duplicates() const { return _duplicates; }
+		size_t FileCount() const { return _books.size(); }
+
+		bool ReadSheet(const std::string& name, TRows& rows, std::string& error)
+		{
+			const auto it = _owner.find(name);
+			if( it == _owner.end() ) { error = name + ": no sheet"; return false; }
+			return _books[it->second]->ReadSheet(name, rows, error);
+		}
+
+	private:
+		std::vector<std::unique_ptr<CXlntWorkbookReader>>	_books;
+		std::vector<std::string>							_fileNames;
+		std::vector<std::string>							_names;		// 파일 순서, 파일 안에서는 탭 순서
+		std::map<std::string, size_t>						_owner;		// 시트 이름 -> _books 인덱스
+		std::vector<std::string>							_duplicates;
+	};
 
 	//***************************************************************************
 	// @brief 명령행을 해석합니다.
@@ -175,7 +278,7 @@ namespace
 
 		if( opt.xlsxPath.empty() || !hasOut )
 		{
-			std::fprintf(stderr, "usage: XlsxConverter <file.xlsx> --out <dir> [--cpp-out <dir>] [--cs-out <dir> [--cs-namespace <name>]] [--proto-cs-out <dir> [--proto-cs-namespace <name>]] [--proto-sizes-out <file>] [--sheets Name ...] [--incremental]\n");
+			std::fprintf(stderr, "usage: XlsxConverter <GameData folder | file.xlsx> --out <dir> [--cpp-out <dir>] [--cs-out <dir> [--cs-namespace <name>]] [--proto-cs-out <dir> [--proto-cs-namespace <name>]] [--proto-sizes-out <file>] [--sheets Name ...] [--incremental]\n");
 			return false;
 		}
 		if( opt.hasProtoCsOut && opt.hasCsOut )
@@ -287,15 +390,20 @@ namespace
 		return s + "--\n";
 	}
 
-	// 엑셀 파일의 수정 시각과 크기. 시각을 읽을 수 없으면 "?" (이때는 상태 파일의 값과도 다르다고 보지 않으므로 파일이 없는 경우는 읽기 단계의 오류로 드러난다)
+	// 엑셀 파일(들)의 수정 시각과 크기. 시각을 읽을 수 없으면 "?" (이때는 상태 파일의 값과도 다르다고 보지 않으므로 파일이 없는 경우는 읽기 단계의 오류로 드러난다)
 	std::string SourceStamp(const SOptions& opt)
 	{
-		std::error_code ec;
-		const fs::path p(opt.xlsxPath);
-		const auto t = fs::last_write_time(p, ec);
-		if( ec ) return "?";
-		const auto size = fs::file_size(p, ec);
-		return std::to_string(t.time_since_epoch().count()) + "/" + std::to_string(ec ? 0 : size);
+		// 폴더이면 파일마다 이름/수정 시각/크기를 이어 붙인다. (파일이 늘거나 줄거나 이름이 바뀌어도 달라진다)
+		std::string all;
+		for( const fs::path& p : ListWorkbookFiles(fs::path(opt.xlsxPath)) )
+		{
+			std::error_code ec;
+			const auto t = fs::last_write_time(p, ec);
+			if( ec ) { all += "?;"; continue; }
+			const auto size = fs::file_size(p, ec);
+			all += PathToUtf8(p.filename()) + "=" + std::to_string(t.time_since_epoch().count()) + "/" + std::to_string(ec ? 0 : size) + ";";
+		}
+		return all.empty() ? "?" : all;
 	}
 
 	//***************************************************************************
@@ -400,7 +508,7 @@ int _tmain(int argc, TCHAR* argv[])
 	bool opened = false;
 	try
 	{
-		CXlntWorkbookReader workbook(opt.xlsxPath);
+		CWorkbookSet workbook{ fs::path(opt.xlsxPath) };
 		opened = true;
 
 		std::vector<std::string> names;
@@ -413,7 +521,7 @@ int _tmain(int argc, TCHAR* argv[])
 
 		struct SResult { std::string name, json; size_t rowCount; SSheetSchema schema; };
 		std::vector<SResult> results;
-		std::vector<std::string> errors;
+		std::vector<std::string> errors = workbook.Duplicates();
 
 		// Enum, Const 시트는 형식 정의라 JSON으로 변환하지 않는다.
 		// Enum은 --sheets를 줘도 항상 읽어 enum 열의 멤버 이름을 검증한다. Const는 코드 생성에만 쓴다.
@@ -423,12 +531,12 @@ int _tmain(int argc, TCHAR* argv[])
 			const std::vector<std::string>& all = workbook.GetSheetNames();
 			const auto has = [&](const char* n) { return std::find(all.begin(), all.end(), n) != all.end(); };
 			const auto readDef = [&](const char* sheet, bool (*parse)(const TRows&, SDefinitions&, std::vector<std::string>&))
-				{
-					TRows rows;
-					std::string error;
-					if( !workbook.ReadSheet(sheet, rows, error) ) errors.push_back(error);
-					else parse(rows, defs, errors);
-				};
+			{
+				TRows rows;
+				std::string error;
+				if( !workbook.ReadSheet(sheet, rows, error) ) errors.push_back(error);
+				else parse(rows, defs, errors);
+			};
 			if( has(DefinitionSheets::kEnumSheet) )
 				readDef(DefinitionSheets::kEnumSheet, &DefinitionSheets::ParseEnumSheet);
 			if( has(DefinitionSheets::kConstSheet) && (opt.hasCppOut || opt.hasCsOut) )
@@ -500,7 +608,7 @@ int _tmain(int argc, TCHAR* argv[])
 				protoSizes = PacketGenerator::Sizes(packetSchema);
 		}
 		if( errors.empty() && packetSchema.empty() && (opt.hasProtoCsOut || opt.hasProtoSizesOut) )
-			errors.push_back(U8("--proto-*를 줬지만 엑셀에 패킷 정의 시트(PacketEnum, PacketConst, PacketGroup, Packet, PacketField)가 없습니다"));
+			errors.push_back(U8("--proto-*를 줬지만 엑셀(들)에 패킷 정의 시트(PacketEnum, PacketConst, PacketGroup, Packet, PacketField)가 없습니다"));
 
 		if( !errors.empty() )
 		{

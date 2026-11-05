@@ -1,7 +1,7 @@
-
+ï»¿
 //***************************************************************************
-// FieldZoneSkill.cpp : CFieldZoneBaseÀÇ ½ºÅ³/»óÅÂ È¿°ú ±¸ÇöºÎ.
-//   ½ºÅ³ ½ÃÀü(Áï½Ã/½ÃÀü ½Ã°£), Åõ»çÃ¼, »óÅÂ È¿°ú(Dot/Buff)¸¦ ´Ù·é´Ù. ÀüÅõ ±ÔÄ¢ Áß ³ª¸ÓÁö(ÀÌµ¿, ±âº» °ø°İ, ÇÇÇØ, »ç¸Á)´Â FieldZoneBase.cpp¿¡ ÀÖ´Ù.
+// FieldZoneSkill.cpp : CFieldZoneBaseì˜ ìŠ¤í‚¬/ìƒíƒœ íš¨ê³¼ êµ¬í˜„ë¶€.
+//   ìŠ¤í‚¬ ì‹œì „(ì¦‰ì‹œ/ì‹œì „ ì‹œê°„), íˆ¬ì‚¬ì²´, ë²”ìœ„ í˜•íƒœ(Single/Area/Self/Cone/Line), ì¹˜ìœ , ìƒíƒœ íš¨ê³¼(Dot/Buff/Stun/Shield/Hot)ë¥¼ ë‹¤ë£¬ë‹¤. ì „íˆ¬ ê·œì¹™ ì¤‘ ë‚˜ë¨¸ì§€(ì´ë™, ê¸°ë³¸ ê³µê²©, í”¼í•´, ì‚¬ë§)ëŠ” FieldZoneBase.cppì— ìˆë‹¤.
 //
 //***************************************************************************
 
@@ -14,23 +14,32 @@
 #include <cmath>
 #include <vector>
 
+namespace
+{
+	constexpr float kMinAimDistSq = 1e-4f;		// Cone/Lineì˜ ë°©í–¥ìœ¼ë¡œ ì‚¼ì„ ìˆ˜ ìˆëŠ” ìµœì†Œ ê±°ë¦¬(ì œê³±). ì‹œì „ìì™€ ê±°ì˜ ê°™ì€ ìœ„ì¹˜ëŠ” ë°©í–¥ì´ ì—†ë‹¤
+	constexpr float kPi = 3.14159265358979323846f;
+}
+
 //***************************************************************************
-// @brief ½ºÅ³À» ½ÃÀüÇÕ´Ï´Ù. °ËÁõ ¼ø¼­´Â RequestAttack°ú °°Àº ¿øÄ¢(½Î°í À§Á¶ÇÏ±â ½¬¿î °ªºÎÅÍ)ÀÌ´Ù.
-//        1) °°Àº Æ½ÀÇ °ø°İ/½ºÅ³ ¿äÃ» Áßº¹Àº Á¶¿ëÈ÷ ¹«½Ã(Throttled, ±âº» °ø°İ°ú °°Àº °ÔÀÌÆ®¸¦ ¾´´Ù)
-//        2) ½ÃÀüÀÚ »ıÁ¸ -> 3) ÀÌ¹Ì ½ÃÀü ÁßÀÌ ¾Æ´Ô -> 4) Àç»ç¿ë ´ë±â -> 5) »ç°Å¸®(SingleÀº ´ë»ó À§Ä¡, Area´Â ÁöÁ¤ÇÑ Áß½É)
-//        -> 6) ½Ã¼±(Àå¾Ö¹°) -> 7) SingleÀº ´ë»óÀÌ »ıÁ¸/°ø°İ °¡´É/¹«Àû ¾Æ´Ô. ´ë»óÀÌ ¾ø´Â °æ¿ì¿Í »ç°Å¸® ¹ÛÀº °°Àº »çÀ¯(¿£Æ¼Æ¼ Á¸Àç ¿©ºÎ ºñ³ëÃâ).
-//        °ÅºÎµÈ ¿äÃ»(Throttled Á¦¿Ü)Àº HandleSkillRejected·Î ¾Ë¸®°í Àç»ç¿ë ´ë±â¸¦ ¼Ò¸ğÇÏÁö ¾Ê´Â´Ù.
-//        Åë°úÇÏ¸é Àç»ç¿ë ´ë±â°¡ ½ÃÀÛµÇ°í(½ÃÀü ½Ã°£ÀÌ ÀÖ¾îµµ ½ÃÀÛ ½ÃÁ¡ºÎÅÍ) ½ÃÀüÀÚ º»ÀÎÀÇ ¹«ÀûÀÌ ÇØÁ¦µÈ´Ù.
-//        - ½ÃÀü ½Ã°£ÀÌ 0ÀÌ¸é Áï½Ã È¿°ú¸¦ ³½´Ù: ´ë»óÀÌ 0ÀÌ¾îµµ ½ÃÀüÀº ¼º°øÇÏ¸ç, ½ÃÀü ¾Ë¸²(HandleSkillCast)ÀÌ ÇÇÇØ ¾Ë¸²º¸´Ù ¸ÕÀú ³ª°£´Ù.
-//        - ½ÃÀü ½Ã°£ÀÌ ÀÖÀ¸¸é ½ÃÀüÀ» ½ÃÀÛÇÏ°í(HandleSkillCastStarted) ÀÌµ¿À» ¸ØÃá´Ù. ³¡³ª´Â ½ÃÁ¡¿¡ ´ë»ó/»ç°Å¸®/½Ã¼±À» ´Ù½Ã È®ÀÎÇØ
-//          È¿°ú¸¦ ³»°Å³ª Ãë¼Ò(HandleSkillCastCancelled)ÇÑ´Ù. ½ÃÀü Áß ÀÌµ¿/¼ø°£ÀÌµ¿/»ç¸ÁÇÏ¸é Ãë¼ÒµÇ°í, Àç»ç¿ë ´ë±â´Â µ¹·ÁÁÖÁö ¾Ê´Â´Ù.
-//        Á¸ ½º·¹µå¿¡¼­¸¸ È£ÃâÇØ¾ß ÇÏ¸ç, caster´Â ÀÌ Á¸¿¡ ¼ÓÇØ¾ß ÇÑ´Ù.
-// @param caster    ½ÃÀüÀÚ
-// @param skill     ½ºÅ³ (½ÃÀüÀÚ°¡ ¾µ ¼ö ÀÖ´ÂÁö´Â È£ÃâÀÚ°¡ È®ÀÎ)
-// @param targetId  SingleÀÇ ´ë»ó ID (Area´Â ¹«½Ã)
-// @param center    AreaÀÇ Áß½É ÁÂÇ¥ (SingleÀº ¹«½Ã)
-// @param readyAtMs [in,out] ÀÌ ½ÃÀüÀÚÀÇ ÀÌ ½ºÅ³À» ´Ù½Ã ¾µ ¼ö ÀÖ´Â Á¸ ³í¸® ½Ã°¢. ¼º°øÇÏ¸é °»½ÅµÈ´Ù
-// @return Ã³¸® °á°ú. Ok´Â Áï½Ã ¹ßµ¿Çß°Å³ª ½ÃÀüÀ» ½ÃÀÛÇß´Ù´Â ¶æÀÌ´Ù
+// @brief ìŠ¤í‚¬ì„ ì‹œì „í•©ë‹ˆë‹¤. ê²€ì¦ ìˆœì„œëŠ” RequestAttackê³¼ ê°™ì€ ì›ì¹™(ì‹¸ê³  ìœ„ì¡°í•˜ê¸° ì‰¬ìš´ ê°’ë¶€í„°)ì´ë‹¤.
+//        1) ê°™ì€ í‹±ì˜ ê³µê²©/ìŠ¤í‚¬ ìš”ì²­ ì¤‘ë³µì€ ì¡°ìš©íˆ ë¬´ì‹œ(Throttled, ê¸°ë³¸ ê³µê²©ê³¼ ê°™ì€ ê²Œì´íŠ¸ë¥¼ ì“´ë‹¤)
+//        2) ì‹œì „ì ìƒì¡´ -> ê¸°ì ˆ ì•„ë‹˜ -> 3) ì´ë¯¸ ì‹œì „ ì¤‘ì´ ì•„ë‹˜ -> 4) ì¬ì‚¬ìš© ëŒ€ê¸°
+//        5) ì‚¬ê±°ë¦¬(Singleì€ ëŒ€ìƒ ìœ„ì¹˜, AreaëŠ” ì§€ì •í•œ ì¤‘ì‹¬. SelfëŠ” ì‹œì „ì ìœ„ì¹˜ë¼ ê²€ì‚¬ ì—†ìŒ. Cone/Lineì€ ì¢Œí‘œê°€ ë°©í–¥ì¼ ë¿ì´ë¼ ì˜ì—­ ì•ˆì¸ì§€ë§Œ ë³´ê³ 
+//           ì‹œì „ìì™€ ê°™ì€ ìœ„ì¹˜(ë°©í–¥ ì—†ìŒ)ëŠ” InvalidTarget)
+//        -> 6) ì‹œì„ (ì¥ì• ë¬¼, Single/Area) -> 7) Singleì€ ëŒ€ìƒì´ ìœ íš¨í•œì§€(IsSkillTarget: EnemyëŠ” ìƒì¡´/ê³µê²© ê°€ëŠ¥/ë¬´ì  ì•„ë‹˜, AllyëŠ” ìƒì¡´í•œ ì•„êµ°).
+//        ëŒ€ìƒì´ ì—†ëŠ” ê²½ìš°ì™€ ì‚¬ê±°ë¦¬ ë°–ì€ ê°™ì€ ì‚¬ìœ (ì—”í‹°í‹° ì¡´ì¬ ì—¬ë¶€ ë¹„ë…¸ì¶œ).
+//        ê±°ë¶€ëœ ìš”ì²­(Throttled ì œì™¸)ì€ HandleSkillRejectedë¡œ ì•Œë¦¬ê³  ì¬ì‚¬ìš© ëŒ€ê¸°ë¥¼ ì†Œëª¨í•˜ì§€ ì•ŠëŠ”ë‹¤.
+//        í†µê³¼í•˜ë©´ ì¬ì‚¬ìš© ëŒ€ê¸°ê°€ ì‹œì‘ë˜ê³ (ì‹œì „ ì‹œê°„ì´ ìˆì–´ë„ ì‹œì‘ ì‹œì ë¶€í„°) ì‹œì „ì ë³¸ì¸ì˜ ë¬´ì ì´ í•´ì œëœë‹¤.
+//        - ì‹œì „ ì‹œê°„ì´ 0ì´ë©´ ì¦‰ì‹œ íš¨ê³¼ë¥¼ ë‚¸ë‹¤: ëŒ€ìƒì´ 0ì´ì–´ë„ ì‹œì „ì€ ì„±ê³µí•˜ë©°, ì‹œì „ ì•Œë¦¼(HandleSkillCast)ì´ í”¼í•´ ì•Œë¦¼ë³´ë‹¤ ë¨¼ì € ë‚˜ê°„ë‹¤.
+//        - ì‹œì „ ì‹œê°„ì´ ìˆìœ¼ë©´ ì‹œì „ì„ ì‹œì‘í•˜ê³ (HandleSkillCastStarted) ì´ë™ì„ ë©ˆì¶˜ë‹¤. ëë‚˜ëŠ” ì‹œì ì— ëŒ€ìƒ/ì‚¬ê±°ë¦¬/ì‹œì„ ì„ ë‹¤ì‹œ í™•ì¸í•´
+//          íš¨ê³¼ë¥¼ ë‚´ê±°ë‚˜ ì·¨ì†Œ(HandleSkillCastCancelled)í•œë‹¤. ì‹œì „ ì¤‘ ì´ë™/ìˆœê°„ì´ë™/ì‚¬ë§í•˜ë©´ ì·¨ì†Œë˜ê³ , ì¬ì‚¬ìš© ëŒ€ê¸°ëŠ” ëŒë ¤ì£¼ì§€ ì•ŠëŠ”ë‹¤.
+//        ì¡´ ìŠ¤ë ˆë“œì—ì„œë§Œ í˜¸ì¶œí•´ì•¼ í•˜ë©°, casterëŠ” ì´ ì¡´ì— ì†í•´ì•¼ í•œë‹¤.
+// @param caster    ì‹œì „ì
+// @param skill     ìŠ¤í‚¬ (ì‹œì „ìê°€ ì“¸ ìˆ˜ ìˆëŠ”ì§€ëŠ” í˜¸ì¶œìê°€ í™•ì¸)
+// @param targetId  Singleì˜ ëŒ€ìƒ ID (AreaëŠ” ë¬´ì‹œ)
+// @param center    Areaì˜ ì¤‘ì‹¬ ì¢Œí‘œ (Singleì€ ë¬´ì‹œ)
+// @param readyAtMs [in,out] ì´ ì‹œì „ìì˜ ì´ ìŠ¤í‚¬ì„ ë‹¤ì‹œ ì“¸ ìˆ˜ ìˆëŠ” ì¡´ ë…¼ë¦¬ ì‹œê°. ì„±ê³µí•˜ë©´ ê°±ì‹ ëœë‹¤
+// @return ì²˜ë¦¬ ê²°ê³¼. OkëŠ” ì¦‰ì‹œ ë°œë™í–ˆê±°ë‚˜ ì‹œì „ì„ ì‹œì‘í–ˆë‹¤ëŠ” ëœ»ì´ë‹¤
 //***************************************************************************
 SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center, uint64& readyAtMs)
 {
@@ -51,6 +60,9 @@ SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate&
 	if( caster._dead )
 		return reject(SkillResult::CasterDead);
 
+	if( IsStunned(caster) )
+		return reject(SkillResult::Stunned);
+
 	if( caster._cast != nullptr )
 		return reject(SkillResult::Casting);
 
@@ -58,6 +70,7 @@ SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate&
 		return reject(SkillResult::Cooldown);
 
 	const bool single = skill.shape == ESkillShape::Single;
+	const bool aimed = skill.shape == ESkillShape::Cone || skill.shape == ESkillShape::Line;
 	CZoneEntity* target = nullptr;
 	Vec2 mid;
 	float moveSpeed = caster._moving ? caster._speed : 0.0f;
@@ -70,6 +83,10 @@ SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate&
 		if( target->_moving )
 			moveSpeed += target->_speed;
 	}
+	else if( skill.shape == ESkillShape::Self )
+	{
+		mid = caster._pos;
+	}
 	else
 	{
 		if( !std::isfinite(center.x) || !std::isfinite(center.y) || !IsInBounds(center) )
@@ -77,14 +94,20 @@ SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate&
 		mid = center;
 	}
 
-	const float reach = skill.range + _fieldConfig.posToleranceBase + moveSpeed * static_cast<float>(_fieldConfig.maxLatencyMs) * 0.001f;
-	if( !(DistanceSq(caster._pos, mid) <= reach * reach) )
-		return reject(SkillResult::OutOfRange);
+	// SelfëŠ” ì‹œì „ì ìœ„ì¹˜, Cone/Lineì€ ë°©í–¥ë§Œ ì •í•˜ë¯€ë¡œ ì‚¬ê±°ë¦¬/ì‹œì„  ê²€ì‚¬ ëŒ€ìƒì´ ì•„ë‹ˆë‹¤.
+	if( single || skill.shape == ESkillShape::Area )
+	{
+		const float reach = skill.range + _fieldConfig.posToleranceBase + moveSpeed * static_cast<float>(_fieldConfig.maxLatencyMs) * 0.001f;
+		if( !(DistanceSq(caster._pos, mid) <= reach * reach) )
+			return reject(SkillResult::OutOfRange);
 
-	if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(caster._pos, mid) )
-		return reject(SkillResult::NoLineOfSight);
+		if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(caster._pos, mid) )
+			return reject(SkillResult::NoLineOfSight);
+	}
+	else if( aimed && !(DistanceSq(caster._pos, mid) >= kMinAimDistSq) )
+		return reject(SkillResult::InvalidTarget);
 
-	if( single && (target->_dead || !CanAttack(caster, *target) || IsInvulnerable(*target)) )
+	if( single && !IsSkillTarget(caster, skill, *target) )
 		return reject(SkillResult::InvalidTarget);
 
 	readyAtMs = (readyAtMs > nowMs ? readyAtMs : nowMs) + skill.cooldownMs;
@@ -99,8 +122,8 @@ SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate&
 }
 
 //***************************************************************************
-// @brief ½ÃÀüÀ» ½ÃÀÛÇÕ´Ï´Ù. ¿Ï·á Å¸ÀÌ¸Ó¸¦ °É°í ÀÌµ¿ ÁßÀÌ¸é ¸ØÃä´Ï´Ù.
-// @return ½ÃÀüÀ» ½ÃÀÛÇßÀ¸¸é true, Å¸ÀÌ¸Ó¸¦ °É ¼ö ¾øÀ¸¸é false (È£ÃâÀÚ°¡ Áï½Ã ¹ßµ¿À¸·Î ´ë½ÅÇÑ´Ù)
+// @brief ì‹œì „ì„ ì‹œì‘í•©ë‹ˆë‹¤. ì™„ë£Œ íƒ€ì´ë¨¸ë¥¼ ê±¸ê³  ì´ë™ ì¤‘ì´ë©´ ë©ˆì¶¥ë‹ˆë‹¤.
+// @return ì‹œì „ì„ ì‹œì‘í–ˆìœ¼ë©´ true, íƒ€ì´ë¨¸ë¥¼ ê±¸ ìˆ˜ ì—†ìœ¼ë©´ false (í˜¸ì¶œìê°€ ì¦‰ì‹œ ë°œë™ìœ¼ë¡œ ëŒ€ì‹ í•œë‹¤)
 //***************************************************************************
 bool CFieldZoneBase::BeginCast(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& mid)
 {
@@ -132,10 +155,10 @@ bool CFieldZoneBase::BeginCast(CZoneEntity& caster, const SSkillTemplate& skill,
 }
 
 //***************************************************************************
-// @brief ½ÃÀü ¿Ï·á Å¸ÀÌ¸ÓÀÇ Ã³¸®ÀÔ´Ï´Ù. ½ÃÀü Áß ´Ş¶óÁø °ÍÀÌ ¾ø´ÂÁö ´Ù½Ã È®ÀÎÇÑ µÚ È¿°ú¸¦ ³À´Ï´Ù.
-//        SingleÀº ´ë»óÀÌ ¿©ÀüÈ÷ °ø°İ °¡´ÉÇÏ°í »ç°Å¸®/½Ã¼± ¾ÈÀÌ¾î¾ß ÇÏ¸ç, ´ë»óÀÇ ÇöÀç À§Ä¡°¡ È¿°ú Áß½ÉÀÌ µÈ´Ù.
-//        Area´Â ½ÃÀÛÇÒ ¶§ Á¤ÇÑ Áß½É¿¡¼­ ÅÍÁø´Ù(½ÃÀüÀÚ°¡ ¿òÁ÷ÀÌ¸é ÀÌ¹Ì Ãë¼ÒµÇ¾ú´Ù).
-// @param casterId ½ÃÀüÀÚ ID
+// @brief ì‹œì „ ì™„ë£Œ íƒ€ì´ë¨¸ì˜ ì²˜ë¦¬ì…ë‹ˆë‹¤. ì‹œì „ ì¤‘ ë‹¬ë¼ì§„ ê²ƒì´ ì—†ëŠ”ì§€ ë‹¤ì‹œ í™•ì¸í•œ ë’¤ íš¨ê³¼ë¥¼ ëƒ…ë‹ˆë‹¤.
+//        Singleì€ ëŒ€ìƒì´ ì—¬ì „íˆ ê³µê²© ê°€ëŠ¥í•˜ê³  ì‚¬ê±°ë¦¬/ì‹œì„  ì•ˆì´ì–´ì•¼ í•˜ë©°, ëŒ€ìƒì˜ í˜„ì¬ ìœ„ì¹˜ê°€ íš¨ê³¼ ì¤‘ì‹¬ì´ ëœë‹¤.
+//        AreaëŠ” ì‹œì‘í•  ë•Œ ì •í•œ ì¤‘ì‹¬ì—ì„œ í„°ì§„ë‹¤(ì‹œì „ìê°€ ì›€ì§ì´ë©´ ì´ë¯¸ ì·¨ì†Œë˜ì—ˆë‹¤).
+// @param casterId ì‹œì „ì ID
 //***************************************************************************
 void CFieldZoneBase::FinishCast(uint64 casterId)
 {
@@ -143,7 +166,7 @@ void CFieldZoneBase::FinishCast(uint64 casterId)
 	if( caster == nullptr || caster->_cast == nullptr )
 		return;
 
-	// Å¸ÀÌ¸Ó´Â ÀÌ¹Ì ¼ÒÁøµÇ¾úÀ¸¹Ç·Î Ãë¼ÒÇÏÁö ¾Ê°í »óÅÂ¸¸ ºñ¿î´Ù.
+	// íƒ€ì´ë¨¸ëŠ” ì´ë¯¸ ì†Œì§„ë˜ì—ˆìœ¼ë¯€ë¡œ ì·¨ì†Œí•˜ì§€ ì•Šê³  ìƒíƒœë§Œ ë¹„ìš´ë‹¤.
 	std::unique_ptr<SCastState> cast = std::move(caster->_cast);
 	if( caster->_dead )
 		return;
@@ -154,7 +177,7 @@ void CFieldZoneBase::FinishCast(uint64 casterId)
 	if( skill.shape == ESkillShape::Single )
 	{
 		CZoneEntity* target = FindEntity(cast->targetId);
-		if( target == nullptr || target->_dead || !CanAttack(*caster, *target) || IsInvulnerable(*target) )
+		if( target == nullptr || !IsSkillTarget(*caster, skill, *target) )
 		{
 			HandleSkillCastCancelled(*caster, skill, SkillCancelReason::InvalidTarget);
 			return;
@@ -180,11 +203,11 @@ void CFieldZoneBase::FinishCast(uint64 casterId)
 }
 
 //***************************************************************************
-// @brief ÁøÇà ÁßÀÎ ½ÃÀüÀ» Ãë¼ÒÇÕ´Ï´Ù. ¿Ï·á Å¸ÀÌ¸Ó¸¦ ÇØÁ¦ÇÏ°í Ãë¼Ò ÈÅÀ» È£ÃâÇÕ´Ï´Ù.
-//        Àç»ç¿ë ´ë±â´Â µ¹·ÁÁÖÁö ¾Ê½À´Ï´Ù. Á¸ ½º·¹µå¿¡¼­¸¸ È£ÃâÇØ¾ß ÇÕ´Ï´Ù.
-// @param caster ½ÃÀüÀÚ
-// @param reason Ãë¼Ò »çÀ¯
-// @return Ãë¼ÒÇßÀ¸¸é true, ½ÃÀü ÁßÀÌ ¾Æ´Ï¸é false
+// @brief ì§„í–‰ ì¤‘ì¸ ì‹œì „ì„ ì·¨ì†Œí•©ë‹ˆë‹¤. ì™„ë£Œ íƒ€ì´ë¨¸ë¥¼ í•´ì œí•˜ê³  ì·¨ì†Œ í›…ì„ í˜¸ì¶œí•©ë‹ˆë‹¤.
+//        ì¬ì‚¬ìš© ëŒ€ê¸°ëŠ” ëŒë ¤ì£¼ì§€ ì•ŠìŠµë‹ˆë‹¤. ì¡´ ìŠ¤ë ˆë“œì—ì„œë§Œ í˜¸ì¶œí•´ì•¼ í•©ë‹ˆë‹¤.
+// @param caster ì‹œì „ì
+// @param reason ì·¨ì†Œ ì‚¬ìœ 
+// @return ì·¨ì†Œí–ˆìœ¼ë©´ true, ì‹œì „ ì¤‘ì´ ì•„ë‹ˆë©´ false
 //***************************************************************************
 bool CFieldZoneBase::CancelCast(CZoneEntity& caster, SkillCancelReason reason)
 {
@@ -199,12 +222,12 @@ bool CFieldZoneBase::CancelCast(CZoneEntity& caster, SkillCancelReason reason)
 }
 
 //***************************************************************************
-// @brief °ËÁõÀ» ¸¶Ä£ ½ºÅ³ÀÇ È¿°ú¸¦ ³À´Ï´Ù. Áï½Ã ½ºÅ³Àº ¹Ù·Î ÇÇÇØ¸¦ ÁÖ°í, Åõ»çÃ¼ ½ºÅ³Àº ¹ß»ç¸¸ ÇÑ´Ù.
-//        ½ÃÀü ¾Ë¸²Àº ÇÇÇØ ¾Ë¸²º¸´Ù ¸ÕÀú ³ª°£´Ù.
-// @param caster   ½ÃÀüÀÚ
-// @param skill    ½ºÅ³
-// @param targetId SingleÀÇ ´ë»ó ID (Area´Â 0)
-// @param mid      È¿°ú Áß½É (SingleÀº ´ë»ó À§Ä¡)
+// @brief ê²€ì¦ì„ ë§ˆì¹œ ìŠ¤í‚¬ì˜ íš¨ê³¼ë¥¼ ëƒ…ë‹ˆë‹¤. ì¦‰ì‹œ ìŠ¤í‚¬ì€ ë°”ë¡œ í”¼í•´ë¥¼ ì£¼ê³ , íˆ¬ì‚¬ì²´ ìŠ¤í‚¬ì€ ë°œì‚¬ë§Œ í•œë‹¤.
+//        ì‹œì „ ì•Œë¦¼ì€ í”¼í•´ ì•Œë¦¼ë³´ë‹¤ ë¨¼ì € ë‚˜ê°„ë‹¤.
+// @param caster   ì‹œì „ì
+// @param skill    ìŠ¤í‚¬
+// @param targetId Singleì˜ ëŒ€ìƒ ID (AreaëŠ” 0)
+// @param mid      íš¨ê³¼ ì¤‘ì‹¬ (Singleì€ ëŒ€ìƒ ìœ„ì¹˜)
 //***************************************************************************
 void CFieldZoneBase::ExecuteSkill(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& mid)
 {
@@ -225,26 +248,92 @@ void CFieldZoneBase::ExecuteSkill(CZoneEntity& caster, const SSkillTemplate& ski
 }
 
 //***************************************************************************
-// @brief ¸Â´Â ´ë»óÀ» ¸ğÀ¾´Ï´Ù. SingleÀº ´ë»óÀÌ ¿©ÀüÈ÷ °ø°İ °¡´ÉÇÒ ¶§¸¸ ÇÏ³ª, Area´Â Áß½É¿¡¼­ radius ¾ÈÀÇ °ø°İ °¡´ÉÇÑ ¿£Æ¼Æ¼¸¦
-//        Àå¾Ö¹°¿¡ °¡¸° °ÍÀ» »©°í ¸ğ¾Æ Áß½É¿¡ °¡±î¿î ¼ø(°°À¸¸é ID ¼ø)À¸·Î maxTargets±îÁö ³²±ä´Ù.
+// @brief ìŠ¤í‚¬ì´ ì´ ì—”í‹°í‹°ì—ê²Œ íš¨ê³¼ë¥¼ ë‚¼ ìˆ˜ ìˆëŠ”ì§€ í™•ì¸í•©ë‹ˆë‹¤. ì‚¬ë§í•œ ì—”í‹°í‹°ëŠ” í•­ìƒ ì œì™¸í•©ë‹ˆë‹¤.
+//        Enemy: ì‹œì „ìê°€ ì•„ë‹ˆê³  ê³µê²© ê°€ëŠ¥(CanAttack)í•˜ë©° ë¬´ì ì´ ì•„ë‹Œ ì—”í‹°í‹°.
+//        Ally : ì‹œì „ì ë³¸ì¸ì´ê±°ë‚˜, ì „íˆ¬ ê°€ëŠ¥í•œ ì—”í‹°í‹° ì¤‘ ê³µê²©í•  ìˆ˜ ì—†ëŠ” ìª½(ê°™ì€ í¸). ë¬´ì ì´ì–´ë„ ì¹˜ìœ /ë²„í”„ëŠ” ë°›ì„ ìˆ˜ ìˆë‹¤.
+//***************************************************************************
+bool CFieldZoneBase::IsSkillTarget(const CZoneEntity& caster, const SSkillTemplate& skill, const CZoneEntity& e) const
+{
+	if( e._dead )
+		return false;
+
+	if( skill.target == ESkillTarget::Ally )
+		return &e == &caster || (caster.IsCombatant() && e.IsCombatant() && !CanAttack(caster, e));
+
+	return &e != &caster && CanAttack(caster, e) && !IsInvulnerable(e);
+}
+
+//***************************************************************************
+// @brief ë§ëŠ” ëŒ€ìƒì„ ëª¨ìë‹ˆë‹¤. ëª¨ì–‘ë³„ ê·œì¹™:
+//        Single : ëŒ€ìƒì´ ì—¬ì „íˆ ìœ íš¨í•  ë•Œë§Œ í•˜ë‚˜.
+//        Area   : mid ì¤‘ì‹¬ radius ì›. í­ë°œì€ ì¤‘ì‹¬ì—ì„œ ê°€ë ¤ì§„ ëŒ€ìƒì—ê²Œ ë‹¿ì§€ ì•ŠëŠ”ë‹¤.
+//        Self   : ì‹œì „ì ìœ„ì¹˜ ì¤‘ì‹¬ radius ì›.
+//        Cone   : ì‹œì „ìì—ì„œ mid ë°©í–¥ìœ¼ë¡œ range ì´ë‚´, ë°©í–¥ê³¼ì˜ ê°ë„ê°€ angle/2 ì´ë‚´.
+//        Line   : ì‹œì „ìì—ì„œ mid ë°©í–¥ìœ¼ë¡œ ê¸¸ì´ range, ì¢Œìš° radius ì´ë‚´.
+//        Self/Cone/Lineì€ ì‹œì „ì ìœ„ì¹˜ì—ì„œ ë²½ì— ê°€ë ¤ì§„ ëŒ€ìƒì„ ëº€ë‹¤. ê²°ê³¼ëŠ” ê¸°ì¤€ì ì— ê°€ê¹Œìš´ ìˆœ(ê°™ìœ¼ë©´ ID ìˆœ)ìœ¼ë¡œ maxTargetsê¹Œì§€ ë‚¨ê¸´ë‹¤.
 //***************************************************************************
 void CFieldZoneBase::CollectHits(CZoneEntity& caster, const SSkillTemplate& skill, CZoneEntity* target, const Vec2& mid, std::vector<SSkillHit>& hits) const
 {
 	hits.clear();
 	if( skill.shape == ESkillShape::Single )
 	{
-		if( target != nullptr && !target->_dead && CanAttack(caster, *target) && !IsInvulnerable(*target) )
+		if( target != nullptr && IsSkillTarget(caster, skill, *target) )
 			hits.push_back({ 0.0f, target->GetId() });
 		return;
 	}
 
-	ForEachInRadius(mid, skill.radius, [&](CZoneEntity& e)
+	const bool fromCaster = skill.shape != ESkillShape::Area;
+	const Vec2 origin = fromCaster ? caster._pos : mid;
+
+	float queryRadius = skill.radius;
+	Vec2 dir{ 0.0f, 0.0f };
+	float cosHalf = -1.0f;
+	if( skill.shape == ESkillShape::Cone || skill.shape == ESkillShape::Line )
+	{
+		const float dx = mid.x - origin.x, dy = mid.y - origin.y;
+		const float len = std::sqrt(dx * dx + dy * dy);
+		if( !(len * len >= kMinAimDistSq) )
+			return;		// ë°©í–¥ì´ ì—†ë‹¤
+		dir = { dx / len, dy / len };
+		if( skill.shape == ESkillShape::Cone )
 		{
-			if( &e == &caster || e._dead || !CanAttack(caster, e) || IsInvulnerable(e) )
+			queryRadius = skill.range;
+			cosHalf = std::cos(skill.angle * 0.5f * kPi / 180.0f);
+		}
+		else
+			queryRadius = std::sqrt(skill.range * skill.range + skill.radius * skill.radius);
+	}
+
+	ForEachInRadius(origin, queryRadius, [&](CZoneEntity& e)
+		{
+			if( !IsSkillTarget(caster, skill, e) )
 				return;
-			if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(mid, e._pos) )
-				return;		// Æø¹ßÀÌ º®¿¡ °¡·ÁÁø ´ë»ó¿¡°Ô´Â ´êÁö ¾Ê´Â´Ù
-			hits.push_back({ DistanceSq(mid, e._pos), e.GetId() });
+
+			const float dx = e._pos.x - origin.x, dy = e._pos.y - origin.y;
+			const float distSq = dx * dx + dy * dy;
+			if( skill.shape == ESkillShape::Cone )
+			{
+				if( distSq > skill.range * skill.range )
+					return;
+				if( distSq > 1e-8f )
+				{
+					const float along = dx * dir.x + dy * dir.y;
+					if( !(along >= cosHalf * std::sqrt(distSq)) )
+						return;
+				}
+			}
+			else if( skill.shape == ESkillShape::Line )
+			{
+				const float along = dx * dir.x + dy * dir.y;
+				const float side = dx * dir.y - dy * dir.x;
+				if( along < 0.0f || along > skill.range || std::fabs(side) > skill.radius )
+					return;
+			}
+
+			if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(origin, e._pos) )
+				return;		// ë²½ì— ê°€ë ¤ì§„ ëŒ€ìƒì—ê²ŒëŠ” ë‹¿ì§€ ì•ŠëŠ”ë‹¤
+
+			hits.push_back({ distSq, e.GetId() });
 		});
 
 	std::sort(hits.begin(), hits.end(), [](const SSkillHit& a, const SSkillHit& b)
@@ -256,14 +345,16 @@ void CFieldZoneBase::CollectHits(CZoneEntity& caster, const SSkillTemplate& skil
 }
 
 //***************************************************************************
-// @brief ¸ğÀº ´ë»ó¿¡°Ô ÇÇÇØ¿Í »óÅÂ È¿°ú¸¦ Àû¿ëÇÕ´Ï´Ù. ¾Õ¼± ÇÇÇØÀÇ ÈÅ¿¡¼­ »ç¸Á/ÅğÀåÇÑ ´ë»óÀº °Ç³Ê¶İ´Ï´Ù.
-// @param attack ÇÇÇØ °è»ê¿¡ ¾²´Â ½ÃÀüÀÚ °ø°İ·Â (Áï½Ã ½ºÅ³Àº ÇöÀç °ª, Åõ»çÃ¼´Â ¹ß»ç ½ÃÁ¡ °ª)
+// @brief ëª¨ì€ ëŒ€ìƒì—ê²Œ í”¼í•´ì™€ ìƒíƒœ íš¨ê³¼ë¥¼ ì ìš©í•©ë‹ˆë‹¤. ì•ì„  í”¼í•´ì˜ í›…ì—ì„œ ì‚¬ë§/í‡´ì¥í•œ ëŒ€ìƒì€ ê±´ë„ˆëœë‹ˆë‹¤.
+// @param attack í”¼í•´ ê³„ì‚°ì— ì“°ëŠ” ì‹œì „ì ê³µê²©ë ¥ (ì¦‰ì‹œ ìŠ¤í‚¬ì€ í˜„ì¬ ê°’, íˆ¬ì‚¬ì²´ëŠ” ë°œì‚¬ ì‹œì  ê°’)
 //***************************************************************************
 void CFieldZoneBase::ApplyHits(CZoneEntity& caster, const SSkillTemplate& skill, const std::vector<SSkillHit>& hits, int32 attack)
 {
 	const SStatusTemplate* status = skill.statusId != 0 ? FindStatusTemplate(skill.statusId) : nullptr;
 	const bool statusOnHit = status != nullptr && status->target == EStatusTarget::Hit;
 	const bool damaging = SkillHasDamage(skill);
+	const bool healing = SkillHasHeal(skill);
+	const int32 healAmount = healing ? CalcSkillHeal(skill, attack) : 0;
 
 	for( const SSkillHit& hit : hits )
 	{
@@ -274,13 +365,16 @@ void CFieldZoneBase::ApplyHits(CZoneEntity& caster, const SSkillTemplate& skill,
 		if( damaging )
 			DealDamage(*victim, &caster, CalcSkillDamage(skill, attack, victim->GetDefense(), _fieldConfig.minDamage));
 
+		if( healing && !victim->_dead )
+			Heal(*victim, healAmount);
+
 		if( statusOnHit && !victim->_dead )
 			ApplyStatus(*victim, *status, &caster);
 	}
 }
 
 //***************************************************************************
-// @brief ½ºÅ³ÀÌ ½ÃÀüÀÚ º»ÀÎ¿¡°Ô °Å´Â »óÅÂ È¿°ú(target == Self)¸¦ Àû¿ëÇÕ´Ï´Ù.
+// @brief ìŠ¤í‚¬ì´ ì‹œì „ì ë³¸ì¸ì—ê²Œ ê±°ëŠ” ìƒíƒœ íš¨ê³¼(target == Self)ë¥¼ ì ìš©í•©ë‹ˆë‹¤.
 //***************************************************************************
 void CFieldZoneBase::ApplySelfStatus(CZoneEntity& caster, const SSkillTemplate& skill)
 {
@@ -293,9 +387,9 @@ void CFieldZoneBase::ApplySelfStatus(CZoneEntity& caster, const SSkillTemplate& 
 }
 
 //***************************************************************************
-// @brief Åõ»çÃ¼¸¦ ¹ß»çÇÕ´Ï´Ù. º°µµ ¿£Æ¼Æ¼ ¾øÀÌ ÂøÅº ½Ã°¢¿¡ Å¸ÀÌ¸Ó·Î ÆÇÁ¤ÇÑ´Ù.
-//        ºñÇà ½Ã°£Àº °Å¸®/¼Óµµ(Æ½ °£°İ ÀÌ»ó, kMaxProjectileFlightMs ÀÌÇÏ). ½ÃÀü ¾Ë¸²(ÀûÁß ¼ö 0)°ú ¹ß»ç ¾Ë¸²ÀÌ ³ª°¡°í,
-//        ½ÃÀüÀÚ º»ÀÎ¿¡°Ô °Å´Â »óÅÂ È¿°ú´Â ¹ß»ç ½ÃÁ¡¿¡ Àû¿ëÇÑ´Ù.
+// @brief íˆ¬ì‚¬ì²´ë¥¼ ë°œì‚¬í•©ë‹ˆë‹¤. ë³„ë„ ì—”í‹°í‹° ì—†ì´ ì°©íƒ„ ì‹œê°ì— íƒ€ì´ë¨¸ë¡œ íŒì •í•œë‹¤.
+//        ë¹„í–‰ ì‹œê°„ì€ ê±°ë¦¬/ì†ë„(í‹± ê°„ê²© ì´ìƒ, kMaxProjectileFlightMs ì´í•˜). ì‹œì „ ì•Œë¦¼(ì ì¤‘ ìˆ˜ 0)ê³¼ ë°œì‚¬ ì•Œë¦¼ì´ ë‚˜ê°€ê³ ,
+//        ì‹œì „ì ë³¸ì¸ì—ê²Œ ê±°ëŠ” ìƒíƒœ íš¨ê³¼ëŠ” ë°œì‚¬ ì‹œì ì— ì ìš©í•œë‹¤.
 //***************************************************************************
 void CFieldZoneBase::LaunchProjectile(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& mid)
 {
@@ -322,7 +416,7 @@ void CFieldZoneBase::LaunchProjectile(CZoneEntity& caster, const SSkillTemplate&
 			static_cast<CFieldZoneBase&>(zone).LandProjectile(casterId, skill, projectileId, targetId, from, mid, attack);
 		});
 
-	// Å¸ÀÌ¸Ó¸¦ °É ¼ö ¾øÀ¸¸é Çã°ø¿¡¼­ »ç¶óÁöÁö ¾Êµµ·Ï ¹Ù·Î ÂøÅº½ÃÅ²´Ù.
+	// íƒ€ì´ë¨¸ë¥¼ ê±¸ ìˆ˜ ì—†ìœ¼ë©´ í—ˆê³µì—ì„œ ì‚¬ë¼ì§€ì§€ ì•Šë„ë¡ ë°”ë¡œ ì°©íƒ„ì‹œí‚¨ë‹¤.
 	if( timerId == 0 )
 	{
 		LOG_ERROR(_T("[CFieldZoneBase] projectile timer failed; landing immediately. zoneId=%u, entityId=%llu, skillId=%u"),
@@ -332,10 +426,10 @@ void CFieldZoneBase::LaunchProjectile(CZoneEntity& caster, const SSkillTemplate&
 }
 
 //***************************************************************************
-// @brief Åõ»çÃ¼ ÂøÅº Ã³¸®ÀÔ´Ï´Ù. ½ÃÀüÀÚ°¡ Á¸À» ¶°³µÀ¸¸é »ç¶óÁø´Ù(¾Ë¸² ¾øÀ½).
-//        SingleÀº ´ë»óÀ» ÂÑ¾Æ°¡ ÂøÅº ½ÃÁ¡ÀÇ À§Ä¡¿¡¼­ ¸ÂÀ¸¸ç, ´ë»óÀÌ »ç¶óÁ³°Å³ª ¹«Àû/°ø°İ ºÒ°¡ÀÌ°Å³ª ¹ß»ç ÁöÁ¡°úÀÇ »çÀÌ¿¡
-//        Àå¾Ö¹°ÀÌ »ı°åÀ¸¸é ºø³ª°£´Ù(ÀûÁß 0À¸·Î ÂøÅº ¾Ë¸²). Area´Â ¹ß»ç ¶§ Á¤ÇÑ ÁöÁ¡¿¡¼­ ÅÍÁø´Ù.
-// @param attack ¹ß»ç ½ÃÁ¡ÀÇ ½ÃÀüÀÚ °ø°İ·Â
+// @brief íˆ¬ì‚¬ì²´ ì°©íƒ„ ì²˜ë¦¬ì…ë‹ˆë‹¤. ì‹œì „ìê°€ ì¡´ì„ ë– ë‚¬ìœ¼ë©´ ì‚¬ë¼ì§„ë‹¤(ì•Œë¦¼ ì—†ìŒ).
+//        Singleì€ ëŒ€ìƒì„ ì«“ì•„ê°€ ì°©íƒ„ ì‹œì ì˜ ìœ„ì¹˜ì—ì„œ ë§ìœ¼ë©°, ëŒ€ìƒì´ ì‚¬ë¼ì¡Œê±°ë‚˜ ë¬´ì /ê³µê²© ë¶ˆê°€ì´ê±°ë‚˜ ë°œì‚¬ ì§€ì ê³¼ì˜ ì‚¬ì´ì—
+//        ì¥ì• ë¬¼ì´ ìƒê²¼ìœ¼ë©´ ë¹—ë‚˜ê°„ë‹¤(ì ì¤‘ 0ìœ¼ë¡œ ì°©íƒ„ ì•Œë¦¼). AreaëŠ” ë°œì‚¬ ë•Œ ì •í•œ ì§€ì ì—ì„œ í„°ì§„ë‹¤.
+// @param attack ë°œì‚¬ ì‹œì ì˜ ì‹œì „ì ê³µê²©ë ¥
 //***************************************************************************
 void CFieldZoneBase::LandProjectile(uint64 casterId, const SSkillTemplate& skill, uint32 projectileId, uint64 targetId, const Vec2& from, const Vec2& mid, int32 attack)
 {
@@ -365,13 +459,13 @@ void CFieldZoneBase::LandProjectile(uint64 casterId, const SSkillTemplate& skill
 }
 
 //***************************************************************************
-// @brief »óÅÂ È¿°ú¸¦ °Ì´Ï´Ù. °°Àº ID°¡ ÀÌ¹Ì °É·Á ÀÖÀ¸¸é Áö¼Ó½Ã°£À» »õ·Î ½ÃÀÛÇÏ°í °ªÀ» °»½ÅÇÕ´Ï´Ù(ÁßÃ¸ ¾øÀ½).
-//        DotÀÇ Æ½ ÇÇÇØ´Â °Ç ¼ø°£ÀÇ ½ÃÀüÀÚ °ø°İ·ÂÀ¸·Î Á¤ÇØÁı´Ï´Ù. ¿£Æ¼Æ¼´ç kMaxStatusesPerEntity°³±îÁöÀÌ¸ç °¡µæ Â÷¸é »õ È¿°ú´Â °É¸®Áö ¾Ê½À´Ï´Ù.
-//        Á×Àº ¿£Æ¼Æ¼¿¡´Â °É¸®Áö ¾Ê½À´Ï´Ù. Á¸ ½º·¹µå¿¡¼­¸¸ È£ÃâÇØ¾ß ÇÕ´Ï´Ù.
-// @param target È¿°ú¸¦ ¹ŞÀ» ¿£Æ¼Æ¼ (ÀÌ Á¸¿¡ µî·ÏµÈ ¿£Æ¼Æ¼)
-// @param status »óÅÂ È¿°ú µ¥ÀÌÅÍ
-// @param caster °Ç ¿£Æ¼Æ¼ (¾øÀ¸¸é nullptr. Dot ÇÇÇØ´Â °ø°İ·Â 0 ±âÁØÀ¸·Î °è»êµÇ°í ÇÇÇØÀÇ °ø°İÀÚµµ ¾ø´Ù)
-// @return °É¾ú°Å³ª °»½ÅÇßÀ¸¸é true
+// @brief ìƒíƒœ íš¨ê³¼ë¥¼ ê²ë‹ˆë‹¤. ê°™ì€ IDê°€ ì´ë¯¸ ê±¸ë ¤ ìˆìœ¼ë©´ ì§€ì†ì‹œê°„ì„ ìƒˆë¡œ ì‹œì‘í•˜ê³  ê°’ì„ ê°±ì‹ í•©ë‹ˆë‹¤(ì¤‘ì²© ì—†ìŒ).
+//        Dotì˜ í‹± í”¼í•´ëŠ” ê±´ ìˆœê°„ì˜ ì‹œì „ì ê³µê²©ë ¥ìœ¼ë¡œ ì •í•´ì§‘ë‹ˆë‹¤. ì—”í‹°í‹°ë‹¹ kMaxStatusesPerEntityê°œê¹Œì§€ì´ë©° ê°€ë“ ì°¨ë©´ ìƒˆ íš¨ê³¼ëŠ” ê±¸ë¦¬ì§€ ì•ŠìŠµë‹ˆë‹¤.
+//        ì£½ì€ ì—”í‹°í‹°ì—ëŠ” ê±¸ë¦¬ì§€ ì•ŠìŠµë‹ˆë‹¤. ì¡´ ìŠ¤ë ˆë“œì—ì„œë§Œ í˜¸ì¶œí•´ì•¼ í•©ë‹ˆë‹¤.
+// @param target íš¨ê³¼ë¥¼ ë°›ì„ ì—”í‹°í‹° (ì´ ì¡´ì— ë“±ë¡ëœ ì—”í‹°í‹°)
+// @param status ìƒíƒœ íš¨ê³¼ ë°ì´í„°
+// @param caster ê±´ ì—”í‹°í‹° (ì—†ìœ¼ë©´ nullptr. Dot í”¼í•´ëŠ” ê³µê²©ë ¥ 0 ê¸°ì¤€ìœ¼ë¡œ ê³„ì‚°ë˜ê³  í”¼í•´ì˜ ê³µê²©ìë„ ì—†ë‹¤)
+// @return ê±¸ì—ˆê±°ë‚˜ ê°±ì‹ í–ˆìœ¼ë©´ true
 //***************************************************************************
 bool CFieldZoneBase::ApplyStatus(CZoneEntity& target, const SStatusTemplate& status, CZoneEntity* caster)
 {
@@ -410,21 +504,36 @@ bool CFieldZoneBase::ApplyStatus(CZoneEntity& target, const SStatusTemplate& sta
 	slot->endMs = nowMs + status.durationMs;
 	slot->tickMs = status.tickMs;
 	slot->nextTickMs = nowMs + status.tickMs;
-	slot->dotDamage = status.kind == EStatusKind::Dot ? CalcDotDamage(status, caster != nullptr ? caster->GetAttack() : 0) : 0;
+	const int32 casterAttack = caster != nullptr ? caster->GetAttack() : 0;
+	switch( status.kind )
+	{
+	case EStatusKind::Dot:		slot->amount = CalcDotDamage(status, casterAttack); break;
+	case EStatusKind::Hot:
+	case EStatusKind::Shield:	slot->amount = CalcStatusAmount(status, casterAttack); break;
+	default:					slot->amount = 0; break;
+	}
 	slot->attackPercent = status.attackPercent;
 	slot->defensePercent = status.defensePercent;
 	slot->speedPercent = status.speedPercent;
 
 	RecomputeStatMods(target);
 
+	// ê¸°ì ˆì€ ê±¸ë¦¬ëŠ” ìˆœê°„ ì‹œì „ì„ ëŠê³  ì´ë™ì„ ë©ˆì¶˜ë‹¤.
+	if( status.kind == EStatusKind::Stun )
+	{
+		CancelCast(target, SkillCancelReason::Stunned);
+		if( !_updatingMovement && target._moving )
+			StopMove(target.GetId());
+	}
+
 	HandleStatusApplied(target, status, slot->casterId);
 	return true;
 }
 
 //***************************************************************************
-// @brief ¿£Æ¼Æ¼ÀÇ »óÅÂ È¿°ú¸¦ ¸ğµÎ ÇØÁ¦ÇÕ´Ï´Ù. ÇØÁ¦¸¶´Ù ÈÅÀ» È£ÃâÇÏ¸ç, ´É·ÂÄ¡ º¸Á¤µµ ¿ø·¡´ë·Î µ¹¾Æ¿É´Ï´Ù.
-// @param entity ´ë»ó ¿£Æ¼Æ¼
-// @param reason ÇØÁ¦ »çÀ¯
+// @brief ì—”í‹°í‹°ì˜ ìƒíƒœ íš¨ê³¼ë¥¼ ëª¨ë‘ í•´ì œí•©ë‹ˆë‹¤. í•´ì œë§ˆë‹¤ í›…ì„ í˜¸ì¶œí•˜ë©°, ëŠ¥ë ¥ì¹˜ ë³´ì •ë„ ì›ë˜ëŒ€ë¡œ ëŒì•„ì˜µë‹ˆë‹¤.
+// @param entity ëŒ€ìƒ ì—”í‹°í‹°
+// @param reason í•´ì œ ì‚¬ìœ 
 //***************************************************************************
 void CFieldZoneBase::ClearStatuses(CZoneEntity& entity, StatusEndReason reason)
 {
@@ -445,7 +554,7 @@ void CFieldZoneBase::ClearStatuses(CZoneEntity& entity, StatusEndReason reason)
 }
 
 //***************************************************************************
-// @brief ¿£Æ¼Æ¼¸¦ »óÅÂ È¿°ú º¸À¯ ¸ñ·Ï¿¡¼­ O(1)·Î »®´Ï´Ù. (¸¶Áö¸· ¿ø¼Ò¿Í ±³Ã¼ ÈÄ pop)
+// @brief ì—”í‹°í‹°ë¥¼ ìƒíƒœ íš¨ê³¼ ë³´ìœ  ëª©ë¡ì—ì„œ O(1)ë¡œ ëºë‹ˆë‹¤. (ë§ˆì§€ë§‰ ì›ì†Œì™€ êµì²´ í›„ pop)
 //***************************************************************************
 void CFieldZoneBase::RemoveStatusHolder(CZoneEntity& entity)
 {
@@ -462,7 +571,7 @@ void CFieldZoneBase::RemoveStatusHolder(CZoneEntity& entity)
 }
 
 //***************************************************************************
-// @brief °É·Á ÀÖ´Â BuffÀÇ Áõ°¨(%)À» ÇÕ»êÇØ °ø°İ·Â/¹æ¾î·Â/ÀÌµ¿¼Óµµ º¸Á¤À» ´Ù½Ã °è»êÇÕ´Ï´Ù. ÇÕ°è´Â kMin/kMaxStatPercent·Î ¹­´Â´Ù.
+// @brief ê±¸ë ¤ ìˆëŠ” Buffì˜ ì¦ê°(%)ì„ í•©ì‚°í•´ ê³µê²©ë ¥/ë°©ì–´ë ¥/ì´ë™ì†ë„ ë³´ì •ì„ ë‹¤ì‹œ ê³„ì‚°í•©ë‹ˆë‹¤. í•©ê³„ëŠ” kMin/kMaxStatPercentë¡œ ë¬¶ëŠ”ë‹¤.
 //***************************************************************************
 void CFieldZoneBase::RecomputeStatMods(CZoneEntity& entity)
 {
@@ -483,7 +592,7 @@ void CFieldZoneBase::RecomputeStatMods(CZoneEntity& entity)
 }
 
 //***************************************************************************
-// @brief Á¸¿¡¼­ Á¦°ÅµÇ´Â ¿£Æ¼Æ¼ÀÇ ½ÃÀü/»óÅÂ È¿°ú¸¦ ÈÅ ¾øÀÌ Á¤¸®ÇÕ´Ï´Ù. ½ÃÀü Å¸ÀÌ¸Ó¸¦ ÇØÁ¦ÇÏ°í º¸À¯ ¸ñ·Ï¿¡¼­ »«´Ù.
+// @brief ì¡´ì—ì„œ ì œê±°ë˜ëŠ” ì—”í‹°í‹°ì˜ ì‹œì „/ìƒíƒœ íš¨ê³¼ë¥¼ í›… ì—†ì´ ì •ë¦¬í•©ë‹ˆë‹¤. ì‹œì „ íƒ€ì´ë¨¸ë¥¼ í•´ì œí•˜ê³  ë³´ìœ  ëª©ë¡ì—ì„œ ëº€ë‹¤.
 //***************************************************************************
 void CFieldZoneBase::DetachSkillState(CZoneEntity& entity)
 {
@@ -498,9 +607,9 @@ void CFieldZoneBase::DetachSkillState(CZoneEntity& entity)
 }
 
 //***************************************************************************
-// @brief ¸Å Æ½ »óÅÂ È¿°ú¸¦ °»½ÅÇÕ´Ï´Ù. º¸À¯ ¿£Æ¼Æ¼¸¸ ¼øÈ¸ÇÑ´Ù.
-//        DotÀº Æ½ ½Ã°¢ÀÌ µÈ ¸¸Å­ ÇÇÇØ¸¦ ÁÖ°í(Æ½ °£°İÀÌ Áö³ªÄ¡°Ô ¹Ğ·Áµµ ÇÑ ¹ø¿¡ »óÅÂ´ç 4Æ½±îÁö¸¸ Ã³¸®ÇÏ°í ³ª¸ÓÁö´Â ´ÙÀ½ Æ½¿¡ ÀÌ¾î¼­ ÇÑ´Ù),
-//        Áö¼Ó½Ã°£ÀÌ ³¡³ª¸é ¸¶Áö¸· Æ½±îÁö ¸¶Ä£ µÚ ÇØÁ¦ÇÑ´Ù. ¸¸·á Ã³¸®¸¦ ÇÇÇØº¸´Ù ¸ÕÀú ÇØ¼­, ÇÇÇØ ÈÅÀÌ ¾î¶² ÀÏÀ» ÇÏµç ¸ñ·ÏÀÌ ÀÏ°üµÇ°Ô À¯ÁöµÈ´Ù.
+// @brief ë§¤ í‹± ìƒíƒœ íš¨ê³¼ë¥¼ ê°±ì‹ í•©ë‹ˆë‹¤. ë³´ìœ  ì—”í‹°í‹°ë§Œ ìˆœíšŒí•œë‹¤.
+//        Dotì€ í‹± ì‹œê°ì´ ëœ ë§Œí¼ í”¼í•´ë¥¼ ì£¼ê³ (í‹± ê°„ê²©ì´ ì§€ë‚˜ì¹˜ê²Œ ë°€ë ¤ë„ í•œ ë²ˆì— ìƒíƒœë‹¹ 4í‹±ê¹Œì§€ë§Œ ì²˜ë¦¬í•˜ê³  ë‚˜ë¨¸ì§€ëŠ” ë‹¤ìŒ í‹±ì— ì´ì–´ì„œ í•œë‹¤),
+//        ì§€ì†ì‹œê°„ì´ ëë‚˜ë©´ ë§ˆì§€ë§‰ í‹±ê¹Œì§€ ë§ˆì¹œ ë’¤ í•´ì œí•œë‹¤. ë§Œë£Œ ì²˜ë¦¬ë¥¼ í”¼í•´ë³´ë‹¤ ë¨¼ì € í•´ì„œ, í”¼í•´ í›…ì´ ì–´ë–¤ ì¼ì„ í•˜ë“  ëª©ë¡ì´ ì¼ê´€ë˜ê²Œ ìœ ì§€ëœë‹¤.
 //***************************************************************************
 void CFieldZoneBase::UpdateStatuses()
 {
@@ -508,7 +617,7 @@ void CFieldZoneBase::UpdateStatuses()
 		return;
 
 	constexpr uint32 kMaxTicksPerStatus = 4;
-	struct STick { int32 damage; uint64 casterId; };
+	struct STick { int32 amount; uint64 casterId; bool heal; };
 
 	const uint64 nowMs = GetNowMs();
 
@@ -526,11 +635,11 @@ void CFieldZoneBase::UpdateStatuses()
 		size_t tickCount = 0;
 		for( SActiveStatus& s : entity->_statuses )
 		{
-			if( s.kind != EStatusKind::Dot || s.tickMs == 0 )
+			if( (s.kind != EStatusKind::Dot && s.kind != EStatusKind::Hot) || s.tickMs == 0 )
 				continue;
 			for( uint32 n = 0; n < kMaxTicksPerStatus && s.nextTickMs <= nowMs && s.nextTickMs <= s.endMs; ++n )
 			{
-				ticks[tickCount++] = { s.dotDamage, s.casterId };
+				ticks[tickCount++] = { s.amount, s.casterId, s.kind == EStatusKind::Hot };
 				s.nextTickMs += s.tickMs;
 			}
 		}
@@ -540,7 +649,7 @@ void CFieldZoneBase::UpdateStatuses()
 		for( size_t i = 0; i < entity->_statuses.size(); )
 		{
 			const SActiveStatus& s = entity->_statuses[i];
-			const bool ticksLeft = s.kind == EStatusKind::Dot && s.tickMs != 0 && s.nextTickMs <= s.endMs;
+			const bool ticksLeft = (s.kind == EStatusKind::Dot || s.kind == EStatusKind::Hot) && s.tickMs != 0 && s.nextTickMs <= s.endMs;
 			if( s.endMs <= nowMs && !ticksLeft )
 			{
 				ended[endedCount++] = s.id;
@@ -561,11 +670,16 @@ void CFieldZoneBase::UpdateStatuses()
 			HandleStatusEnded(*entity, ended[i], StatusEndReason::Expired);
 
 		for( size_t i = 0; i < tickCount && !entity->_dead; ++i )
-			DealDamage(*entity, FindEntity(ticks[i].casterId), ticks[i].damage);
+		{
+			if( ticks[i].heal )
+				Heal(*entity, ticks[i].amount);
+			else
+				DealDamage(*entity, FindEntity(ticks[i].casterId), ticks[i].amount);
+		}
 	}
 }
 
-// ¦¡¦¡ ÈÅÀÇ ±âº» ±¸Çö (¾Æ¹«°Íµµ ÇÏÁö ¾Ê´Â´Ù) ¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡¦¡
+// â”€â”€ í›…ì˜ ê¸°ë³¸ êµ¬í˜„ (ì•„ë¬´ê²ƒë„ í•˜ì§€ ì•ŠëŠ”ë‹¤) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 void CFieldZoneBase::HandleSkillCastStarted(CZoneEntity& caster, const SSkillTemplate& skill, uint64 targetId, const Vec2& center)
 {

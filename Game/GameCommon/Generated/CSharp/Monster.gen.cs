@@ -25,6 +25,8 @@ namespace Game.Data
 		public double AggroRange { get; set; }
 		public double LeashRange { get; set; }
 		public uint RespawnMs { get; set; }
+		public double AssistRange { get; set; }
+		public uint SkillId { get; set; }
 
 		/// <summary>헤더의 [min..max]를 벗어난 값을 errors에 덧붙인다.</summary>
 		public void Validate(string where, List<string> errors)

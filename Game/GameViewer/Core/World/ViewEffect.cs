@@ -19,7 +19,8 @@ namespace GameViewer.Core.World
         DeathPuff,      // 사망 연기 (X,Y)
         RespawnRing,    // 부활 링 (X,Y)
         Text,           // 상태 효과 등 짧은 문구 (Text)
-        Banner,         // 화면 중앙 알림 (보스 페이즈 돌입 등. Text, EntityId, Value=페이즈)
+        Banner,         // 화면 중앙 알림 (보스 페이즈 돌입 등. Text, EntityId, Value=페이즈, Variant 1 = 경고(붉은 경보))
+        Streak,         // 연속 처치 알림 (Value=연속 횟수, Text=칭호)
     }
 
     public sealed class ViewEffect

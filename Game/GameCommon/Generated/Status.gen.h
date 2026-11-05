@@ -31,6 +31,8 @@ namespace GameDataRows
 		int32	attackPercent = 0;
 		int32	defensePercent = 0;
 		int32	speedPercent = 0;
+		uint32	healPercent = 0;
+		int32	flatHeal = 0;
 		bool	enumOk = true;		// FromJSON에서 enum 이름을 모르는 값을 만나면 false
 
 		static constexpr const TCHAR* kFile = _T("Status.json");
@@ -51,6 +53,8 @@ namespace GameDataRows
 				{ _T("AttackPercent"), EFieldType::Int, -1000ll, 1000ll },
 				{ _T("DefensePercent"), EFieldType::Int, -1000ll, 1000ll },
 				{ _T("SpeedPercent"), EFieldType::Int, -1000ll, 1000ll },
+				{ _T("HealPercent"), EFieldType::UInt, 0ll, 4294967295ll, false },
+				{ _T("FlatHeal"), EFieldType::Int, 0ll, 2147483647ll, false },
 			};
 			return specs;
 		}
@@ -69,6 +73,8 @@ namespace GameDataRows
 			value.AddMember(_T("AttackPercent"), this->attackPercent, allocator);
 			value.AddMember(_T("DefensePercent"), this->defensePercent, allocator);
 			value.AddMember(_T("SpeedPercent"), this->speedPercent, allocator);
+			value.AddMember(_T("HealPercent"), this->healPercent, allocator);
+			value.AddMember(_T("FlatHeal"), this->flatHeal, allocator);
 		}
 
 		void FromJSON(const _tValue& value)
@@ -84,6 +90,8 @@ namespace GameDataRows
 			this->attackPercent = value[_T("AttackPercent")].GetInt();
 			this->defensePercent = value[_T("DefensePercent")].GetInt();
 			this->speedPercent = value[_T("SpeedPercent")].GetInt();
+			if( value.HasMember(_T("HealPercent")) ) this->healPercent = value[_T("HealPercent")].GetUint();
+			if( value.HasMember(_T("FlatHeal")) ) this->flatHeal = value[_T("FlatHeal")].GetInt();
 		}
 	};
 }

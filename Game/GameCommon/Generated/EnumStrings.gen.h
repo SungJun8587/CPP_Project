@@ -18,6 +18,9 @@ namespace GameDataEnums
 		{
 		case ESkillShape::Single: return _T("Single");
 		case ESkillShape::Area: return _T("Area");
+		case ESkillShape::Self: return _T("Self");
+		case ESkillShape::Cone: return _T("Cone");
+		case ESkillShape::Line: return _T("Line");
 		}
 		return _T("");
 	}
@@ -29,6 +32,29 @@ namespace GameDataEnums
 			return false;
 		if( _tcscmp(s, _T("Single")) == 0 ) { out = ESkillShape::Single; return true; }
 		if( _tcscmp(s, _T("Area")) == 0 ) { out = ESkillShape::Area; return true; }
+		if( _tcscmp(s, _T("Self")) == 0 ) { out = ESkillShape::Self; return true; }
+		if( _tcscmp(s, _T("Cone")) == 0 ) { out = ESkillShape::Cone; return true; }
+		if( _tcscmp(s, _T("Line")) == 0 ) { out = ESkillShape::Line; return true; }
+		return false;
+	}
+
+	inline const TCHAR* ToString(ESkillTarget v)
+	{
+		switch( v )
+		{
+		case ESkillTarget::Enemy: return _T("Enemy");
+		case ESkillTarget::Ally: return _T("Ally");
+		}
+		return _T("");
+	}
+
+	// 이름이 정확히 일치하면 out을 채우고 true. 아니면 out은 그대로 두고 false.
+	inline bool TryParse(const TCHAR* s, ESkillTarget& out)
+	{
+		if( s == nullptr )
+			return false;
+		if( _tcscmp(s, _T("Enemy")) == 0 ) { out = ESkillTarget::Enemy; return true; }
+		if( _tcscmp(s, _T("Ally")) == 0 ) { out = ESkillTarget::Ally; return true; }
 		return false;
 	}
 
@@ -38,6 +64,9 @@ namespace GameDataEnums
 		{
 		case EStatusKind::Dot: return _T("Dot");
 		case EStatusKind::Buff: return _T("Buff");
+		case EStatusKind::Stun: return _T("Stun");
+		case EStatusKind::Shield: return _T("Shield");
+		case EStatusKind::Hot: return _T("Hot");
 		}
 		return _T("");
 	}
@@ -49,6 +78,9 @@ namespace GameDataEnums
 			return false;
 		if( _tcscmp(s, _T("Dot")) == 0 ) { out = EStatusKind::Dot; return true; }
 		if( _tcscmp(s, _T("Buff")) == 0 ) { out = EStatusKind::Buff; return true; }
+		if( _tcscmp(s, _T("Stun")) == 0 ) { out = EStatusKind::Stun; return true; }
+		if( _tcscmp(s, _T("Shield")) == 0 ) { out = EStatusKind::Shield; return true; }
+		if( _tcscmp(s, _T("Hot")) == 0 ) { out = EStatusKind::Hot; return true; }
 		return false;
 	}
 

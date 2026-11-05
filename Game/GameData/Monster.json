@@ -11,7 +11,8 @@
       "Speed": 3.0,
       "AggroRange": 8.0,
       "LeashRange": 30.0,
-      "RespawnMs": 10000
+      "RespawnMs": 10000,
+      "AssistRange": 6.0
     },
     {
       "Id": 2,
@@ -24,7 +25,9 @@
       "Speed": 4.5,
       "AggroRange": 12.0,
       "LeashRange": 40.0,
-      "RespawnMs": 15000
+      "RespawnMs": 15000,
+      "AssistRange": 10.0,
+      "SkillId": 30
     },
     {
       "Id": 3,
@@ -37,7 +40,9 @@
       "Speed": 6.0,
       "AggroRange": 15.0,
       "LeashRange": 50.0,
-      "RespawnMs": 20000
+      "RespawnMs": 20000,
+      "AssistRange": 14.0,
+      "SkillId": 31
     },
     {
       "Id": 4,
@@ -50,7 +55,9 @@
       "Speed": 7.5,
       "AggroRange": 18.0,
       "LeashRange": 45.0,
-      "RespawnMs": 12000
+      "RespawnMs": 12000,
+      "AssistRange": 10.0,
+      "SkillId": 32
     },
     {
       "Id": 5,
@@ -63,7 +70,9 @@
       "Speed": 3.5,
       "AggroRange": 12.0,
       "LeashRange": 35.0,
-      "RespawnMs": 20000
+      "RespawnMs": 20000,
+      "AssistRange": 8.0,
+      "SkillId": 33
     },
     {
       "Id": 6,
@@ -76,7 +85,9 @@
       "Speed": 5.5,
       "AggroRange": 14.0,
       "LeashRange": 40.0,
-      "RespawnMs": 18000
+      "RespawnMs": 18000,
+      "AssistRange": 8.0,
+      "SkillId": 34
     },
     {
       "Id": 7,
@@ -89,7 +100,9 @@
       "Speed": 4.0,
       "AggroRange": 15.0,
       "LeashRange": 45.0,
-      "RespawnMs": 30000
+      "RespawnMs": 30000,
+      "AssistRange": 12.0,
+      "SkillId": 35
     },
     {
       "Id": 8,
@@ -102,7 +115,9 @@
       "Speed": 6.5,
       "AggroRange": 20.0,
       "LeashRange": 60.0,
-      "RespawnMs": 60000
+      "RespawnMs": 60000,
+      "AssistRange": 20.0,
+      "SkillId": 36
     },
     {
       "Id": 9,
@@ -129,6 +144,21 @@
       "AggroRange": 10.0,
       "LeashRange": 35.0,
       "RespawnMs": 120000
+    },
+    {
+      "Id": 11,
+      "Name": "날개 해골 기사",
+      "MaxHp": 700,
+      "Attack": 40,
+      "Defense": 15,
+      "AttackRange": 2.5,
+      "AttackIntervalMs": 1100,
+      "Speed": 6.0,
+      "AggroRange": 16.0,
+      "LeashRange": 45.0,
+      "RespawnMs": 25000,
+      "AssistRange": 12.0,
+      "SkillId": 37
     }
   ]
 }

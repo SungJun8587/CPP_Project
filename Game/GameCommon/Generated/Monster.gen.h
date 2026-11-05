@@ -28,6 +28,8 @@ namespace GameDataRows
 		double	aggroRange = 0;
 		double	leashRange = 0;
 		uint32	respawnMs = 0;
+		double	assistRange = 0;
+		uint32	skillId = 0;
 
 		static constexpr const TCHAR* kFile = _T("Monster.json");
 		static constexpr const TCHAR* kTable = _T("Monster");
@@ -47,6 +49,8 @@ namespace GameDataRows
 				{ _T("AggroRange"), EFieldType::Number },
 				{ _T("LeashRange"), EFieldType::Number },
 				{ _T("RespawnMs"), EFieldType::UInt, 0ll, 4294967295ll },
+				{ _T("AssistRange"), EFieldType::Number, (std::numeric_limits<int64>::min)(), (std::numeric_limits<int64>::max)(), false },
+				{ _T("SkillId"), EFieldType::UInt, 0ll, 4294967295ll, false },
 			};
 			return specs;
 		}
@@ -65,6 +69,8 @@ namespace GameDataRows
 			value.AddMember(_T("AggroRange"), this->aggroRange, allocator);
 			value.AddMember(_T("LeashRange"), this->leashRange, allocator);
 			value.AddMember(_T("RespawnMs"), this->respawnMs, allocator);
+			value.AddMember(_T("AssistRange"), this->assistRange, allocator);
+			value.AddMember(_T("SkillId"), this->skillId, allocator);
 		}
 
 		void FromJSON(const _tValue& value)
@@ -80,6 +86,8 @@ namespace GameDataRows
 			this->aggroRange = value[_T("AggroRange")].GetDouble();
 			this->leashRange = value[_T("LeashRange")].GetDouble();
 			this->respawnMs = value[_T("RespawnMs")].GetUint();
+			if( value.HasMember(_T("AssistRange")) ) this->assistRange = value[_T("AssistRange")].GetDouble();
+			if( value.HasMember(_T("SkillId")) ) this->skillId = value[_T("SkillId")].GetUint();
 		}
 	};
 }

@@ -85,11 +85,15 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 	// 폴더가 비어 있으면 몬스터 없이, 내장 기본 영웅 하나로 구동한다.
 	std::shared_ptr<const CHeroData> heroData;
 	std::shared_ptr<const CMonsterData> monsterData;
+	std::shared_ptr<const CBossData> bossData;
 	if( !_options.gameDataDir.empty() )
 	{
 		heroData = CGameDataLoader::LoadHeroes(_options.gameDataDir);
 		monsterData = CGameDataLoader::LoadMonsters(_options.gameDataDir);
-		if( heroData == nullptr || monsterData == nullptr )
+		// 보스(Boss/BossPhase/BossAction). Boss.json이 없으면 보스 없이 구동하고, 있는데 틀리면 구동하지 않는다.
+		if( heroData != nullptr && monsterData != nullptr )
+			bossData = CGameDataLoader::LoadBosses(_options.gameDataDir, *monsterData, *heroData);
+		if( heroData == nullptr || monsterData == nullptr || bossData == nullptr )
 		{
 			LOG_ERROR(_T("[CZoneServerMain] game data load failed. dir=%s"), _options.gameDataDir.c_str());
 			return false;
@@ -111,7 +115,7 @@ bool CZoneServerMain::Start(const SZoneServerOptions& options)
 	SMonsterSystemConfig monsterConfig;
 	monsterConfig.thinkIntervalMs = _options.monsterThinkIntervalMs;
 
-	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, std::move(heroData), std::move(monsterData), monsterConfig);
+	_zone = std::make_unique<CBattleZone>(zoneConfig, this, spawnPos, std::move(heroData), std::move(monsterData), monsterConfig, std::move(bossData));
 	if( !_zone->IsValid() )
 	{
 		LOG_ERROR(_T("[CZoneServerMain] invalid zone configuration. zoneId=%u"), _options.zoneId);

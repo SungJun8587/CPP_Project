@@ -116,6 +116,39 @@ bool CMonsterSystem::Validate(std::string& error, float opponentMaxSpeed) const
 			error = buf;
 			return false;
 		}
+
+		if( tmpl->assistRange > viewRange )
+		{
+			std::snprintf(buf, sizeof(buf), "monster %u: assistRange %.1f exceeds the guaranteed AOI view range %.1f", tmpl->id, tmpl->assistRange, viewRange);
+			error = buf;
+			return false;
+		}
+
+		// 몬스터 스킬: 스킬 데이터가 있어야 하고, 적 대상 스킬이어야 하며, 시전 거리 + 효과 반경이 AOI 보장 시야 안이어야 한다(보스 스킬과 같은 기준).
+		if( tmpl->skillId != 0 )
+		{
+			const SSkillTemplate* skill = _skills != nullptr ? _skills->FindSkill(tmpl->skillId) : nullptr;
+			if( skill == nullptr )
+			{
+				std::snprintf(buf, sizeof(buf), "monster %u: unknown skill id %u (skill data missing?)", tmpl->id, tmpl->skillId);
+				error = buf;
+				return false;
+			}
+
+			if( skill->target != ESkillTarget::Enemy || skill->projectileSpeed > 0.0f )
+			{
+				std::snprintf(buf, sizeof(buf), "monster %u: skill %u must target enemies and must not be a projectile", tmpl->id, tmpl->skillId);
+				error = buf;
+				return false;
+			}
+
+			if( !_zone.IsAttackRangeSupported(skill->range + skill->radius, (std::max)(tmpl->speed, opponentMaxSpeed)) )
+			{
+				std::snprintf(buf, sizeof(buf), "monster %u: skill %u reach exceeds the guaranteed AOI view range %.1f", tmpl->id, tmpl->skillId, viewRange);
+				error = buf;
+				return false;
+			}
+		}
 	}
 
 	return true;
@@ -305,6 +338,10 @@ void CMonsterSystem::Think(CMonster& monster, uint64 nowMs)
 		return;
 	}
 
+	// 기절한 동안은 움직이지도 공격하지도 않는다. 이동 실패로 대상을 놓치지 않도록 사고 자체를 건너뛴다.
+	if( _zone.IsStunned(monster) )
+		return;
+
 	switch( monster._state )
 	{
 	case EMonsterState::Idle:	ThinkIdle(monster, nowMs); break;
@@ -325,7 +362,10 @@ void CMonsterSystem::ThinkIdle(CMonster& monster, uint64 nowMs)
 	{
 		target = FindAggroCandidate(monster);
 		if( target != nullptr )
+		{
 			monster.AddThreat(target->GetId(), 1);
+			AlertAllies(monster, target->GetId());
+		}
 	}
 
 	if( target != nullptr )
@@ -368,6 +408,10 @@ void CMonsterSystem::ThinkChase(CMonster& monster, uint64 nowMs)
 
 	// 보스는 페이즈/행동을 먼저 처리한다. 시전을 시작했으면 이번 사고는 여기까지.
 	if( monster._boss != nullptr && _boss != nullptr && _boss->OnChase(monster, *target, nowMs) )
+		return;
+
+	// 몬스터 스킬은 사거리 안이고 재사용 대기가 끝났으면 기본 공격/추적보다 먼저 쓴다. 시전을 시작했으면 이번 사고는 여기까지.
+	if( tmpl.skillId != 0 && monster._boss == nullptr && TryUseSkill(monster, *target, nowMs) )
 		return;
 
 	const float distSq = DistanceSq(monster.GetPos(), target->GetPos());
@@ -582,6 +626,68 @@ CZoneEntity* CMonsterSystem::FindAggroCandidate(CMonster& monster)
 }
 
 //***************************************************************************
+// @brief 무리 가세: source 주변의 대기 중인 몬스터가 같은 대상을 노리게 합니다.
+//        source의 assistRange 안에서, 대기 상태이고 어그로 표가 비어 있으며 보스가 아닌 살아 있는 몬스터만 깨웁니다.
+//        한 번에 kMaxAlertPerCall마리까지만 깨워 밀집 지역에서 한 틱 비용이 튀지 않게 한다. 깨어난 몬스터는 다시 다른 몬스터를 깨우지 않는다.
+// @param source   먼저 싸우기 시작한 몬스터
+// @param targetId 노릴 대상 ID
+//***************************************************************************
+void CMonsterSystem::AlertAllies(CMonster& source, uint64 targetId)
+{
+	const float range = source._tmpl->assistRange;
+	if( !(range > 0.0f) || source._boss != nullptr )
+		return;
+
+	constexpr uint32 kMaxAlertPerCall = 12;
+	const uint64 nowMs = _zone.GetNowMs();
+	uint32 alerted = 0;
+
+	_zone.ForEachInRadius(source.GetPos(), range, [&](CZoneEntity& e)
+		{
+			if( alerted >= kMaxAlertPerCall || &e == &source || !IsAiMonster(e) || !e.IsAlive() )
+				return;
+
+			CMonster& ally = static_cast<CMonster&>(e);
+			if( ally._boss != nullptr || ally._state != EMonsterState::Idle || ally.GetAggroCount() != 0 || nowMs < ally._noAggroUntilMs )
+				return;
+
+			ally.AddThreat(targetId, 1);
+			Activate(ally);
+			ally._nextThinkMs = nowMs;
+			++alerted;
+		});
+}
+
+//***************************************************************************
+// @brief 몬스터 스킬을 씁니다. 재사용 대기가 끝났고 대상이 스킬 사거리 안일 때만 시전합니다.
+//        Single은 대상을, Area는 대상 위치를, Self는 자기 위치를, Cone/Line은 대상 쪽 방향을 겨냥한다.
+// @return 시전을 시작했거나 즉시 발동했으면 true (이번 사고에서 다른 행동을 하지 않는다)
+//***************************************************************************
+bool CMonsterSystem::TryUseSkill(CMonster& monster, CZoneEntity& target, uint64 nowMs)
+{
+	if( _skills == nullptr || nowMs < monster._skillReadyAtMs )
+		return false;
+
+	const SSkillTemplate* skill = _skills->FindSkill(monster._tmpl->skillId);
+	if( skill == nullptr )
+		return false;
+
+	const float distSq = DistanceSq(monster.GetPos(), target.GetPos());
+	const float reach = skill->shape == ESkillShape::Self ? skill->radius * 0.8f : skill->range;
+	if( distSq > reach * reach )
+		return false;
+
+	Vec2 center = target.GetPos();
+	uint64 targetId = 0;
+	if( skill->shape == ESkillShape::Self )
+		center = monster.GetPos();
+	else if( skill->shape == ESkillShape::Single )
+		targetId = target.GetId();
+
+	return _zone.CastSkill(monster, *skill, targetId, center, monster._skillReadyAtMs) == SkillResult::Ok;
+}
+
+//***************************************************************************
 // @brief 몬스터가 피해를 입었을 때 호출합니다. 플레이어가 준 피해만큼 위협을 쌓고 즉시 반응하게 합니다.
 //        복귀 중에는 어그로를 받지 않습니다.
 // @param attacker 공격자 (없으면 무시)
@@ -597,9 +703,14 @@ void CMonsterSystem::OnDamaged(CZoneEntity* attacker, CZoneEntity& victim, int32
 	if( monster._state == EMonsterState::Return )
 		return;
 
+	const bool firstBlood = monster.GetAggroCount() == 0;
 	monster.AddThreat(attacker->GetId(), damage);
 	Activate(monster);
 	monster._nextThinkMs = _zone.GetNowMs();
+
+	// 처음 맞은 순간에만 주변에 알린다 (맞을 때마다 알리면 비용만 든다).
+	if( firstBlood )
+		AlertAllies(monster, attacker->GetId());
 }
 
 //***************************************************************************

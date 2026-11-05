@@ -12,14 +12,14 @@
 #include "EnumStrings.gen.h"
 #include "Consts.gen.h"
 #include "Hero.gen.h"
-#include "Monster.gen.h"
-#include "Spawn.gen.h"
-#include "Block.gen.h"
 #include "Skill.gen.h"
 #include "Status.gen.h"
 #include "HeroSkill.gen.h"
+#include "Monster.gen.h"
 #include "Boss.gen.h"
 #include "BossPhase.gen.h"
 #include "BossAction.gen.h"
+#include "Spawn.gen.h"
+#include "Block.gen.h"
 
 #endif // ndef GAMEDATAROWS_GENERATEDCOMMON_H

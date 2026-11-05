@@ -9,6 +9,7 @@ using System.Drawing.Drawing2D;
 using GameViewer.Core;
 using GameViewer.Core.Data;
 using GameViewer.Core.Protocol;
+using GameViewer.Core.Logic;
 using GameViewer.Core.World;
 
 namespace GameViewer.App.Render
@@ -50,6 +51,7 @@ namespace GameViewer.App.Render
                 case 1: return Color.FromArgb(214, 70, 64);     // 전사: 붉은색
                 case 2: return Color.FromArgb(70, 168, 96);     // 궁수: 녹색
                 case 3: return Color.FromArgb(92, 110, 226);    // 마법사: 파란색
+                case 4: return Color.FromArgb(160, 84, 204);    // 도적: 보라색
                 default: return Color.FromArgb(180, 160, 200);
             }
         }
@@ -159,12 +161,8 @@ namespace GameViewer.App.Render
                 return;
             }
 
-            float lunge = 0;
-            long atkAge = now - e.AttackAnimMs;
-            if (e.IsMonster && atkAge >= 0 && atkAge < 220) lunge = (float)Math.Sin(Math.PI * atkAge / 220.0) * (e.IsBoss ? 0.9f : 0.45f);
-            float fl = (float)Math.Sqrt(e.FaceX * e.FaceX + e.FaceY * e.FaceY);
-            float fx = fl > 0.001f ? e.FaceX / fl : 1f, fy = fl > 0.001f ? e.FaceY / fl : 0f;
-            float bx = sx + fx * v.Px(lunge), by = sy + fy * v.Px(lunge) * 0.6f;
+            BodyPose pose = AttackPose.Compute(e, now);
+            float bx = sx + v.Px(pose.OffX), by = sy + v.Px(pose.OffY) * 0.6f - v.Px(pose.Lift);
 
             float sw = v.Px(Math.Max(1.05f, look.HalfW * 0.62f));
             g.FillEllipse(_res.Brush(46, 0, 0, 0), sx - sw * 1.25f, sy - sw * 0.34f, sw * 2.5f, sw * 0.95f);
@@ -175,7 +173,23 @@ namespace GameViewer.App.Render
             if (self) g.DrawEllipse(_res.Pen(220, 255, 230, 90, 2f), sx - pr * 1.25f, sy - pr * 0.48f, pr * 2.5f, pr * 1.0f);
 
             bool hurt = now - e.HitFlashMs < 110;
-            _creatures.Draw(g, e, v, now, bx, by, hurt);
+            float swipe = AttackPose.SwipeProgress(e, now);
+            if (swipe >= 0f) DrawSwipe(g, e, v, look, sx, sy, swipe, true);
+            if (pose.IsIdentity) _creatures.Draw(g, e, v, now, bx, by, hurt);
+            else
+            {
+                // 발 밑을 축으로 기울이고 눌러 늘인다 (그림은 캐시된 한 장이므로 변환만 바꾼다)
+                System.Drawing.Drawing2D.GraphicsState gs = g.Save();
+                g.TranslateTransform(bx, by);
+                if (Math.Abs(pose.Lean) > 0.05f) g.RotateTransform(pose.Lean);
+                g.ScaleTransform(pose.ScaleX, pose.ScaleY);
+                _creatures.Draw(g, e, v, now, 0f, 0f, hurt);
+                g.Restore(gs);
+            }
+            if (swipe >= 0f) DrawSwipe(g, e, v, look, sx, sy, swipe, false);
+            if (AssetSprites.Find(false, e.TemplateId) != null) HeroWeapons.Draw(g, e, v, look, bx, by, now);        // 이미지 영웅은 무기 동작 프레임이 없어 따로 그린다
+            float shot = AttackPose.ShotProgress(e, now);
+            if (shot >= 0f) DrawShotFlash(g, e, v, look, sx, sy, shot);
 
             if (e.InvulnUntilMs > now)
             {
@@ -191,6 +205,82 @@ namespace GameViewer.App.Render
             }
         }
 
+        /// <summary>
+        /// 근접 공격의 휘두름 궤적. 몸 뒤(back)에서 번지는 잔광과 몸 앞에서 번쩍이는 날로 나눠 그린다.
+        /// 영웅은 직업별로 다르다: 전사는 크게 내려치는 검광, 도적은 양손 단검의 X 베기. 이미지 영웅은 무기 프레임이 없어 이 궤적이 무기 동작을 대신한다.
+        /// </summary>
+        private void DrawSwipe(Graphics g, Entity e, ViewState v, Look look, float sx, float sy, float prog, bool back)
+        {
+            float fl = (float)Math.Sqrt(e.FaceX * e.FaceX + e.FaceY * e.FaceY);
+            float fx = fl > 0.001f ? e.FaceX / fl : 1f, fy = fl > 0.001f ? e.FaceY / fl : 0f;
+            float ang = (float)(Math.Atan2(fy * 0.6f, fx) * 180.0 / Math.PI);
+            float reach = v.Px(look.HalfW * 0.9f + (e.IsBoss ? 2.2f : 1.1f));
+            float cy = sy - v.Px(look.H * 0.42f);
+            float ex = sx + fx * v.Px(0.5f), ey = cy + fy * v.Px(0.5f) * 0.6f;
+            if (e.IsMonster)
+            {
+                Color mc = e.IsBoss ? Color.FromArgb(255, 80, 60) : Color.FromArgb(255, 130, 100);
+                ArcSlash(g, ex, ey, reach, ang - 65f, 130f, prog, mc, v.Px(e.IsBoss ? 0.55f : 0.34f), back);
+                return;
+            }
+            float r = v.Px(1.9f), w = v.Px(0.36f);
+            if (e.TemplateId == 1)
+                ArcSlash(g, ex, ey - v.Px(0.5f), r * 1.15f, ang - 95f, 160f, prog, Color.FromArgb(200, 225, 255), w * 1.25f, back);
+            else if (e.TemplateId == 4)
+            {
+                Color rc = Color.FromArgb(200, 170, 255);
+                ArcSlash(g, ex, ey, r * 0.85f, ang - 60f, 120f, prog, rc, w * 0.8f, back);
+                float p2 = (prog - 0.3f) / 0.7f;
+                if (p2 > 0f) ArcSlash(g, ex, ey, r * 0.85f, ang + 60f, -120f, p2, rc, w * 0.8f, back);
+            }
+            else ArcSlash(g, ex, ey, r, ang - 65f, 130f, prog, Color.FromArgb(255, 240, 190), w, back);
+        }
+
+        /// <summary>호 모양 베기 한 번. prog 0~1 동안 start 에서 sweep 도까지 뻗으며 사라진다.</summary>
+        private void ArcSlash(Graphics g, float ex, float ey, float reach, float start, float sweep, float prog, Color c, float w, bool back)
+        {
+            float sweepEnd = sweep * AttackPose.EaseOut(prog * 1.6f);
+            int a = (int)(230 * (1f - prog) * (1f - prog)) & ~15;
+            if (a < 16 || Math.Abs(sweepEnd) < 4f) return;
+            RectangleF r = new RectangleF(ex - reach, ey - reach * 0.8f, reach * 2f, reach * 1.6f);
+            if (back) g.DrawArc(_res.Pen(a / 3, c.R, c.G, c.B, w * 2.2f), r, start, sweepEnd);
+            else
+            {
+                g.DrawArc(_res.Pen(a, c.R, c.G, c.B, w), r, start + sweepEnd * 0.35f, sweepEnd * 0.65f);
+                g.DrawArc(_res.Pen(a, 255, 255, 255, w * 0.35f), r, start + sweepEnd * 0.55f, sweepEnd * 0.45f);
+            }
+        }
+
+        /// <summary>영웅의 원거리 발사 섬광: 궁수는 시위를 놓는 별빛, 마법사는 지팡이 구슬이 터지는 빛.</summary>
+        private void DrawShotFlash(Graphics g, Entity e, ViewState v, Look look, float sx, float sy, float prog)
+        {
+            float fl = (float)Math.Sqrt(e.FaceX * e.FaceX + e.FaceY * e.FaceY);
+            float fx = fl > 0.001f ? e.FaceX / fl : 1f, fy = fl > 0.001f ? e.FaceY / fl : 0f;
+            float px = sx + fx * v.Px(1.1f), py = sy - v.Px(look.H * 0.5f) + fy * v.Px(1.1f) * 0.6f;
+            int a = (int)(240 * (1f - prog)) & ~15;
+            if (a < 16) return;
+            float k = AttackPose.EaseOut(prog);
+            if (e.TemplateId == 3)
+            {
+                float rr = v.Px(0.45f + 0.9f * k);
+                g.FillEllipse(_res.Brush(a / 4, 255, 150, 60), px - rr * 1.8f, py - rr * 1.8f, rr * 3.6f, rr * 3.6f);
+                g.FillEllipse(_res.Brush(a / 2, 255, 200, 100), px - rr, py - rr, rr * 2f, rr * 2f);
+                g.FillEllipse(_res.Brush(a, 255, 250, 210), px - rr * 0.45f, py - rr * 0.45f, rr * 0.9f, rr * 0.9f);
+            }
+            else
+            {
+                float len = v.Px(0.5f + 1.1f * k);
+                Pen pn = _res.Pen(a, 220, 255, 190, v.Px(0.1f));
+                for (int i = 0; i < 6; ++i)
+                {
+                    double th = i * Math.PI / 3 + 0.4;
+                    g.DrawLine(pn, px, py, px + (float)Math.Cos(th) * len, py + (float)Math.Sin(th) * len * 0.8f);
+                }
+                float rr = v.Px(0.3f * (1f - k) + 0.1f);
+                g.FillEllipse(_res.Brush(a, 255, 255, 235), px - rr, py - rr, rr * 2f, rr * 2f);
+            }
+        }
+
         private void DrawSelectionRing(Graphics g, float sx, float sy, float rx, long now)
         {
             float pulse = 1f + 0.06f * (float)Math.Sin(now / 150.0);
@@ -200,9 +290,59 @@ namespace GameViewer.App.Render
 
         // ------------------------------------------------------------------ 머리 위 표시(이름/체력/시전/상태)
 
+        /// <summary>머리 위 표시 하나의 화면 위치. 겹치는 표시를 위로 밀어내기 위해 먼저 모아서 자리를 정한다.</summary>
+        private struct Plate
+        {
+            public Entity Ent;
+            public float Sx, Sy, HalfW, H;
+            public int Prio;        // 클수록 먼저 자리를 차지한다 (선택 > 보스 > 나 > 산 것 > 시체)
+            public bool Hide;
+        }
+        private readonly List<Plate> _plates = new List<Plate>(128);
+        private readonly List<int> _plateOrder = new List<int>(128);
+        private const float PlateStep = 17f;        // 겹칠 때 한 번에 올리는 높이(px)
+
+        /// <summary>
+        /// 머리 위 표시(이름+체력바)가 서로 겹치지 않게 위로 밀어 올린다. 우선순위가 높은 것이 제자리를 지키고,
+        /// 시체의 표시는 자리가 없으면 숨긴다. 몬스터가 한곳에 몰렸을 때 이름이 뭉개져 읽을 수 없던 문제를 줄인다.
+        /// </summary>
+        private void ResolvePlates()
+        {
+            int n = _plates.Count;
+            _plateOrder.Clear();
+            for (int i = 0; i < n; ++i) _plateOrder.Add(i);
+            List<Plate> pl = _plates;
+            _plateOrder.Sort(delegate (int a, int b)
+            {
+                int c = pl[b].Prio.CompareTo(pl[a].Prio);
+                return c != 0 ? c : pl[b].Sy.CompareTo(pl[a].Sy);       // 같으면 화면 아래(가까운 것)부터
+            });
+            for (int oi = 0; oi < n; ++oi)
+            {
+                int i = _plateOrder[oi];
+                Plate p = pl[i];
+                int shifts = 0;
+                for (; shifts < 6; ++shifts)
+                {
+                    bool hit = false;
+                    for (int oj = 0; oj < oi; ++oj)
+                    {
+                        Plate q = pl[_plateOrder[oj]];
+                        if (q.Hide) continue;
+                        if (Math.Abs(p.Sx - q.Sx) < p.HalfW + q.HalfW && Math.Abs(p.Sy - q.Sy) < (p.H + q.H) * 0.5f) { hit = true; break; }
+                    }
+                    if (!hit) break;
+                    p.Sy -= PlateStep;
+                }
+                if (shifts >= 6 && p.Prio == 0) p.Hide = true;
+                pl[i] = p;
+            }
+        }
+
         private void DrawOverheads(Graphics g, ViewerSession s, ViewState v, long now)
         {
             WorldModel w = s.World;
+            _plates.Clear();
             foreach (KeyValuePair<ulong, Entity> kv in w.Entities)
             {
                 Entity e = kv.Value;
@@ -210,6 +350,25 @@ namespace GameViewer.App.Render
                 Look look = CreatureRenderer.LookOf(e);
                 float sx = v.ToScreenX(x), sy = v.ToScreenY(y) - v.Px(look.H + 0.35f);
                 if (sx < -100 || sy < -60 || sx > v.Width + 100 || sy > v.Height + 200) continue;
+                bool self0 = e.Id == w.SelfId, selected0 = e.Id == v.SelectedId;
+                if (e.Dead && now - e.DeadAtMs > 2500 && !selected0) continue;
+
+                float bw = e.IsBoss ? Math.Max(80f, v.Px(5f)) : Math.Max(34f, v.Px(2.6f));
+                Plate pt = new Plate();
+                pt.Ent = e; pt.Sx = sx; pt.Sy = sy;
+                pt.HalfW = Math.Max(bw, 56f) * 0.5f;
+                pt.H = selected0 || self0 ? 36f : 26f;
+                pt.Prio = selected0 ? 4 : (e.IsBoss ? 3 : (self0 ? 2 : (e.Dead ? 0 : 1)));
+                _plates.Add(pt);
+            }
+            ResolvePlates();
+
+            for (int pi = 0; pi < _plates.Count; ++pi)
+            {
+                Plate plate = _plates[pi];
+                if (plate.Hide) continue;
+                Entity e = plate.Ent;
+                float sx = plate.Sx, sy = plate.Sy;
 
                 bool self = e.Id == w.SelfId;
                 bool selected = e.Id == v.SelectedId;
@@ -217,7 +376,7 @@ namespace GameViewer.App.Render
                 Color nameColor = self ? Color.FromArgb(255, 235, 120) : (e.IsMonster ? Color.FromArgb(255, 200, 200) : Color.FromArgb(190, 225, 255));
                 if (e.IsBoss) { nameColor = Color.FromArgb(255, 214, 90); name = "★ " + name; }
                 if (selected) nameColor = Color.White;
-                if (e.Dead) { if (now - e.DeadAtMs > 2500 && !selected) continue; nameColor = Color.FromArgb(160, 170, 170, 170); }
+                if (e.Dead) nameColor = Color.FromArgb(160, 170, 170, 170);
 
                 float barW = e.IsBoss ? Math.Max(80f, v.Px(5f)) : Math.Max(34f, v.Px(2.6f)), barH = e.IsBoss ? 8f : 6f;
                 _res.OutlinedText(g, name, e.IsBoss ? _res.Bold : _res.Small, nameColor, sx, sy - 12, _res.Center);

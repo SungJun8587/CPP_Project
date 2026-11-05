@@ -219,12 +219,6 @@ namespace GameViewer.App.Render
                     g.FillRectangle(b, 0, v.Height - e, v.Width, e);
                 _res.OutlinedText(g, "위험! 범위 밖으로 벗어나세요", _res.Big, Color.FromArgb(255, 120, 100), v.Width / 2f, textY + 30, _center2);
             }
-            else if (w.Self.MaxHp > 0 && w.Self.Hp * 100 < w.Self.MaxHp * 30)
-            {
-                int a = 30 + (int)(30 * (0.5 + 0.5 * Math.Sin(now / 260.0)));
-                using (LinearGradientBrush b = new LinearGradientBrush(new Rectangle(0, v.Height - 61, v.Width, 61), Color.FromArgb(0, 200, 20, 20), Color.FromArgb(a * 2, 200, 20, 20), LinearGradientMode.Vertical))
-                    g.FillRectangle(b, 0, v.Height - 60, v.Width, 60);
-            }
         }
 
         private void DrawBanners(Graphics g, ViewerSession s, ViewState v, long now)
@@ -239,6 +233,22 @@ namespace GameViewer.App.Render
                 float a = Math.Max(0f, Math.Min(1f, Math.Min(inT, outT)));
                 float cy = v.Height * 0.30f;
                 float hh = 64f * (0.4f + 0.6f * inT);
+                bool warn = fx.Variant == 1;
+                if (warn)
+                {
+                    // 경보: 붉은 띠가 깜빡이고 위아래로 경고 줄무늬
+                    float blink = 0.55f + 0.45f * (float)Math.Sin(now / 70.0);
+                    g.FillRectangle(_res.Brush((int)(190 * a * blink), 150, 6, 6), 0, cy - hh / 2, v.Width, hh);
+                    g.DrawLine(_res.Pen((int)(230 * a), 255, 90, 70, 3f), 0, cy - hh / 2, v.Width, cy - hh / 2);
+                    g.DrawLine(_res.Pen((int)(230 * a), 255, 90, 70, 3f), 0, cy + hh / 2, v.Width, cy + hh / 2);
+                    for (int sx = -40 + (int)((now / 12) % 40); sx < v.Width; sx += 40)
+                    {
+                        g.DrawLine(_res.Pen((int)(120 * a), 255, 200, 60, 6f), sx, cy - hh / 2 - 8, sx + 14, cy - hh / 2 - 2);
+                        g.DrawLine(_res.Pen((int)(120 * a), 255, 200, 60, 6f), sx, cy + hh / 2 + 2, sx + 14, cy + hh / 2 + 8);
+                    }
+                    _res.OutlinedText(g, "\u26A0 " + (fx.Text ?? ""), _res.Huge, Color.FromArgb(Resources.Clamp((int)(255 * a)), 255, 236, 200), v.Width / 2f, cy - 2, _center2);
+                    continue;
+                }
                 g.FillRectangle(_res.Brush((int)(150 * a), 20, 4, 4), 0, cy - hh / 2, v.Width, hh);
                 g.DrawLine(_res.Pen((int)(200 * a), 255, 210, 120, 2f), 0, cy - hh / 2, v.Width, cy - hh / 2);
                 g.DrawLine(_res.Pen((int)(200 * a), 255, 210, 120, 2f), 0, cy + hh / 2, v.Width, cy + hh / 2);

@@ -41,6 +41,56 @@ namespace GameViewer.App.Render
             if (v.ShowLog) DrawLog(g, s, v, now);
             if (v.ShowHelp) DrawHelp(g, v);
             DrawStateOverlay(g, s, v);
+            if (v.HeroSelectOpen) DrawHeroSelect(g, s, v);
+        }
+
+        // ------------------------------------------------------------------ 영웅 선택 창 (H)
+
+        private const float HeroRowH = 74f, HeroPanelW = 520f;
+
+        /// <summary>영웅 선택 창의 줄 i 의 화면 영역. 마우스 클릭 판정에도 쓴다.</summary>
+        public static RectangleF HeroRowRect(ViewState v, int count, int i)
+        {
+            float h = 64 + count * HeroRowH + 34;
+            float x = (v.Width - HeroPanelW) / 2, y = Math.Max(10, (v.Height - h) / 2);
+            return new RectangleF(x + 12, y + 52 + i * HeroRowH, HeroPanelW - 24, HeroRowH - 6);
+        }
+
+        private void DrawHeroSelect(Graphics g, ViewerSession s, ViewState v)
+        {
+            List<uint> ids = s.Data.HeroIds();
+            if (Backdrop.Draw(g, v.Width, v.Height)) g.FillRectangle(_res.Brush(70, 0, 0, 0), 0, 0, v.Width, v.Height);       // 배경 이미지가 있으면 살짝만 어둡게
+            else g.FillRectangle(_res.Brush(150, 0, 0, 0), 0, 0, v.Width, v.Height);
+            float h = 64 + ids.Count * HeroRowH + 34;
+            float x = (v.Width - HeroPanelW) / 2, y = Math.Max(10, (v.Height - h) / 2);
+            g.FillRectangle(_res.Brush(235, 14, 20, 17), x, y, HeroPanelW, h);
+            g.DrawRectangle(_res.Pen(200, 200, 220, 190, 1.5f), x, y, HeroPanelW, h);
+            g.DrawString("영웅 선택", _res.Big, _res.Brush(Color.FromArgb(255, 235, 150)), x + 16, y + 12);
+            if (ids.Count == 0)
+            {
+                g.DrawString("GameData 에 Hero 시트가 없습니다", _res.Normal, _res.Brush(Color.FromArgb(255, 160, 150)), x + 16, y + 56);
+                return;
+            }
+            int sel = Math.Max(0, Math.Min(ids.Count - 1, v.HeroSelectIndex));
+            for (int i = 0; i < ids.Count; ++i)
+            {
+                HeroRow r = s.Data.Hero(ids[i]);
+                RectangleF rc = HeroRowRect(v, ids.Count, i);
+                bool cur = ids[i] == s.HeroId;
+                if (i == sel) g.FillRectangle(_res.Brush(90, 120, 180, 130), rc.X, rc.Y, rc.Width, rc.Height);
+                g.DrawRectangle(_res.Pen(i == sel ? 220 : 90, 200, 220, 190, 1f), rc.X, rc.Y, rc.Width, rc.Height);
+                Color accent = WorldRenderer.HeroColor(ids[i]);
+                g.FillEllipse(_res.Brush(accent), rc.X + 10, rc.Y + 12, 36, 36);
+                g.DrawString((i + 1).ToString(), _res.Bold, _res.Brush(Color.White), new RectangleF(rc.X + 10, rc.Y + 12, 36, 36), _res.Center);
+                g.DrawString(r.Name + (cur ? "  (현재)" : ""), _res.Bold, _res.Brush(Color.FromArgb(255, 245, 210)), rc.X + 56, rc.Y + 4);
+                g.DrawString("체력 " + r.MaxHp + "  공격 " + r.Attack + "  방어 " + r.Defense + "  사거리 " + r.AttackRange.ToString("0.#") + "  속도 " + r.Speed.ToString("0.#"),
+                    _res.Small, _res.Brush(Color.FromArgb(215, 225, 215)), rc.X + 56, rc.Y + 26);
+                List<uint> sk = s.Data.SkillsOf(ids[i]);
+                string names = "";
+                for (int k = 0; k < sk.Count && k < 6; ++k) names += (k > 0 ? ", " : "") + s.Data.SkillName(sk[k]);
+                g.DrawString(sk.Count > 0 ? "스킬: " + names : "스킬 없음", _res.Small, _res.Brush(Color.FromArgb(180, 200, 255)), rc.X + 56, rc.Y + 44);
+            }
+            g.DrawString("↑↓ / 1~9 선택     Enter 또는 클릭: 이 영웅으로 다시 접속     H / Esc: 닫기", _res.Small, _res.Brush(Color.FromArgb(200, 210, 200)), x + 16, y + h - 24);
         }
 
         private void Panel(Graphics g, float x, float y, float w, float h)
@@ -120,10 +170,21 @@ namespace GameViewer.App.Render
                 long left = s.SkillCooldownLeftMs(skills[i], now);
                 long cd = sk != null ? sk.CooldownMs : 1;
                 bool casting = s.World.Self.Casting && s.World.Self.CastSkillId == skills[i];
-                string sub = sk == null ? "" : (sk.IsArea ? "범위 " : "") + "R" + sk.Range.ToString("0.#");
-                bool far = dist >= 0 && sk != null && !(sk.IsArea && sk.Range <= 1.5) && dist > sk.Range;
+                string sub = sk == null ? "" : SkillSubLabel(sk);
+                bool far = dist >= 0 && sk != null && !sk.IsSelf && !(sk.IsAlly && (tgt == null || !tgt.IsPlayer)) && !(sk.IsArea && sk.Range <= 1.5) && dist > sk.Range;
                 DrawSlot(g, x0 + (i + 1) * (slot + gap), y, slot, (i + 1).ToString(), s.Data.SkillName(skills[i]), left, cd, sub, casting, far);
             }
+        }
+
+        /// <summary>슬롯 아래 줄: 모양과 사거리(Self 는 효과 반경).</summary>
+        private static string SkillSubLabel(SkillRow sk)
+        {
+            if (sk.IsSelf) return "자신 " + sk.Radius.ToString("0.#");
+            string r = "R" + sk.Range.ToString("0.#");
+            if (sk.IsArea) return "범위 " + r;
+            if (sk.IsCone) return "부채꼴 " + r;
+            if (sk.IsLine) return "직선 " + r;
+            return sk.IsAlly ? "아군 " + r : r;
         }
 
         private void DrawSlot(Graphics g, float x, float y, float size, string key, string name, long leftMs, long cdMs, string sub, bool active, bool outOfRange)
@@ -217,7 +278,7 @@ namespace GameViewer.App.Render
                 "좌클릭: 땅 = 이동 / 적 = 선택·추적 공격     우클릭(누른 채): 이동",
                 "1~9: 스킬   Q: 기본 공격   Tab: 대상 전환   Esc: 취소",
                 "A: 자동 전투   F: 시점 고정   휠/+-: 확대   Space: 내 위치   B: 보스 선택   미니맵 클릭: 이동",
-                "F12: 스크린샷   F5: 재접속   F1: 도움말   L: 로그",
+                "H: 영웅 선택   M: 효과음   F12: 스크린샷   F5: 재접속   F1: 도움말   L: 로그",
             };
             float w = 0;
             for (int i = 0; i < help.Length; ++i) w = Math.Max(w, g.MeasureString(help[i], _res.Small).Width);

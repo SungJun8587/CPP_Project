@@ -74,7 +74,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PreBuildEvent>
-      <Command>"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData\GameData.xlsx" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental</Command>
+      <Command>"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -94,7 +94,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <PreBuildEvent>
-      <Command>"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData\GameData.xlsx" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental</Command>
+      <Command>"$(SolutionDir)Bin\x64\Release\XlsxConverter64.exe" "$(SolutionDir)GameData" --out "$(SolutionDir)GameData" --cpp-out "$(SolutionDir)GameCommon\Generated" --cs-out "$(SolutionDir)GameCommon\Generated\CSharp" --cs-namespace Game.Data --proto-cs-out "$(SolutionDir)GameViewer\Core\Protocol\Generated" --proto-cs-namespace GameViewer.Core.Protocol --proto-sizes-out "$(SolutionDir)GameViewer\Tests\cpp_packet_sizes.txt" --incremental</Command>
     </PreBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

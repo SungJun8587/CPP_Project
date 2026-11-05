@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// BattleZone.cpp: implementation of the CBattleZone class.
+// BattleZone.cpp : implementation of the CBattleZone class.
 //
 //***************************************************************************
 
@@ -32,6 +32,7 @@ CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server,
 	, _playerCount(0)
 {
 	_recipients.reserve(256);
+	_monsters->SetSkillData(_heroes);
 
 	if( bossData != nullptr )
 	{
@@ -388,6 +389,7 @@ void CBattleZone::OnSkillCastCancelled(CZoneEntity& caster, const SSkillTemplate
 	case SkillCancelReason::Died:			code = ESkillCancelReason::Died; break;
 	case SkillCancelReason::OutOfRange:		code = ESkillCancelReason::OutOfRange; break;
 	case SkillCancelReason::NoLineOfSight:	code = ESkillCancelReason::NoLineOfSight; break;
+	case SkillCancelReason::Stunned:		code = ESkillCancelReason::Stunned; break;
 	default:								break;
 	}
 	notify.reason = static_cast<uint8>(code);
@@ -449,11 +451,11 @@ void CBattleZone::OnStatusApplied(CZoneEntity& entity, const SStatusTemplate& st
 }
 
 //***************************************************************************
-// @brief 상태 효과가 지속시간이 다해 풀린 것을 알린다. 사망으로 풀린 경우는 사망 통지가 대신하므로 보내지 않는다.
+// @brief 상태 효과가 지속시간이 다하거나 보호막이 깨져 풀린 것을 알린다. 사망으로 풀린 경우는 사망 통지가 대신하므로 보내지 않는다.
 //***************************************************************************
 void CBattleZone::OnStatusEnded(CZoneEntity& entity, uint32 statusId, StatusEndReason reason)
 {
-	if( reason != StatusEndReason::Expired )
+	if( reason == StatusEndReason::Died )
 		return;
 
 	ZcStatusNotifyPacket notify{};
@@ -486,6 +488,7 @@ void CBattleZone::OnSkillRejected(CZoneEntity& caster, const SSkillTemplate& ski
 	case SkillResult::OutOfRange:		code = ESkillRejectReason::OutOfRange; break;
 	case SkillResult::NoLineOfSight:	code = ESkillRejectReason::NoLineOfSight; break;
 	case SkillResult::Casting:			code = ESkillRejectReason::Casting; break;
+	case SkillResult::Stunned:			code = ESkillRejectReason::Stunned; break;
 	default:							break;
 	}
 
@@ -630,6 +633,7 @@ void CBattleZone::OnMoveRejected(CZoneEntity& entity, MoveResult reason)
 	case MoveResult::Immobile:			correct.reason = static_cast<uint8>(ECorrectPosReason::Immobile); break;
 	case MoveResult::Dead:				correct.reason = static_cast<uint8>(ECorrectPosReason::Dead); break;
 	case MoveResult::Blocked:			correct.reason = static_cast<uint8>(ECorrectPosReason::Blocked); break;
+	case MoveResult::Stunned:			correct.reason = static_cast<uint8>(ECorrectPosReason::Stunned); break;
 	default:							correct.reason = static_cast<uint8>(ECorrectPosReason::PositionMismatch); break;
 	}
 
@@ -762,6 +766,7 @@ void CBattleZone::OnAttackRejected(CZoneEntity& attacker, uint64 targetId, Attac
 	case AttackResult::TargetInvulnerable:	notify.reason = static_cast<uint8>(EAttackRejectReason::TargetInvulnerable); break;
 	case AttackResult::NoLineOfSight:	notify.reason = static_cast<uint8>(EAttackRejectReason::NoLineOfSight); break;
 	case AttackResult::Casting:			notify.reason = static_cast<uint8>(EAttackRejectReason::Casting); break;
+	case AttackResult::Stunned:			notify.reason = static_cast<uint8>(EAttackRejectReason::Stunned); break;
 	default:							notify.reason = static_cast<uint8>(EAttackRejectReason::InvalidTarget); break;
 	}
 

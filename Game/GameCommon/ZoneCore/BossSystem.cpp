@@ -327,6 +327,7 @@ CBossSystem::EOutcome CBossSystem::DoCast(SBossRuntime& rt, CMonster& boss, CZon
 	case SkillResult::Throttled:
 	case SkillResult::Casting:
 	case SkillResult::CasterDead:
+	case SkillResult::Stunned:
 		return EOutcome::Retry;
 	default:
 		return EOutcome::Blocked;

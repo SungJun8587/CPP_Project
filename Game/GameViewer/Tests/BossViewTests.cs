@@ -24,6 +24,7 @@ namespace GameViewer.Tests
             return w;
         }
         static void Apply(WorldModel w, byte[] pkt, long now) { w.Apply(Pk.F(pkt), now); }
+        static int PhaseBanners(WorldModel w) { int n = 0; foreach (ViewEffect f in w.Effects) if (f.Kind == EffectKind.Banner && f.Variant == 0) ++n; return n; }
         static int CountFx(WorldModel w, EffectKind k) { int n = 0; foreach (ViewEffect f in w.Effects) if (f.Kind == k) ++n; return n; }
 
         public static void BossData()
@@ -65,12 +66,13 @@ namespace GameViewer.Tests
 
             now += 100; Apply(w, Pk.Damage(Self, Boss, 300, 700, 1000), now);
             T.Eq(1, e.BossPhase, "70% still phase 1");
-            T.Eq(0, CountFx(w, EffectKind.Banner), "no banner yet");
+            T.Eq(0, PhaseBanners(w), "no banner yet");
+            T.Eq(1, CountFx(w, EffectKind.Banner), "boss spawn raises a warning banner (not a phase banner)");
 
             now += 100; Apply(w, Pk.Damage(Self, Boss, 110, 590, 1000), now);
             T.Eq(2, e.BossPhase, "59% -> phase 2");
-            T.Eq(1, CountFx(w, EffectKind.Banner), "phase banner");
-            ViewEffect banner = null; foreach (ViewEffect f in w.Effects) if (f.Kind == EffectKind.Banner) banner = f;
+            T.Eq(1, PhaseBanners(w), "phase banner");
+            ViewEffect banner = null; foreach (ViewEffect f in w.Effects) if (f.Kind == EffectKind.Banner && f.Variant == 0) banner = f;
             T.Check(banner != null && banner.Text.Contains("2"), "banner names the phase: " + (banner != null ? banner.Text : "null"));
             T.Eq(now, e.PhaseChangedMs, "phase change time");
 
@@ -86,7 +88,7 @@ namespace GameViewer.Tests
             // 한 번에 크게 깎여도 최종 페이즈로 곧장 간다 (배너는 한 번)
             now += 100; Apply(w, Pk.Damage(Self, Boss, 650, 240, 1000), now);
             T.Eq(3, e.BossPhase, "jump to phase 3");
-            T.Eq(2, CountFx(w, EffectKind.Banner), "one more banner");
+            T.Eq(2, PhaseBanners(w), "one more banner");
 
             // 격노 상태
             T.Check(!e.IsEnraged, "not enraged");

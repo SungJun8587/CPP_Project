@@ -84,6 +84,7 @@ namespace GameViewer.Core.Protocol
 		Teleported = 4,	// 서버가 순간이동시킴
 		Dead = 5,	// 사망 상태에서는 이동할 수 없음
 		Blocked = 6,	// 장애물에 막혀 이동할 수 없음
+		Stunned = 7,	// 기절 상태에서는 이동할 수 없음
 	}
 
 	// 공격 요청 거부 사유. ZcAttackRejectNotifyPacket::reason에 설정됩니다.
@@ -97,6 +98,7 @@ namespace GameViewer.Core.Protocol
 		TargetInvulnerable = 5,	// 대상이 무적 상태
 		NoLineOfSight = 6,	// 사거리 안이지만 장애물이 가로막음
 		Casting = 7,	// 스킬 시전 중에는 기본 공격을 할 수 없음
+		Stunned = 8,	// 기절 상태에서는 기본 공격을 할 수 없음
 	}
 
 	// 스킬 요청 거부 사유 (ZcSkillRejectNotify.reason)
@@ -109,6 +111,7 @@ namespace GameViewer.Core.Protocol
 		NoLineOfSight = 5,	// 사거리 안이지만 장애물이 가로막음
 		InvalidTarget = 6,	// 공격할 수 없는 대상 (사망, 자기 자신, PvP 금지, 무적 등)
 		Casting = 7,	// 이미 다른 스킬을 시전 중
+		Stunned = 8,	// 기절 상태에서는 스킬을 쓸 수 없음
 	}
 
 	// 스킬 시전 취소 사유 (ZcSkillCancelNotify.reason)
@@ -119,6 +122,7 @@ namespace GameViewer.Core.Protocol
 		InvalidTarget = 3,	// 완료 시점에 대상이 없어졌거나 사망/무적/공격 불가 상태가 됨
 		OutOfRange = 4,	// 완료 시점에 대상이 사거리 밖으로 벗어남
 		NoLineOfSight = 5,	// 완료 시점에 장애물이 가로막음
+		Stunned = 6,	// 시전 중 기절함
 	}
 
 	// 클라이언트 <-> Gateway 패킷 타입 (1 ~ 999)
