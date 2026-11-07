@@ -7,7 +7,6 @@
 #ifndef ROWSCHEMA_H
 #define ROWSCHEMA_H
 
-#include <cctype>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -17,9 +16,12 @@
 //***************************************************************************
 inline bool IsPlainIdentifier(const std::string& s)
 {
-	if( s.empty() || std::isdigit(static_cast<unsigned char>(s[0])) ) return false;
+	// 로캘과 무관한 ASCII 판별을 직접 쓴다. (이 헤더가 pch나 Regular.h 없이도 컴파일되게 한다)
+	const auto digit = [](unsigned char c) { return c >= '0' && c <= '9'; };
+	const auto alpha = [](unsigned char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+	if( s.empty() || digit(static_cast<unsigned char>(s[0])) ) return false;
 	for( unsigned char c : s )
-		if( !(std::isalnum(c) || c == '_') ) return false;
+		if( !(alpha(c) || digit(c) || c == '_') ) return false;
 	return true;
 }
 
@@ -29,13 +31,13 @@ inline bool IsPlainIdentifier(const std::string& s)
 //***************************************************************************
 struct STypeInfo
 {
-	const char*		name;			// 엑셀 헤더/Const 시트에서 쓰는 이름
-	const char*		cppType;		// 행 구조체 멤버 타입
-	const char*		cppConstType;	// constexpr 상수 타입
-	const char*		csType;
-	const char*		getter;			// rapidjson 값 접근자
-	const char*		specType;		// EFieldType 열거자 (정수 계열은 범위와 함께 쓴다)
-	const char*		cppDefault;		// 멤버 기본 초기화 (빈 문자열이면 초기화 없음)
+	const char* name;			// 엑셀 헤더/Const 시트에서 쓰는 이름
+	const char* cppType;		// 행 구조체 멤버 타입
+	const char* cppConstType;	// constexpr 상수 타입
+	const char* csType;
+	const char* getter;			// rapidjson 값 접근자
+	const char* specType;		// EFieldType 열거자 (정수 계열은 범위와 함께 쓴다)
+	const char* cppDefault;		// 멤버 기본 초기화 (빈 문자열이면 초기화 없음)
 	bool			isInteger;		// 범위 [min..max]를 쓸 수 있는 타입
 	int64_t			minV;			// isInteger일 때 표현 범위
 	int64_t			maxV;
@@ -63,9 +65,9 @@ inline const STypeInfo* FindTypeInfo(const std::string& name)
 //***************************************************************************
 struct SBaseInfo
 {
-	const char*		name;
-	const char*		cppType;
-	const char*		csType;
+	const char* name;
+	const char* cppType;
+	const char* csType;
 	int64_t			minV;
 	int64_t			maxV;
 };

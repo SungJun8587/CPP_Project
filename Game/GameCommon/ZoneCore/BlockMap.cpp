@@ -352,12 +352,12 @@ bool CBlockMap::FindPath(const Vec2& from, const Vec2& to, std::vector<Vec2>& ou
 	constexpr float kDiag = 1.41421356f;
 	constexpr float kHeuristicWeight = 1.5f;
 	auto Heuristic = [&](int32 x, int32 y)
-		{
-			const float dx = static_cast<float>(std::abs(x - gx));
-			const float dy = static_cast<float>(std::abs(y - gy));
-			// 가중치 1.5: 최단은 아니어도 펼치는 셀 수를 크게 줄인다. 결과는 경유점 병합으로 다듬어진다.
-			return kHeuristicWeight * ((dx > dy ? dx : dy) + (kDiag - 1.0f) * (dx > dy ? dy : dx));
-		};
+	{
+		const float dx = static_cast<float>(std::abs(x - gx));
+		const float dy = static_cast<float>(std::abs(y - gy));
+		// 가중치 1.5: 최단은 아니어도 펼치는 셀 수를 크게 줄인다. 결과는 경유점 병합으로 다듬어진다.
+		return kHeuristicWeight * ((dx > dy ? dx : dy) + (kDiag - 1.0f) * (dx > dy ? dy : dx));
+	};
 	auto Key = [&](int32 x, int32 y) { return static_cast<int64>(y) * _cellsX + x; };
 
 	std::priority_queue<Entry> open;

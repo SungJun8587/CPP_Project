@@ -599,6 +599,59 @@ public static class RenderSnapshot
         return 0;
     }
 
+    /// <summary>기본 공격/창술사 스킬 연출을 한눈에: 행 = 무기(또는 스킬), 열 = 진행도 4단계. set: basic | skill</summary>
+    static int AtkFx(string dir, string outPng, string set)
+    {
+        ViewerConfig cfg = new ViewerConfig(); cfg.DataDir = dir; cfg.HeroId = 4;
+        GameData data = GameData.Load(cfg.DataDir, cfg.ZoneId);
+        ViewerSession s = new ViewerSession(cfg, data);
+        long now = 100000;
+        s.World.Entities.Clear(); s.World.Effects.Clear();
+        // 행: 이름, 시전자 영웅(0이면 몬스터), 거리, 스킬 ID(0이면 기본 공격)
+        object[][] rows = set == "skill"
+            ? new object[][] { new object[] { "18", 4u, 2.6f, 18u }, new object[] { "24", 4u, 2.6f, 24u }, new object[] { "26", 4u, 2.6f, 26u }, new object[] { "19", 4u, 2.6f, 19u }, new object[] { "27", 4u, 2.6f, 27u }, new object[] { "25", 4u, 2.6f, 25u } }
+            : new object[][] { new object[] { "sword", 1u, 2.2f, 0u }, new object[] { "lance", 4u, 3.0f, 0u }, new object[] { "claw", 0u, 1.8f, 0u }, new object[] { "bow", 2u, 8.0f, 0u }, new object[] { "staff", 3u, 8.0f, 0u } };
+        double[] progs = { 0.12, 0.32, 0.55, 0.8 };
+        float gx = 12f, gy = 4.6f;
+        ViewState v = new ViewState();
+        v.Scale = 34; v.Width = 1500; v.Height = (int)(rows.Length * gy * 34 + 20);
+        v.CamX = 1000 + gx * (progs.Length - 1) / 2f - 1.5f; v.CamY = 1000 + gy * (rows.Length - 1) / 2f - 0.9f;
+        ulong id = 5000;
+        for (int r = 0; r < rows.Length; ++r)
+            for (int c = 0; c < progs.Length; ++c)
+            {
+                uint hero = (uint)rows[r][1]; float dist = (float)rows[r][2]; uint skill = (uint)rows[r][3];
+                float x = 1000 + c * gx - 4f, y = 1000 + r * gy;
+                Entity caster = new Entity(); caster.Id = ++id; caster.Type = hero == 0 ? (byte)1 : (byte)0; caster.X = x; caster.Y = y; caster.Hp = caster.MaxHp = 100; caster.TemplateId = hero == 0 ? 1u : hero;
+                Entity tgt = new Entity(); tgt.Id = ++id; tgt.Type = hero == 0 ? (byte)0 : (byte)1; tgt.X = x + dist; tgt.Y = y; tgt.Hp = tgt.MaxHp = 100; tgt.TemplateId = 1;
+                s.World.Entities[caster.Id] = caster; s.World.Entities[tgt.Id] = tgt;
+                caster.Face(tgt.X, tgt.Y, now);
+                if (skill == 0) caster.AttackAnimMs = now - (long)(320 * progs[c]);
+                if (skill != 0)
+                {
+                    s.World.Apply(GameViewer.Core.Protocol.ServerPackets.F(GameViewer.Core.Protocol.ServerPackets.Skill(caster.Id, skill, 0, tgt.X + (skill == 18 || skill == 27 ? 3f : 0f), y, 1)), now - (long)(500 * progs[c]));
+                }
+                else
+                {
+                    bool ranged = dist > 4f;
+                    ViewEffect e = new ViewEffect(); e.Kind = ranged ? EffectKind.Tracer : EffectKind.Slash; e.DurMs = ranged ? 260 : 320; e.StartMs = now - (long)(e.DurMs * progs[c]);
+                    e.X = tgt.X; e.Y = tgt.Y; e.EntityId = caster.Id; s.World.Effects.Add(e);
+                    ViewEffect sp = new ViewEffect(); sp.Kind = EffectKind.Spark; sp.DurMs = 360; sp.StartMs = now - (long)(360 * Math.Max(0, progs[c] - (ranged ? 0.4 : 0.1)));
+                    sp.X = tgt.X; sp.Y = tgt.Y; sp.EntityId = tgt.Id; sp.TargetId = caster.Id; sp.Variant = c == 3 ? 1 : 0; sp.Value = 30;
+                    if (progs[c] > (ranged ? 0.4 : 0.1)) s.World.Effects.Add(sp);
+                }
+            }
+        using (SceneRenderer rd = new SceneRenderer())
+        using (Bitmap bmp = new Bitmap(v.Width, v.Height, PixelFormat.Format32bppArgb))
+        using (Graphics g = Graphics.FromImage(bmp))
+        {
+            AutoPilot pilot = new AutoPilot(s);
+            rd.Draw(g, s, pilot, v, now);
+            bmp.Save(outPng, ImageFormat.Png);
+        }
+        return 0;
+    }
+
     public static int Main(string[] args)
     {
         if (args.Length >= 2 && args[0] == "--selftest") { AssetTests(); GroundTests(); BackdropTests(); }
@@ -610,6 +663,7 @@ public static class RenderSnapshot
         if (args.Length >= 2 && args[0] == "--sheet") return Sheet(args[1], args.Length > 2 ? double.Parse(args[2]) : 28);
         if (args.Length >= 2 && args[0] == "--selftest") return SelfTest(args[1]);
         if (args.Length >= 2 && args[0] == "--bench") return Bench(args[1], args.Length > 2 ? int.Parse(args[2]) : 300);
+        if (args.Length >= 4 && args[0] == "--atkfx") return AtkFx(args[1], args[2], args[3]);
         if (args.Length >= 3 && args[0] == "--fxsheet") return FxSheet(args[1], args[2], args.Length > 3 ? double.Parse(args[3]) : 0.4);
         if (args.Length < 2) { Console.WriteLine("usage: RenderSnapshot <GameDataDir> <outDir> [seconds...]"); return 2; }
         Directory.CreateDirectory(args[1]);

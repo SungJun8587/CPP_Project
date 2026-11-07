@@ -1,4 +1,4 @@
-XlsxConverter stamp v2 exe=134383378556122955
+XlsxConverter stamp v3 exe=134385131357882332
 xlsx=K:\GitHub\CPP\Project\Game\GameData
 out=K:\GitHub\CPP\Project\Game\GameData
 cpp=K:\GitHub\CPP\Project\Game\GameCommon\Generated
@@ -8,7 +8,7 @@ pcs=K:\GitHub\CPP\Project\Game\GameViewer\Core\Protocol\Generated
 pns=GameViewer.Core.Protocol
 psz=K:\GitHub\CPP\Project\Game\GameViewer\Tests\cpp_packet_sizes.txt
 --
-src=Definitions.xlsx=134383382282572376/9297;Hero.xlsx=134383393072911868/11487;Monster.xlsx=134383382299169920/9801;Packet.xlsx=134383382308351449/19419;World.xlsx=134383415829926529/9033;
+src=Definitions.xlsx=134385115930485393/9297;Hero.xlsx=134385115930405863/11498;Monster.xlsx=134385115930318568/9801;Packet.xlsx=134385115930586040/19419;World.xlsx=134385115930238332/9033;
 K:\GitHub\CPP\Project\Game\GameData\Hero.json
 K:\GitHub\CPP\Project\Game\GameData\Skill.json
 K:\GitHub\CPP\Project\Game\GameData\Status.json

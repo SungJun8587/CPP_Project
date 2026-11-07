@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// BattleZone.cpp : implementation of the CBattleZone class.
+// BattleZone.cpp: implementation of the CBattleZone class.
 //
 //***************************************************************************
 
@@ -32,7 +32,7 @@ CBattleZone::CBattleZone(const FieldZoneConfig& config, CZoneServerMain* server,
 	, _playerCount(0)
 {
 	_recipients.reserve(256);
-	_monsters->SetSkillData(_heroes);
+	_monsters->SetSkillData(_heroes);		// 몬스터 스킬(Monster 시트의 SkillId)은 영웅과 같은 스킬 시트를 쓴다
 
 	if( bossData != nullptr )
 	{
@@ -70,40 +70,41 @@ bool CBattleZone::ValidateMonsters(std::string& error) const
 
 	const float monsterSpeed = _monsters->GetMaxSpawnSpeed();
 	// 이동속도 버프를 받은 영웅이 낼 수 있는 최고 속도로 검사한다(위치 허용 오차가 속도에 비례해 늘어난다).
+	// 런타임의 속도 버프 합계는 kMaxSpeedBuffPercent로 묶이므로(RecomputeStatMods) 이 값이 실제 최고 속도의 상한이다.
 	const float buffMul = 1.0f + static_cast<float>(_heroes->GetMaxSpeedBuffPercent()) * 0.01f;
+	const float viewRange = GetGuaranteedViewRange();
+	char buf[200];
+
+	// 영웅의 공격 판정 거리와 스킬(시전 거리 + 효과 반경)이 모두 AOI 보장 시야 안이어야 한다.
 	for( const auto& pair : _heroes->GetHeroes() )
 	{
 		const SHeroTemplate& hero = pair.second;
-		if( !IsAttackRangeSupported(hero.stats.attackRange, (std::max)(hero.speed * buffMul, monsterSpeed)) )
+		const float reachSpeed = (std::max)(hero.speed * buffMul, monsterSpeed);
+
+		if( !IsAttackRangeSupported(hero.stats.attackRange, reachSpeed) )
 		{
-			char buf[160];
-			std::snprintf(buf, sizeof(buf), "hero %u: attack reach exceeds the guaranteed AOI view range", hero.id);
+			std::snprintf(buf, sizeof(buf), "hero %u: attack reach (range %.1f) exceeds the guaranteed AOI view range %.1f", hero.id, hero.stats.attackRange, viewRange);
 			error = buf;
 			return false;
 		}
-	}
 
-	// 스킬은 시전 거리와 효과 반경을 더한 범위까지 영향을 주므로, 그 전체가 AOI 보장 시야 안이어야 한다.
-	for( const auto& pair : _heroes->GetHeroes() )
-	{
-		const SHeroTemplate& hero = pair.second;
 		for( const uint32 skillId : hero.skills )
 		{
 			const SSkillTemplate* skill = _heroes->FindSkill(skillId);
-			if( skill != nullptr && !IsAttackRangeSupported(skill->range + skill->radius, (std::max)(hero.speed * buffMul, monsterSpeed)) )
+			if( skill != nullptr && !IsAttackRangeSupported(skill->range + skill->radius, reachSpeed) )
 			{
-				char buf[160];
-				std::snprintf(buf, sizeof(buf), "hero %u skill %u: range + radius exceeds the guaranteed AOI view range", hero.id, skill->id);
+				std::snprintf(buf, sizeof(buf), "hero %u skill %u: range + radius (%.1f) exceeds the guaranteed AOI view range %.1f", hero.id, skill->id, skill->range + skill->radius, viewRange);
 				error = buf;
 				return false;
 			}
 		}
 	}
 
-	if( !_monsters->Validate(error, _heroes->GetMaxSpeed() * buffMul) )
+	const float heroMaxSpeed = _heroes->GetMaxSpeed() * buffMul;
+	if( !_monsters->Validate(error, heroMaxSpeed) )
 		return false;
 
-	return _bosses == nullptr || _bosses->Validate(error);
+	return _bosses == nullptr || _bosses->Validate(error, heroMaxSpeed);
 }
 
 //***************************************************************************
@@ -213,8 +214,8 @@ void CBattleZone::HandleLeave(uint64 clientSessionId, uint64 charId)
 	static_cast<CZonePlayer*>(it->second)->MarkLeaving();
 
 	_sessionToEntity.erase(it);
-	RemoveEntity(charId);
-	_playerCount.fetch_sub(1, std::memory_order_relaxed);
+	if( RemoveEntity(charId) )
+		_playerCount.fetch_sub(1, std::memory_order_relaxed);
 }
 
 //***************************************************************************

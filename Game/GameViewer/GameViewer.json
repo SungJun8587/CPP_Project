@@ -2,6 +2,7 @@
   "Host": "127.0.0.1",
   "Port": 7000,
   "CharId": 900001,
+  "MultiInstance": true,
   "ZoneId": 1,
   "HeroId": 1,
   "DataDir": "GameData",

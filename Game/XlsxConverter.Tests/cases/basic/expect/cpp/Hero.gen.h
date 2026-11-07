@@ -2,7 +2,7 @@
 //***************************************************************************
 // Hero.gen.h : 자동 생성 파일 - 직접 수정하지 마세요.
 //
-// XlsxConverter이 GameData.xlsx의 Hero 시트 헤더로부터 만듭니다. 시트를 고치려면 엑셀을 고치고 XlsxConverter을 다시 실행하세요.
+// XlsxConverter가 GameData 엑셀의 Hero 시트로부터 만듭니다. 시트를 고치려면 엑셀을 고치고 XlsxConverter를 다시 실행하세요.
 // SHeroRow는 kFile/kTable/Specs/ToJSON/FromJSON을 갖습니다.
 //***************************************************************************
 

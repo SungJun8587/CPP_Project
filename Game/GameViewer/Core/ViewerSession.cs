@@ -33,6 +33,8 @@ namespace GameViewer.Core
         private long _lastMoveSentMs = -100000;
         private long _lastAttackSentMs = -100000;
         private long _lastSkillSentMs = -100000;
+        private long _skillPendingUntil;            // 보낸 스킬 요청의 답을 기다리는 동안(이 시각까지) 다른 요청을 보내지 않는다
+        private const long SkillResponseWaitMs = 500;
         private volatile int _connectState;        // 0 진행 중/미시작, 1 성공, 2 실패
         private string _connectError;
 
@@ -41,6 +43,7 @@ namespace GameViewer.Core
             Config = config; Data = data;
             World = new WorldModel(data, config.CharId);
             World.SelfSkillUsed += OnSelfSkillUsed;
+            World.SelfSkillResponded += delegate (long now) { _skillPendingUntil = 0; };
             State = SessionState.Idle; StatusText = "대기";
         }
 
@@ -208,11 +211,20 @@ namespace GameViewer.Core
             if (!CanAct) return false;
             if (SkillCooldownLeftMs(skillId, now) > 0) return false;
             if (World.Self.Casting) return false;
+            if (SkillPending(now)) return false;
             if (now - _lastSkillSentMs < 100) return false;
             if (!Send(Build.ZcSkillReq(skillId, targetId, x, y))) return false;
             _lastSkillSentMs = now;
+            _skillPendingUntil = now + SkillResponseWaitMs;
             return true;
         }
+
+        /// <summary>
+        /// 보낸 스킬 요청의 답(시전 시작/발동/거부/취소)이 아직 오지 않았다.
+        /// 이 사이에 이동·정지 요청을 보내면 서버가 막 시작한 시전을 "이동"으로 취소하고, 같은 스킬을 또 보내면 거부 로그만 쌓인다.
+        /// 시전 시간이 있는 스킬은 서버가 시전을 시작하면서 스스로 멈추므로 클라이언트가 먼저 멈출 필요도 없다.
+        /// </summary>
+        public bool SkillPending(long now) { return now < _skillPendingUntil; }
 
         public long SkillCooldownLeftMs(uint skillId, long now)
         {

@@ -6,30 +6,14 @@
 
 #include "pch.h"
 #include "RowGenerator.h"
-#include "CodeGenCommon.h"
 
 #include <algorithm>
-#include <cctype>
 #include <set>
 
 namespace
 {
-	const char* kKeywords[] =
-	{
-		"alignas", "alignof", "and", "asm", "auto", "bool", "break", "case", "catch", "char", "class", "const", "constexpr",
-		"continue", "default", "delete", "do", "double", "else", "enum", "explicit", "export", "extern", "false", "float",
-		"for", "friend", "goto", "if", "inline", "int", "long", "namespace", "new", "noexcept", "not", "nullptr", "operator",
-		"or", "private", "protected", "public", "register", "return", "short", "signed", "sizeof", "static", "struct",
-		"switch", "template", "this", "throw", "true", "try", "typedef", "typename", "union", "unsigned", "using", "virtual",
-		"void", "volatile", "while", "xor",
-	};
-
-	bool IsKeyword(const std::string& s)
-	{
-		for( const char* k : kKeywords )
-			if( s == k ) return true;
-		return false;
-	}
+	// 필드/멤버 이름이 C++ 예약어나 소문자 Windows 매크로에 걸리면 멤버에 '_'를 붙인다. (목록은 CodeGenCommon에 있다)
+	bool IsKeyword(const std::string& s) { return CodeGenCommon::IsCppKeyword(s); }
 
 	bool IsIdentifier(const std::string& s) { return IsPlainIdentifier(s); }
 
@@ -118,13 +102,13 @@ std::string RowGenerator::MemberName(const std::string& fieldName)
 {
 	std::string s = fieldName;
 	size_t run = 0;
-	while( run < s.size() && std::isupper(static_cast<unsigned char>(s[run])) ) ++run;
+	while( run < s.size() && AsciiChar::IsUpper(static_cast<unsigned char>(s[run])) ) ++run;
 
 	// 대문자 묶음 뒤에 소문자가 이어지면 마지막 대문자는 다음 단어의 시작이므로 남긴다. (HPMax -> hpMax)
 	size_t lower = run;
-	if( run > 1 && run < s.size() && std::islower(static_cast<unsigned char>(s[run])) ) lower = run - 1;
+	if( run > 1 && run < s.size() && AsciiChar::IsLower(static_cast<unsigned char>(s[run])) ) lower = run - 1;
 	for( size_t i = 0; i < lower; ++i )
-		s[i] = static_cast<char>(std::tolower(static_cast<unsigned char>(s[i])));
+		s[i] = AsciiChar::ToLower(static_cast<unsigned char>(s[i]));
 
 	if( IsKeyword(s) ) s += '_';
 	return s;
@@ -132,10 +116,19 @@ std::string RowGenerator::MemberName(const std::string& fieldName)
 
 namespace
 {
-	std::string CsIdent(const std::string& s)
+	// 시트 클래스와 상수 클래스 이름. enum 이름과 겹치는지는 호출하는 쪽이 따로 검사한다.
+	std::set<std::string> CsSheetTypeNames(const std::vector<SSheetSchema>& schemas)
 	{
-		return CodeGenCommon::IsCsKeyword(s) ? "@" + s : s;
+		std::set<std::string> names = { "GameConsts" };
+		for( const SSheetSchema& s : schemas )
+		{
+			names.insert(s.name + "Row");
+			names.insert(s.name + "Table");
+		}
+		return names;
 	}
+
+	using CodeGenCommon::CsIdent;
 
 	std::string CsType(const std::string& type)
 	{
@@ -145,16 +138,6 @@ namespace
 	std::string CsFieldType(const SFieldDef& f)
 	{
 		return f.type == "enum" ? f.enumName : CsType(f.type);
-	}
-
-	std::string CsBase(const std::string& base)
-	{
-		return FindBaseInfo(base)->csType;
-	}
-
-	std::string CppBase(const std::string& base)
-	{
-		return FindBaseInfo(base)->cppType;
 	}
 
 	std::string CppConstType(const std::string& type)
@@ -176,9 +159,9 @@ namespace
 		const size_t before = errors.size();
 		for( const SEnumDef& e : defs.enums )
 		{
-			if( IsKeyword(e.name) ) errors.push_back("Enum " + e.name + U8(": C++ 키워드는 enum 이름으로 쓸 수 없습니다"));
+			if( CodeGenCommon::IsCppReservedName(e.name) ) errors.push_back("Enum " + e.name + U8(": C++ 키워드나 Windows 매크로 이름은 enum 이름으로 쓸 수 없습니다"));
 			for( const SEnumMember& m : e.members )
-				if( IsKeyword(m.name) ) errors.push_back("Enum " + e.name + "." + m.name + U8(": C++ 키워드는 멤버 이름으로 쓸 수 없습니다"));
+				if( CodeGenCommon::IsCppReservedName(m.name) ) errors.push_back("Enum " + e.name + "." + m.name + U8(": C++ 키워드나 Windows 매크로 이름은 멤버 이름으로 쓸 수 없습니다 (ERROR, DELETE, IN, OUT 등은 Error처럼 바꾸세요)"));
 		}
 		return errors.size() == before;
 	}
@@ -189,11 +172,7 @@ namespace
 	std::string CppEnumsHeader(const SDefinitions& defs)
 	{
 		std::string t;
-		t += "\n//***************************************************************************\n";
-		t += U8("// Enums.gen.h : 자동 생성 파일 - 직접 수정하지 마세요.\n");
-		t += "//\n";
-		t += U8("// XlsxConverter가 GameData.xlsx의 Enum 시트로부터 만듭니다. 다른 헤더에 의존하지 않습니다.\n");
-		t += "//***************************************************************************\n\n";
+		t += "\n" + CodeGenCommon::CppBanner("Enums.gen.h", CodeGenCommon::SourceNote("Enum") + U8(" 다른 헤더에 의존하지 않습니다.")) + "\n";
 		t += "#ifndef GAMEDATAENUMS_GEN_H\n#define GAMEDATAENUMS_GEN_H\n\n#include <cstdint>\n\n";
 		t += "namespace GameDataEnums\n{\n";
 		bool first = true;
@@ -201,10 +180,7 @@ namespace
 		{
 			if( !first ) t += "\n";
 			first = false;
-			t += "\tenum class " + e.name + " : " + CppBase(e.base) + "\n\t{\n";
-			for( const SEnumMember& m : e.members )
-				t += "\t\t" + m.name + " = " + std::to_string(m.value) + "," + CodeGenCommon::CommentTail(m.comment) + "\n";
-			t += "\t};\n";
+			t += CodeGenCommon::CppEnum(e, "\t");
 		}
 		t += "}\n\n#endif // ndef GAMEDATAENUMS_GEN_H\n";
 		return t;
@@ -216,11 +192,7 @@ namespace
 	std::string CppEnumStringsHeader(const SDefinitions& defs)
 	{
 		std::string t;
-		t += "\n//***************************************************************************\n";
-		t += U8("// EnumStrings.gen.h : 자동 생성 파일 - 직접 수정하지 마세요.\n");
-		t += "//\n";
-		t += U8("// enum 멤버 이름 <-> 문자열 변환. JSON에는 멤버 이름이 그대로 저장된다. TCHAR, _T, _tcscmp가 필요하다.\n");
-		t += "//***************************************************************************\n\n";
+		t += "\n" + CodeGenCommon::CppBanner("EnumStrings.gen.h", U8("enum 멤버 이름 <-> 문자열 변환. JSON에는 멤버 이름이 그대로 저장된다. TCHAR, _T, _tcscmp가 필요하다.")) + "\n";
 		t += "#ifndef GAMEDATAENUMSTRINGS_GEN_H\n#define GAMEDATAENUMSTRINGS_GEN_H\n\n#include \"Enums.gen.h\"\n\n";
 		t += "namespace GameDataEnums\n{\n";
 		bool first = true;
@@ -245,11 +217,7 @@ namespace
 	std::string CppConstsHeader(const SDefinitions& defs)
 	{
 		std::string t;
-		t += "\n//***************************************************************************\n";
-		t += U8("// Consts.gen.h : 자동 생성 파일 - 직접 수정하지 마세요.\n");
-		t += "//\n";
-		t += U8("// XlsxConverter가 GameData.xlsx의 Const 시트로부터 만듭니다. 문자열 상수가 있으면 TCHAR, _T가 필요하다. (pch가 제공)\n");
-		t += "//***************************************************************************\n\n";
+		t += "\n" + CodeGenCommon::CppBanner("Consts.gen.h", CodeGenCommon::SourceNote("Const") + U8(" 문자열 상수가 있으면 TCHAR, _T가 필요하다. (pch가 제공)")) + "\n";
 		t += "#ifndef GAMEDATACONSTS_GEN_H\n#define GAMEDATACONSTS_GEN_H\n\n#include <cstdint>\n\n";
 		t += "namespace GameDataConsts\n{\n";
 		for( const SConstDef& c : defs.consts )
@@ -318,19 +286,12 @@ bool RowGenerator::Generate(const std::vector<SSheetSchema>& schemas, const SDef
 
 		std::string guard = "GAMEDATAROWS_";
 		for( unsigned char c : s.name )
-			guard += static_cast<char>(std::toupper(c));
+			guard += AsciiChar::ToUpper(c);
 		guard += "_GEN_H";
 
 		const std::string st = "S" + s.name + "Row";
 		std::string text;
-		text += "\n";
-		text += "//***************************************************************************\n";
-		text += "// " + s.name + U8(".gen.h : 자동 생성 파일 - 직접 수정하지 마세요.\n");
-		text += "//\n";
-		text += U8("// XlsxConverter가 GameData.xlsx의 ") + s.name + U8(" 시트 헤더로부터 만듭니다. 시트를 고치려면 엑셀을 고치고 XlsxConverter를 다시 실행하세요.\n");
-		text += "// " + st + U8("는 kFile/kTable/Specs/ToJSON/FromJSON을 갖습니다.\n");
-		text += "//***************************************************************************\n";
-		text += "\n";
+		text += "\n" + CodeGenCommon::CppBanner(s.name + ".gen.h", CodeGenCommon::SourceNote(s.name) + U8(" 시트를 고치려면 엑셀을 고치고 XlsxConverter를 다시 실행하세요.\n") + st + U8("는 kFile/kTable/Specs/ToJSON/FromJSON을 갖습니다.")) + "\n";
 		text += "#ifndef " + guard + "\n";
 		text += "#define " + guard + "\n";
 		text += "\n";
@@ -394,13 +355,7 @@ bool RowGenerator::Generate(const std::vector<SSheetSchema>& schemas, const SDef
 	if( errors.size() == errBefore )
 	{
 		std::string text;
-		text += "\n";
-		text += "//***************************************************************************\n";
-		text += U8("// GeneratedCommon.h : 자동 생성 파일 - 직접 수정하지 마세요.\n");
-		text += "//\n";
-		text += U8("// XlsxConverter가 만든 시트별 행 구조체 헤더(<시트>.gen.h)를 한곳에서 포함합니다.\n");
-		text += "//***************************************************************************\n";
-		text += "\n";
+		text += "\n" + CodeGenCommon::CppBanner("GeneratedCommon.h", U8("XlsxConverter가 만든 시트별 행 구조체 헤더(<시트>.gen.h)를 한곳에서 포함합니다.")) + "\n";
 		text += "#ifndef GAMEDATAROWS_GENERATEDCOMMON_H\n";
 		text += "#define GAMEDATAROWS_GENERATEDCOMMON_H\n";
 		text += "\n";
@@ -416,30 +371,23 @@ bool RowGenerator::Generate(const std::vector<SSheetSchema>& schemas, const SDef
 	return true;
 }
 
+std::set<std::string> RowGenerator::CsTypeNames(const std::vector<SSheetSchema>& schemas, const SDefinitions& defs)
+{
+	std::set<std::string> names = CsSheetTypeNames(schemas);
+	for( const SEnumDef& e : defs.enums ) names.insert(e.name);
+	return names;
+}
+
 bool RowGenerator::GenerateCs(const std::vector<SSheetSchema>& schemas, const SDefinitions& defs, const std::string& ns, std::vector<SGeneratedFile>& out, std::vector<std::string>& errors)
 {
 	const size_t errBefore = errors.size();
 
 	// 네임스페이스: 점으로 구분된 식별자들
-	bool nsOk = !ns.empty();
-	size_t b = 0;
-	while( nsOk && b <= ns.size() )
-	{
-		size_t e = ns.find('.', b);
-		if( e == std::string::npos ) e = ns.size();
-		if( !IsIdentifier(ns.substr(b, e - b)) ) nsOk = false;
-		b = e + 1;
-	}
-	if( !nsOk ) { errors.push_back("--cs-namespace '" + ns + U8("': C# 네임스페이스 형식이 아닙니다")); return false; }
+	if( !CodeGenCommon::IsValidNamespace(ns) ) { errors.push_back("--cs-namespace '" + ns + U8("': C# 네임스페이스 형식이 아닙니다")); return false; }
 
 	// 같은 네임스페이스에 만들어지는 형식 이름끼리 겹치면 C# 컴파일이 깨지므로 미리 막는다.
 	{
-		std::set<std::string> typeNames = { "GameConsts" };
-		for( const SSheetSchema& s : schemas )
-		{
-			typeNames.insert(s.name + "Row");
-			typeNames.insert(s.name + "Table");
-		}
+		std::set<std::string> typeNames = CsSheetTypeNames(schemas);
 		for( const SEnumDef& e : defs.enums )
 			if( !typeNames.insert(e.name).second )
 				errors.push_back("Enum " + e.name + U8(": C# 형식 이름이 시트 클래스(<시트>Row, <시트>Table)나 GameConsts와 겹칩니다"));
@@ -453,12 +401,7 @@ bool RowGenerator::GenerateCs(const std::vector<SSheetSchema>& schemas, const SD
 
 	const auto header = [&](const std::string& file, const std::string& what)
 		{
-			std::string t;
-			t += "// <auto-generated>\n";
-			t += "// " + file + U8(" : 자동 생성 파일 - 직접 수정하지 마세요.\n");
-			t += U8("// XlsxConverter가 GameData.xlsx의 ") + what + U8(" 시트로부터 만듭니다.\n");
-			t += "// </auto-generated>\n\nnamespace " + ns + "\n{\n";
-			return t;
+			return CodeGenCommon::CsBanner(file, CodeGenCommon::SourceNote(what)) + "\nnamespace " + ns + "\n{\n";
 		};
 	if( !defs.enums.empty() )
 	{
@@ -468,10 +411,7 @@ bool RowGenerator::GenerateCs(const std::vector<SSheetSchema>& schemas, const SD
 		{
 			if( !first ) t += "\n";
 			first = false;
-			t += "\tpublic enum " + CsIdent(e.name) + " : " + CsBase(e.base) + "\n\t{\n";
-			for( const SEnumMember& m : e.members )
-				t += "\t\t" + CsIdent(m.name) + " = " + std::to_string(m.value) + "," + CodeGenCommon::CommentTail(m.comment) + "\n";
-			t += "\t}\n";
+			t += CodeGenCommon::CsEnum(e, CsIdent(e.name), "\t");
 		}
 		t += "}\n";
 		files.push_back({ "Enums.gen.cs", std::move(t) });
@@ -509,11 +449,7 @@ bool RowGenerator::GenerateCs(const std::vector<SSheetSchema>& schemas, const SD
 		if( !ok ) continue;
 
 		std::string text;
-		text += "// <auto-generated>\n";
-		text += "// " + s.name + U8(".gen.cs : 자동 생성 파일 - 직접 수정하지 마세요.\n");
-		text += U8("// XlsxConverter가 GameData.xlsx의 ") + s.name + U8(" 시트 헤더로부터 만듭니다. 시트를 고치려면 엑셀을 고치고 XlsxConverter를 다시 실행하세요.\n");
-		text += "// " + row + U8("(행)와 ") + table + U8("(JSON 최상위 객체)가 있습니다. 속성 이름이 JSON 키와 같아 별도 특성이 필요 없습니다.\n");
-		text += "// </auto-generated>\n";
+		text += CodeGenCommon::CsBanner(s.name + ".gen.cs", CodeGenCommon::SourceNote(s.name) + U8(" 시트를 고치려면 엑셀을 고치고 XlsxConverter를 다시 실행하세요.\n") + row + U8("(행)와 ") + table + U8("(JSON 최상위 객체)가 있습니다. 속성 이름이 JSON 키와 같아 별도 특성이 필요 없습니다."));
 		text += "\n";
 		text += "using System.Collections.Generic;\n";
 		text += "\n";

@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <set>
 
 namespace
 {
@@ -41,121 +42,169 @@ CMonsterSystem::CMonsterSystem(CFieldZoneBase& zone, std::shared_ptr<const CMons
 
 //***************************************************************************
 // @brief 이 존의 스폰 테이블이 존 설정과 맞는지 검사합니다. (데이터 자체의 검사는 CMonsterData::Validate)
-//        - 스폰 중심이 존 영역 안
-//        - 선공 감지 거리 <= AOI 최소 보장 시야 (시야 밖 플레이어는 AI를 깨우지 못하므로 감지할 수 없다)
-//        - 기본 공격 판정 거리(사거리 + 허용 오차 + 이동 지연 보정) <= AOI 최소 보장 시야.
-//          이동 지연 보정은 공격자와 대상이 모두 최고 속도로 움직일 때를 가정하므로,
-//          속도는 몬스터 자신과 상대(플레이어)의 최고 속도 중 큰 값을 쓴다
 //        - AI 튜닝값 범위
-// @param error            [out] 오류 설명
+//        - 스폰 중심이 존 영역 안이고 장애물 밖 (오류에 스폰 순번과 좌표를 적는다)
+//        - 스폰 테이블에 나오는 템플릿 검사(ValidateTemplate)
+//        첫 오류에서 멈추지 않고 모아서 한 번에 돌려준다(최대 kMaxReportedErrors개).
+// @param error            [out] 오류 설명 (여러 개면 줄바꿈으로 구분)
 // @param opponentMaxSpeed 몬스터와 맞붙는 상대(플레이어)가 가질 수 있는 최고 이동 속도 (units/sec). 모르면 0
 // @return 문제가 없으면 true
 //***************************************************************************
 bool CMonsterSystem::Validate(std::string& error, float opponentMaxSpeed) const
 {
+	std::vector<std::string> errors;
 	char buf[256];
 
 	if( !(_config.engageRatio > 0.0f && _config.engageRatio <= 1.0f) || !(_config.repathDistance > 0.0f) )
+		errors.emplace_back("monster system config: engageRatio must be in (0, 1] and repathDistance > 0");
+
+	if( _config.pathSearchesPerTick < 1 || _config.pathMaxNodes < 1 )
+		errors.emplace_back("monster system config: pathSearchesPerTick and pathMaxNodes must be >= 1");
+
+	if( _data != nullptr )
 	{
-		error = "monster system config: engageRatio must be in (0, 1] and repathDistance > 0";
-		return false;
-	}
+		uint64 totalCount = 0;
+		bool overLimitReported = false;
+		std::set<uint32> checkedTemplates;
 
-	if( _data == nullptr )
-		return true;
-
-	const float viewRange = _zone.GetGuaranteedViewRange();
-	uint64 totalCount = 0;
-
-	for( const SSpawnEntry& s : _data->GetSpawns() )
-	{
-		if( s.zoneId != _zone.GetZoneId() )
-			continue;
-
-		totalCount += s.count;
-		if( totalCount > _config.maxMonsters )
+		const std::vector<SSpawnEntry>& spawns = _data->GetSpawns();
+		for( size_t i = 0; i < spawns.size(); ++i )
 		{
-			std::snprintf(buf, sizeof(buf), "zone %u: total spawn count exceeds the configured limit %u", s.zoneId, _config.maxMonsters);
-			error = buf;
-			return false;
-		}
+			const SSpawnEntry& s = spawns[i];
+			if( s.zoneId != _zone.GetZoneId() )
+				continue;
 
-		const SMonsterTemplate* tmpl = _data->FindMonster(s.monsterId);
-		if( tmpl == nullptr )
-		{
-			std::snprintf(buf, sizeof(buf), "zone %u: unknown monster id %u", s.zoneId, s.monsterId);
-			error = buf;
-			return false;
-		}
-
-		const Vec2 center{ s.x, s.y };
-		if( !_zone.IsInBounds(center) )
-		{
-			std::snprintf(buf, sizeof(buf), "zone %u: spawn of monster %u is outside the zone bounds", s.zoneId, s.monsterId);
-			error = buf;
-			return false;
-		}
-
-		if( _zone.IsBlocked(center) )
-		{
-			std::snprintf(buf, sizeof(buf), "zone %u: spawn center of monster %u is inside an obstacle", s.zoneId, s.monsterId);
-			error = buf;
-			return false;
-		}
-
-		if( tmpl->aggroRange > viewRange )
-		{
-			std::snprintf(buf, sizeof(buf), "monster %u: aggroRange %.1f exceeds the guaranteed AOI view range %.1f", tmpl->id, tmpl->aggroRange, viewRange);
-			error = buf;
-			return false;
-		}
-
-		if( !_zone.IsAttackRangeSupported(tmpl->stats.attackRange, (std::max)(tmpl->speed, opponentMaxSpeed)) )
-		{
-			std::snprintf(buf, sizeof(buf), "monster %u: attack reach exceeds the guaranteed AOI view range %.1f", tmpl->id, viewRange);
-			error = buf;
-			return false;
-		}
-
-		if( tmpl->assistRange > viewRange )
-		{
-			std::snprintf(buf, sizeof(buf), "monster %u: assistRange %.1f exceeds the guaranteed AOI view range %.1f", tmpl->id, tmpl->assistRange, viewRange);
-			error = buf;
-			return false;
-		}
-
-		// 몬스터 스킬: 스킬 데이터가 있어야 하고, 적 대상 스킬이어야 하며, 시전 거리 + 효과 반경이 AOI 보장 시야 안이어야 한다(보스 스킬과 같은 기준).
-		if( tmpl->skillId != 0 )
-		{
-			const SSkillTemplate* skill = _skills != nullptr ? _skills->FindSkill(tmpl->skillId) : nullptr;
-			if( skill == nullptr )
+			totalCount += s.count;
+			if( totalCount > _config.maxMonsters && !overLimitReported )
 			{
-				std::snprintf(buf, sizeof(buf), "monster %u: unknown skill id %u (skill data missing?)", tmpl->id, tmpl->skillId);
-				error = buf;
-				return false;
+				overLimitReported = true;
+				std::snprintf(buf, sizeof(buf), "zone %u: total spawn count exceeds the configured limit %u (reached at spawn[%zu])", s.zoneId, _config.maxMonsters, i);
+				errors.emplace_back(buf);
 			}
 
-			if( skill->target != ESkillTarget::Enemy || skill->projectileSpeed > 0.0f )
+			const SMonsterTemplate* tmpl = _data->FindMonster(s.monsterId);
+			if( tmpl == nullptr )
 			{
-				std::snprintf(buf, sizeof(buf), "monster %u: skill %u must target enemies and must not be a projectile", tmpl->id, tmpl->skillId);
-				error = buf;
-				return false;
+				std::snprintf(buf, sizeof(buf), "spawn[%zu] zone %u: unknown monster id %u", i, s.zoneId, s.monsterId);
+				errors.emplace_back(buf);
+				continue;
 			}
 
-			if( !_zone.IsAttackRangeSupported(skill->range + skill->radius, (std::max)(tmpl->speed, opponentMaxSpeed)) )
+			const Vec2 center{ s.x, s.y };
+			if( !_zone.IsInBounds(center) )
 			{
-				std::snprintf(buf, sizeof(buf), "monster %u: skill %u reach exceeds the guaranteed AOI view range %.1f", tmpl->id, tmpl->skillId, viewRange);
-				error = buf;
-				return false;
+				std::snprintf(buf, sizeof(buf), "spawn[%zu] zone %u: center (%.1f, %.1f) of monster %u is outside the zone bounds", i, s.zoneId, s.x, s.y, s.monsterId);
+				errors.emplace_back(buf);
 			}
+			else if( _zone.IsBlocked(center) )
+			{
+				std::snprintf(buf, sizeof(buf), "spawn[%zu] zone %u: center (%.1f, %.1f) of monster %u is inside an obstacle", i, s.zoneId, s.x, s.y, s.monsterId);
+				errors.emplace_back(buf);
+			}
+
+			if( checkedTemplates.insert(tmpl->id).second )
+				ValidateTemplate(*tmpl, opponentMaxSpeed, errors);
 		}
 	}
 
-	return true;
+	return JoinErrors(errors, error);
 }
 
 //***************************************************************************
-// @brief 이 존의 스폰 테이블에 나오는 몬스터 중 가장 빠른 이동 속도를 반환합니다.
+// @brief 몬스터 템플릿 하나가 이 존의 AOI 시야 안에서 동작하는지 검사하고, 문제를 errors에 덧붙입니다.
+//        스폰 테이블에 나오는 몬스터와 보스가 소환하는 몬스터가 같은 기준을 쓰도록 분리했다.
+//        - 선공 감지 거리 <= AOI 최소 보장 시야 (시야 밖 플레이어는 AI를 깨우지 못하므로 감지할 수 없다)
+//        - 기본 공격 판정 거리(사거리 + 허용 오차 + 이동 지연 보정) <= AOI 최소 보장 시야.
+//          이동 지연 보정은 공격자와 대상이 모두 최고 속도로 움직일 때를 가정하므로,
+//          속도는 몬스터가 낼 수 있는 최고 속도(템플릿 속도 + 이동속도 버프 최대치)와 상대(플레이어)의 최고 속도 중 큰 값을 쓴다
+//        - 도움 요청 거리 <= AOI 최소 보장 시야
+//        - 몬스터 스킬: 스킬 데이터가 있고, 적 대상의 비투사체 스킬이며, 시전 거리 + 효과 반경이 AOI 보장 시야 안 (보스 스킬과 같은 기준)
+// @param tmpl             검사할 템플릿
+// @param opponentMaxSpeed 상대(플레이어)가 가질 수 있는 최고 이동 속도 (units/sec). 모르면 0
+// @param errors           [in,out] 오류 설명을 덧붙일 목록
+// @return 문제가 없으면 true
+//***************************************************************************
+bool CMonsterSystem::ValidateTemplate(const SMonsterTemplate& tmpl, float opponentMaxSpeed, std::vector<std::string>& errors) const
+{
+	const size_t before = errors.size();
+	const float viewRange = _zone.GetGuaranteedViewRange();
+	const float buffMul = 1.0f + static_cast<float>(_skills != nullptr ? _skills->GetMaxSpeedBuffPercent() : 0) * 0.01f;
+	const float reachSpeed = (std::max)(tmpl.speed * buffMul, opponentMaxSpeed);
+	char buf[256];
+
+	if( tmpl.aggroRange > viewRange )
+	{
+		std::snprintf(buf, sizeof(buf), "monster %u: aggroRange %.1f exceeds the guaranteed AOI view range %.1f", tmpl.id, tmpl.aggroRange, viewRange);
+		errors.emplace_back(buf);
+	}
+
+	if( !_zone.IsAttackRangeSupported(tmpl.stats.attackRange, reachSpeed) )
+	{
+		std::snprintf(buf, sizeof(buf), "monster %u: attack reach (range %.1f) exceeds the guaranteed AOI view range %.1f", tmpl.id, tmpl.stats.attackRange, viewRange);
+		errors.emplace_back(buf);
+	}
+
+	if( tmpl.assistRange > viewRange )
+	{
+		std::snprintf(buf, sizeof(buf), "monster %u: assistRange %.1f exceeds the guaranteed AOI view range %.1f", tmpl.id, tmpl.assistRange, viewRange);
+		errors.emplace_back(buf);
+	}
+
+	if( tmpl.skillId != 0 )
+	{
+		const SSkillTemplate* skill = _skills != nullptr ? _skills->FindSkill(tmpl.skillId) : nullptr;
+		if( skill == nullptr )
+		{
+			std::snprintf(buf, sizeof(buf), "monster %u: unknown skill id %u (skill data missing?)", tmpl.id, tmpl.skillId);
+			errors.emplace_back(buf);
+		}
+		else if( skill->target != ESkillTarget::Enemy || skill->projectileSpeed > 0.0f )
+		{
+			std::snprintf(buf, sizeof(buf), "monster %u: skill %u must target enemies and must not be a projectile", tmpl.id, tmpl.skillId);
+			errors.emplace_back(buf);
+		}
+		else if( !_zone.IsAttackRangeSupported(skill->range + skill->radius, reachSpeed) )
+		{
+			std::snprintf(buf, sizeof(buf), "monster %u: skill %u reach (range + radius %.1f) exceeds the guaranteed AOI view range %.1f", tmpl.id, tmpl.skillId, skill->range + skill->radius, viewRange);
+			errors.emplace_back(buf);
+		}
+	}
+
+	return errors.size() == before;
+}
+
+//***************************************************************************
+// @brief 오류 목록을 줄바꿈으로 이어 붙여 error에 담습니다. 많으면 앞의 kMaxReportedErrors개만 적고 나머지 수를 덧붙입니다.
+// @param errors 오류 설명 목록
+// @param error  [out] 합친 설명 (목록이 비었으면 건드리지 않는다)
+// @return 목록이 비었으면 true (검증 통과)
+//***************************************************************************
+bool CMonsterSystem::JoinErrors(const std::vector<std::string>& errors, std::string& error)
+{
+	if( errors.empty() )
+		return true;
+
+	constexpr size_t kMaxReportedErrors = 16;
+	error.clear();
+	for( size_t i = 0; i < errors.size() && i < kMaxReportedErrors; ++i )
+	{
+		if( i != 0 )
+			error += '\n';
+		error += errors[i];
+	}
+
+	if( errors.size() > kMaxReportedErrors )
+	{
+		char buf[48];
+		std::snprintf(buf, sizeof(buf), "\n(+%zu more)", errors.size() - kMaxReportedErrors);
+		error += buf;
+	}
+
+	return false;
+}
+
+//***************************************************************************
+// @brief 이 존의 스폰 테이블에 나오는 몬스터가 낼 수 있는 가장 빠른 이동 속도(템플릿 속도 + 이동속도 버프 최대치)를 반환합니다.
 //        플레이어의 공격 판정 거리 검증(IsAttackRangeSupported)에 상대 속도로 씁니다.
 // @return 최고 속도 (units/sec), 스폰이 없으면 0
 //***************************************************************************
@@ -165,14 +214,17 @@ float CMonsterSystem::GetMaxSpawnSpeed() const
 	if( _data == nullptr )
 		return maxSpeed;
 
+	// 이동속도 버프를 받은 몬스터가 낼 수 있는 최고 속도로 센다(런타임 합계는 kMaxSpeedBuffPercent로 묶인다).
+	const float buffMul = 1.0f + static_cast<float>(_skills != nullptr ? _skills->GetMaxSpeedBuffPercent() : 0) * 0.01f;
+
 	for( const SSpawnEntry& s : _data->GetSpawns() )
 	{
 		if( s.zoneId != _zone.GetZoneId() )
 			continue;
 
 		const SMonsterTemplate* tmpl = _data->FindMonster(s.monsterId);
-		if( tmpl != nullptr && tmpl->speed > maxSpeed )
-			maxSpeed = tmpl->speed;
+		if( tmpl != nullptr && tmpl->speed * buffMul > maxSpeed )
+			maxSpeed = tmpl->speed * buffMul;
 	}
 
 	return maxSpeed;
@@ -189,6 +241,7 @@ uint32 CMonsterSystem::SpawnAll()
 		return 0;
 
 	uint32 spawned = 0;
+	uint64 expected = 0;
 	for( const SSpawnEntry& s : _data->GetSpawns() )
 	{
 		if( s.zoneId != _zone.GetZoneId() )
@@ -197,6 +250,8 @@ uint32 CMonsterSystem::SpawnAll()
 		const SMonsterTemplate* tmpl = _data->FindMonster(s.monsterId);
 		if( tmpl == nullptr )
 			continue;
+
+		expected += s.count;
 
 		Vec2 anchor;
 		anchor.x = s.x;
@@ -219,7 +274,18 @@ uint32 CMonsterSystem::SpawnAll()
 				if( _boss != nullptr )
 					_boss->OnSpawned(*raw);
 			}
+			else
+			{
+				LOG_ERROR(_T("[CMonsterSystem] spawn failed. zoneId=%u, monsterId=%u, pos=(%.1f, %.1f)"),
+					_zone.GetZoneId(), s.monsterId, pos.x, pos.y);
+			}
 		}
+	}
+
+	if( spawned != expected )
+	{
+		LOG_ERROR(_T("[CMonsterSystem] spawned fewer monsters than the spawn table. zoneId=%u, expected=%llu, spawned=%u"),
+			_zone.GetZoneId(), static_cast<unsigned long long>(expected), spawned);
 	}
 
 	return spawned;
@@ -251,7 +317,11 @@ CMonster* CMonsterSystem::SpawnSummon(uint32 monsterId, const Vec2& center, floa
 
 	CMonster* raw = monster.get();
 	if( _zone.AddEntity(std::move(monster)) == nullptr )
+	{
+		LOG_ERROR(_T("[CMonsterSystem] summon failed. zoneId=%u, monsterId=%u, ownerId=%llu"),
+			_zone.GetZoneId(), monsterId, static_cast<unsigned long long>(ownerId));
 		return nullptr;
+	}
 
 	++_monsterCount;
 
@@ -613,14 +683,14 @@ CZoneEntity* CMonsterSystem::FindAggroCandidate(CMonster& monster)
 	const Vec2 pos = monster.GetPos();
 
 	_zone.ForEachLivePlayerInRadius(pos, monster._tmpl->aggroRange, [&](CZoneEntity& entity)
+	{
+		const float distSq = DistanceSq(pos, entity.GetPos());
+		if( distSq < bestDistSq )
 		{
-			const float distSq = DistanceSq(pos, entity.GetPos());
-			if( distSq < bestDistSq )
-			{
-				bestDistSq = distSq;
-				best = &entity;
-			}
-		});
+			bestDistSq = distSq;
+			best = &entity;
+		}
+	});
 
 	return best;
 }
@@ -862,3 +932,4 @@ Vec2 CMonsterSystem::PickFreePoint(const Vec2& center, float radius) const
 	}
 	return _zone.ClampToBounds(center);
 }
+

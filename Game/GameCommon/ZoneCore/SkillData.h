@@ -16,7 +16,7 @@
 #include "../Generated/Consts.gen.h"
 
 //***************************************************************************
-// 스킬/상태 효과의 enum과 일부 상한은 기획 데이터(GameData.xlsx의 Enum, Const 시트)에서 XlsxToJson이 생성한다.
+// 스킬/상태 효과의 enum과 일부 상한은 기획 데이터(GameData 폴더 xlsx의 Enum, Const 시트)에서 XlsxConverter가 생성한다.
 // 서버, 클라이언트, 데이터 로더가 같은 정의를 쓰도록 여기서 이름만 가져온다.
 //   ESkillShape   스킬 효과 범위 형태 (Single: 대상 하나, Area: 지정 지점 중심 원형, Self: 시전자 중심 원형, Cone: 부채꼴, Line: 직선)
 //   ESkillTarget  스킬이 효과를 내는 쪽 (Enemy: 공격 가능한 적, Ally: 아군 - 시전자 포함)
@@ -30,7 +30,8 @@ using GameDataEnums::EStatusTarget;
 
 //***************************************************************************
 // @brief 스킬 한 종류의 데이터. 기획 데이터(엑셀)의 Skill 시트 한 행에 대응한다.
-// @details 즉시 발동 스킬이다. 시전 시간, 투사체, 지속 효과는 없다.
+// @details 시전 시간(castTimeMs)이 0이면 즉시 발동하고, 양수면 시전을 마친 시점에 효과를 낸다. 투사체(projectileSpeed)가 있으면 착탄 시점에 판정하고,
+//          statusId가 있으면 적중(또는 시전)할 때 상태 효과를 건다.
 //          피해량 = max(minDamage, 공격력 * damagePercent / 100 + flatDamage - 방어력)
 //          Area는 중심이 시전자로부터 range 안이어야 하고, 중심에서 radius 안의 공격 가능한 엔티티가 maxTargets까지 맞는다.
 //          Self는 시전자 위치가 중심이고 radius 안이 효과 범위다(지정 좌표 무시, range 0).
@@ -97,7 +98,7 @@ constexpr uint32 kMaxStatusDurationMs = 600000;		// 상태 효과 지속시간 �
 constexpr uint32 kMinStatusTickMs = 100;			// Dot 틱 간격 하한
 constexpr int32  kMinStatPercent = -90;				// 능력치 보정 합계 하한(%). 방어/이동이 음수로 뒤집히지 않게 한다
 constexpr int32  kMaxStatPercent = 500;				// 능력치 보정 합계 상한(%)
-constexpr int32  kMaxSpeedBuffPercent = 100;		// 이동속도 보정 데이터 상한(%). AOI 시야 검증이 이 값을 전제로 한다
+constexpr int32  kMaxSpeedBuffPercent = 100;		// 이동속도 보정 상한(%). 데이터 한 행과 엔티티당 합계 모두 이 값으로 묶는다. AOI 시야 검증이 이 값을 전제로 한다
 
 //***************************************************************************
 // @brief 스킬 피해량 공식입니다. 64비트로 계산해 오버플로를 막습니다.

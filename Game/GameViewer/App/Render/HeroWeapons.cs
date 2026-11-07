@@ -1,5 +1,5 @@
 ﻿//***************************************************************************
-// HeroWeapons.cs : 이미지 영웅(전사/궁수/마법사/도적)이 공격/스킬 때 휘두르는 무기.
+// HeroWeapons.cs : 이미지 영웅(전사/궁수/마법사/창기사)가 공격/스킬 때 휘두르는 무기.
 //   이미지에는 무기 동작 프레임이 없어 몸만 움직이므로, 손 위치에 무기를 따로 그려 몸동작과 같은 시각에 휘두른다.
 //   - 시간 t(ms, 공격 시작 후)로 자세를 계산하는 순수 함수(Pose*)와 그리는 함수(Draw*)를 나눈다.
 //   - 잔상: 같은 무기를 몇 프레임 전 자세로 흐리게 겹쳐 그려 속도감을 만든다.
@@ -40,6 +40,18 @@ namespace GameViewer.App.Render
             return r >= 1f ? 0f : 1f - r;
         }
 
+        /// <summary>
+        /// 몸과 따로 그린 무기의 자세 번호(0..poses-2, 공격 자세 사이). 휘두르는 중이면 내지름 정도(Swing)에 맞춰 고르고, 모으는 중이면 첫 자세.
+        /// 공격도 시전도 아니면 false(대기/걷기 자세).
+        /// </summary>
+        public static bool PoseOf(Entity e, long now, int poses, out int k)
+        {
+            k = 0;
+            float t = now - e.AttackAnimMs;
+            if (e.AttackAnimMs > 0 && t >= 0f && t < TotalMs) { k = (int)Math.Round(Swing(t) * (poses - 2)); return true; }
+            return AttackPose.CastProgress(e, now) >= 0f;
+        }
+
         // ------------------------------------------------------------------ 진입점
 
         public static void Draw(Graphics g, Entity e, ViewState v, Look look, float bx, float by, long now)
@@ -66,7 +78,12 @@ namespace GameViewer.App.Render
                 case 1: Warrior(g, hx, hy, u, baseAng, side, tt, charge, skill); break;
                 case 2: Archer(g, hx, hy, u, fx, fy, tt, charge, skill, e.AttackKind == 2 || skill); break;
                 case 3: Mage(g, hx, hy, u, baseAng, side, tt, charge, skill); break;
-                case 4: Rogue(g, hx, hy, u, baseAng, side, tt, charge, skill); break;
+                case 4:
+                {
+                    AssetSet a = AssetSprites.Find(false, 4);
+                    if (a != null && a.Weapon != null) LancerFx(g, a, e, v, bx, by, tt, charge, skill);
+                    break;
+                }
             }
             g.Restore(gs);
         }
@@ -255,54 +272,55 @@ namespace GameViewer.App.Render
             }
         }
 
-        // ------------------------------------------------------------------ 도적: 양손 단검
+        // ------------------------------------------------------------------ 창기사: 창 찌르기
 
-        private static void Rogue(Graphics g, float hx, float hy, float u, float baseAng, float side, float t, float charge, bool skill)
+        /// <summary>
+        /// 창 자체는 몸과 따로 그린 이미지(Creatures)이고, 여기서는 창끝 앵커를 따라가는 잔광/불꽃/기모으기 빛만 낸다.
+        /// 창은 자세 사이를 건너뛰며 바뀌므로 잔광 위치는 자세 사이를 보간한 창끝으로 구한다.
+        /// </summary>
+        private static void LancerFx(Graphics g, AssetSet a, Entity e, ViewState v, float bx, float by, float t, float charge, bool skill)
         {
+            WeaponLayers w = a.Weapon;
+            int dir = a.IndexFor(e.FaceX, e.FaceY);
+            float s = (float)(v.Scale * a.Scale), u = v.Px(1.0f);
             float op = t < 0f ? 1f : Opacity(t);
-            float len = u * (skill ? 1.7f : 1.5f);
-            Color glow = skill ? Color.FromArgb(220, 120, 255) : Color.FromArgb(200, 170, 255);
-            // 오른손이 먼저, 왼손은 70ms 늦게 반대쪽으로 교차해 벤다
-            Func<float, float> rightA = delegate (float tm) { return baseAng + side * (-105f + 160f * Swing(tm)); };
-            Func<float, float> leftA = delegate (float tm) { return baseAng - side * (-105f + 160f * Swing(tm - 70f)); };
-            float rest = t < 0f ? -105f - 18f * charge : 0f;
-            float rA = t < 0f ? baseAng + side * rest : rightA(t), lA = t < 0f ? baseAng - side * rest : leftA(t);
-            float ry = -u * 0.22f, ly = u * 0.12f;
+            Color glow = skill ? Color.FromArgb(110, 235, 225) : Color.FromArgb(170, 235, 235);
+            Func<float, PointF[]> at = delegate (float tm)
+            {
+                float f = tm < 0f ? 0f : Swing(tm) * (w.Poses - 2);
+                int i = Math.Min((int)f, w.Poses - 3); float fr = f - i;
+                PointF[] r = new PointF[2];
+                for (int k = 0; k < 2; ++k)
+                {
+                    float[][][] arr = k == 0 ? w.Grip : w.Tip;
+                    float[] p0 = arr[1 + i][dir], p1 = arr[2 + i][dir];
+                    r[k] = new PointF(bx + (p0[0] + (p1[0] - p0[0]) * fr - a.Cx) * s, by + (p0[1] + (p1[1] - p0[1]) * fr - a.Foot) * s);
+                }
+                return r;
+            };
+            PointF[] cur = at(t);
+            PointF grip = cur[0], tip = cur[1];
             if (t >= 0f)
             {
-                ArcGlow(g, hx, hy + ry, len * 0.95f, baseAng + side * -105f, rA, glow, op, u * 0.4f);
-                if (t > 70f) ArcGlow(g, hx, hy + ly, len * 0.95f, baseAng - side * -105f, lA, glow, op, u * 0.4f);
-                for (int k = 3; k >= 1; --k)
+                for (int k = 4; k >= 1; --k)
                 {
-                    float tm = t - k * 12f; if (tm < 0f) continue;
-                    Dagger(g, hx, hy + ry, rightA(tm), len, u, op * 0.18f * (4 - k) / 3f);
-                    Dagger(g, hx, hy + ly, leftA(tm), len, u, op * 0.18f * (4 - k) / 3f);
+                    float tm = t - k * 14f; if (tm < 0f) continue;
+                    PointF[] p = at(tm);
+                    using (Pen pen = new Pen(Color.FromArgb((int)(60 * op * (5 - k) / 4f), glow), u * 0.3f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                        g.DrawLine(pen, p[0].X + (p[1].X - p[0].X) * 0.5f, p[0].Y + (p[1].Y - p[0].Y) * 0.5f, p[1].X, p[1].Y);
+                }
+                float k0 = Swing(t);
+                float dx = tip.X - grip.X, dy = tip.Y - grip.Y, dl = (float)Math.Sqrt(dx * dx + dy * dy);
+                if (dl > 0.01f)
+                {
+                    dx /= dl; dy /= dl;
+                    using (Pen p = new Pen(Color.FromArgb((int)(150 * op * k0), glow), u * 0.42f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+                        g.DrawLine(p, tip.X - dx * dl * 0.45f - dx * u * 1.2f * k0, tip.Y - dy * dl * 0.45f - dy * u * 1.2f * k0, tip.X, tip.Y);
                 }
             }
-            Dagger(g, hx, hy + ly, lA, len, u, op);
-            Dagger(g, hx, hy + ry, rA, len, u, op);
-            if (t >= 70f && t < 320f)
-            {
-                double rr = rightA(StrikeEndMs) * Math.PI / 180.0;
-                Sparks(g, hx + (float)Math.Cos(rr) * len, hy + (float)Math.Sin(rr) * len * 0.8f, u, (t - 70f) / 250f, Color.FromArgb(235, 215, 255), skill ? 9 : 5);
-            }
-        }
-
-        /// <summary>곡선 단검: 살짝 휜 날, 날밑, 손잡이.</summary>
-        private static void Dagger(Graphics g, float hx, float hy, float angDeg, float len, float u, float opacity)
-        {
-            if (opacity < 0.03f) return;
-            double r = angDeg * Math.PI / 180.0;
-            float dx = (float)Math.Cos(r), dy = (float)Math.Sin(r), nx = -dy, ny = dx;
-            Func<float, float, PointF> P = delegate (float a, float c) { return new PointF(hx + dx * a + nx * c, hy + dy * a + ny * c); };
-            float w = u * 0.17f;
-            PointF[] blade = { P(len * 0.15f, -w), P(len * 0.6f, -w * 1.15f - u * 0.06f), P(len, -u * 0.1f), P(len * 0.62f, w * 0.7f), P(len * 0.15f, w) };
-            int A = (int)(255 * Math.Min(1f, opacity));
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(A, 232, 236, 248)))
-            using (Pen e = new Pen(Color.FromArgb(A, 56, 48, 92), Math.Max(1.2f, u * 0.06f)) { LineJoin = LineJoin.Round })
-            { g.FillPolygon(b, blade); g.DrawPolygon(e, blade); }
-            using (Pen cg = new Pen(Color.FromArgb(A, 140, 100, 200), u * 0.12f) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawLine(cg, P(len * 0.15f, -u * 0.3f), P(len * 0.15f, u * 0.3f));
-            using (Pen gr = new Pen(Color.FromArgb(A, 70, 50, 40), u * 0.14f) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawLine(gr, P(-len * 0.12f, 0f), P(len * 0.15f, 0f));
+            if (t >= StrikeEndMs - 10f && t < StrikeEndMs + 230f)
+                Sparks(g, tip.X, tip.Y, u, (t - (StrikeEndMs - 10f)) / 240f, Color.FromArgb(220, 250, 245), skill ? 10 : 6);
+            if (t < 0f && charge > 0f) ChargeGlow(g, tip.X, tip.Y, u * 0.7f, charge, glow);
         }
 
         // ------------------------------------------------------------------ 공통 효과

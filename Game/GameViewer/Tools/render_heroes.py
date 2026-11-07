@@ -3,6 +3,8 @@
 
 사용:  python3 render_heroes.py <warrior|archer|mage> <출력폴더> [--walk N] [각도 ...]
   정지 그림  : <출력폴더>/{각도:000}.png            (기본 0,20,...,340 = 18방향)
+  창술사(lancer)는 몸과 창을 따로 낸다: 몸(창 없음) {각도}.png / walk_*.png / atk_{각도}_{자세}.png(공격 5자세),
+    창 spear_{포즈}_{각도}_{b|f}.png (b = 몸 뒤에 가려지는 부분, f = 몸 앞으로 나오는 부분, 포즈 0 = 서 있는 창, 1..5 = 공격 자세), 손/창끝 앵커 anchors.json
   걷기 그림  : <출력폴더>/walk_{각도:000}_{프레임:00}.png  (--walk N)
 각도 0 = 카메라를 보고 서 있음, 커지면 화면 오른쪽 -> 위(뒷모습) -> 왼쪽. 400x400, 투명 배경.
 모든 그림은 같은 기준점(발 밑 가운데 고정)에 그려지므로 돌 때 흔들리지 않는다.
@@ -52,27 +54,27 @@ SKIN_L = C(255, 190, 178)
 
 
 class Prim:
-    __slots__ = ('c', 'a', 'R', 'col', 'gid', 'sh', 'spec', 'emis', 'box', 'cone', 'k')
+    __slots__ = ('c', 'a', 'R', 'col', 'gid', 'sh', 'spec', 'emis', 'box', 'cone', 'k', 'part')
 
     def __init__(s, c, a, R, col, gid, sh=SH_DEF, spec=0.0, emis=False, box=False, cone=False, k=1.0):
         s.c = np.asarray(c, float); s.a = np.asarray(a, float); s.R = np.eye(3) if R is None else R
-        s.col = col; s.gid = gid; s.sh = sh; s.spec = spec; s.emis = emis; s.box = box; s.cone = cone; s.k = k
+        s.col = col; s.gid = gid; s.sh = sh; s.spec = spec; s.emis = emis; s.box = box; s.cone = cone; s.k = k; s.part = 0
 
 
 class Builder:
-    def __init__(self): self.P = []; self.gid = 0
+    def __init__(self): self.P = []; self.gid = 0; self.part = 0; self.anchors = {}      # part 0 = 몸, 1 = 무기(몸과 따로 그린다)
 
     def group(self): self.gid += 1; return self.gid
 
     def E(self, c, a, col, R=None, gid=None, **kw):
-        self.P.append(Prim(c, a, R, col, self.gid if gid is None else gid, **kw))
+        self.P.append(Prim(c, a, R, col, self.gid if gid is None else gid, **kw)); self.P[-1].part = self.part
 
     def B(self, c, h, col, R=None, gid=None, **kw):
-        self.P.append(Prim(c, h, R, col, self.gid if gid is None else gid, box=True, **kw))
+        self.P.append(Prim(c, h, R, col, self.gid if gid is None else gid, box=True, **kw)); self.P[-1].part = self.part
 
     def cone(self, c, r0, r1, H, col, k=1.0, R=None, gid=None, **kw):
         """밑면 중심 c, 로컬 y 방향으로 높이 H. 밑 반지름 r0 -> 윗 반지름 r1, z 방향은 k 배(납작한 단면). 치마/로브/모자/긴 머리용."""
-        self.P.append(Prim(c, (r0, r1, H), R, col, self.gid if gid is None else gid, cone=True, k=k, **kw))
+        self.P.append(Prim(c, (r0, r1, H), R, col, self.gid if gid is None else gid, cone=True, k=k, **kw)); self.P[-1].part = self.part
 
     def seg(self, p0, p1, r0, r1, col, n=1, rr=None, gid=None, **kw):
         """p0 -> p1 를 잇는 가는 타원체 (n 조각으로 굵기가 바뀜)."""
@@ -158,7 +160,8 @@ def hair_cap(b, hair, hair_l, front=True):
             b.E(hc + [s * 0.285, -0.12, 0.07], (0.065, 0.24, 0.085), hair, spec=0.5)
 
 
-def build(name, ph, moving):
+def build(name, ph, moving, pose=None):
+    """pose (창술사): {'arm': (위팔 각, 굽힘, 벌림), 'pitch': 창이 위에서 앞으로 숙은 각도(도)}. 없으면 서 있는 자세."""
     b = Builder()
     amp = 0.55
     bob = (abs(math.cos(ph)) * 0.035 - 0.015) if moving else 0.0
@@ -177,12 +180,16 @@ def build(name, ph, moving):
         hair, hair_l = C(104, 80, 172), C(176, 150, 236)
         cloth, cloth2, trim, metal = C(62, 56, 90), C(150, 70, 190), C(70, 210, 190), C(206, 214, 230)
         boot = C(40, 36, 56); eye = C(236, 190, 60)
+    elif name == 'lancer':
+        hair, hair_l = C(238, 200, 98), C(255, 236, 160)
+        cloth, cloth2, trim, metal = C(184, 192, 206), C(36, 124, 134), C(226, 188, 88), C(206, 214, 228)
+        boot = C(120, 130, 148); eye = C(80, 150, 230)
     else:
         hair, hair_l = C(190, 186, 238), C(236, 232, 255)
         cloth, cloth2, trim, metal = C(76, 92, 214), C(40, 40, 110), C(250, 214, 110), C(200, 205, 225)
         boot = C(52, 48, 100); eye = C(170, 80, 220)
 
-    pants = C(52, 46, 74) if name == 'rogue' else None
+    pants = C(52, 46, 74) if name == 'rogue' else (C(74, 88, 104) if name == 'lancer' else None)
     # ---- 다리 (맨 안쪽부터)
     b.group()
     legs = {}
@@ -236,7 +243,7 @@ def build(name, ph, moving):
     farm = {'warrior': (-0.5, 0.6, 0.16), 'archer': None, 'mage': (-0.2, 0.7, 0.14)}
     for s in (1, -1):
         fixed = None
-        if name == 'warrior' and s == -1: fixed = (-0.35, 0.55, 0.20)           # 오른손: 검
+        if name in ('warrior', 'lancer') and s == -1: fixed = pose['arm'] if (pose and name == 'lancer') else (-0.35, 0.55, 0.20)           # 오른손: 검 / 창
         if name == 'archer' and s == 1: fixed = (0.85, 0.40, 0.30)              # 왼손: 활을 앞으로
         if name == 'mage' and s == -1: fixed = (-0.20, 0.9, 0.30)               # 오른손: 지팡이
         if name == 'rogue': fixed = (0.45 + (0.28 * math.sin(ph + (0 if s > 0 else math.pi)) if moving else 0.0), 0.85, 0.28)   # 양손 단검
@@ -245,7 +252,7 @@ def build(name, ph, moving):
         sleeve = cloth2 if name not in ('archer', 'rogue') else cloth
         b.seg(sh_, el, 0.072, 0.060, SKIN, n=2, sh=SH_SKIN)
         b.seg(el, ha, 0.060, 0.048, sleeve if name in ('mage', 'rogue') else SKIN, n=2, sh=SH_SKIN if name not in ('mage', 'rogue') else SH_DEF)
-        if name == 'warrior': b.seg(el + (ha - el) * 0.25, ha, 0.062, 0.058, metal, n=1, spec=0.7)    # 팔목 보호대
+        if name in ('warrior', 'lancer'): b.seg(el + (ha - el) * 0.25, ha, 0.062, 0.058, metal, n=1, spec=0.7)    # 팔목 보호대
         if name == 'mage': b.E(ha + (el - ha) * 0.3, (0.1, 0.12, 0.1), cloth, frame_y(ha - el), spec=0.1)  # 넓은 소매
         b.E(ha, (0.060, 0.060, 0.060), SKIN, sh=SH_SKIN)
         # 어깨
@@ -254,6 +261,9 @@ def build(name, ph, moving):
             b.E(sh_ + [s * 0.07, 0.07, 0], (0.12, 0.05, 0.12), metal, spec=0.8)
             b.seg(sh_ + [s * 0.1, 0.08, 0], sh_ + [s * 0.2, 0.28, 0], 0.035, 0.005, metal, spec=0.9)     # 어깨 가시
             b.seg(sh_ + [s * 0.12, 0.05, 0.1], sh_ + [s * 0.26, 0.12, 0.2], 0.03, 0.004, metal, spec=0.9)
+        elif name == 'lancer':
+            b.E(sh_ + [s * 0.04, 0.03, 0], (0.15, 0.10, 0.15), cloth, spec=0.8)             # 은빛 견갑
+            b.E(sh_ + [s * 0.07, 0.07, 0], (0.12, 0.05, 0.12), trim, spec=0.8)
         elif name == 'archer':
             b.E(sh_ + [s * 0.03, 0.02, 0], (0.12, 0.08, 0.12), cloth * 0.95, spec=0.1)
         elif name == 'rogue':
@@ -274,6 +284,21 @@ def build(name, ph, moving):
             b.B(ha + d * 0.12 + d * 0.56, (0.100, 0.56, 0.028), C(214, 222, 236), R, spec=1.0)   # 칼날
             b.B(ha + d * 0.12 + d * 0.56, (0.032, 0.54, 0.034), C(140, 150, 176), R, spec=1.0)   # 피[홈]
             b.E(ha + d * 1.24, (0.095, 0.1, 0.028), C(214, 222, 236), R, spec=1.0)        # 칼끝
+        if name == 'lancer' and s == -1:
+            phi = math.radians(pose['pitch']) if pose else 0.0
+            d = np.array([-0.06 * math.cos(phi) + 0.10 * math.sin(phi), math.cos(phi), 0.10 * math.cos(phi) + math.sin(phi)]); d /= np.linalg.norm(d)
+            R = frame_y(d)
+            b.part = 1
+            b.group()
+            b.seg(ha - d * 1.0, ha + d * 1.75, 0.032, 0.032, C(120, 84, 60), n=3, spec=0.6)     # 자루
+            b.E(ha + d * 0.05, (0.05, 0.05, 0.05), trim, spec=0.9)                                # 손잡이 장식
+            b.E(ha + d * 1.78, (0.055, 0.04, 0.055), trim, R, spec=0.9)                           # 창날 받침
+            b.cone(ha + d * 1.80, 0.06, 0.0, 0.50, C(226, 234, 246), k=0.45, R=R, spec=1.0)       # 창날
+            b.E(ha + d * 1.80 + np.array([0, 0, 0.05]), (0.012, 0.2, 0.012), C(150, 160, 186), R, spec=1.0)
+            b.E(ha - d * 1.0, (0.045, 0.06, 0.045), trim, R, spec=0.8)                            # 석돌
+            b.part = 0
+            up = np.array([0, 0.15, 0.0])           # 아래 "몸통 이하는 UP 만큼 올린다" 와 같은 보정
+            b.anchors = {'grip': ha + up, 'tip': ha + d * 2.30 + up, 'butt': ha - d * 1.0 + up}
         if name == 'rogue':
             d = np.array([s * 0.32, -0.30, 0.90]); d /= np.linalg.norm(d)
             R = frame_y(d)
@@ -356,6 +381,22 @@ def build(name, ph, moving):
         b.group()
         for s in (-1, 1):
             b.E((s * 0.21, 2.74 + bob, 0.15), (0.05, 0.12, 0.025), C(110, 200, 110), rot('z', s * 0.9), spec=0.4)
+    if name == 'lancer':
+        b.group()
+        # 청록색 너덜너덜한 망토 (등 뒤, 아랫단이 갈라짐)
+        for k in range(6):
+            t = k / 5.0
+            b.E((0, 2.05 - 0.80 * t + bob, -0.22 - 0.08 * t - sway * 0.05 * t), (0.27 + 0.10 * t, 0.2, 0.05), cloth2 * (0.95 - 0.15 * t), rot('x', 0.15 - 0.2 * t))
+        for j, x in enumerate((-0.3, -0.12, 0.08, 0.28)):
+            L = 0.28 + 0.1 * (j % 2)
+            b.E((x, 1.12 - L / 2 + bob, -0.46 - sway * 0.05), (0.07, L, 0.04), cloth2 * 0.78, rot('x', -0.2))
+        b.E((0, 2.2 + bob, -0.12), (0.3, 0.1, 0.12), cloth2 * 0.9)
+        b.E((-0.3, 2.14 + bob, 0.02), (0.1, 0.1, 0.08), cloth2)
+        # 서클릿
+        b.E((0, 2.72 + bob, 0.1), (0.30, 0.025, 0.27), trim, rot('x', 0.15), spec=0.9)
+        b.E((0, 2.74 + bob, 0.3), (0.035, 0.05, 0.02), C(90, 200, 220), emis=True)
+        # 흉갑 중앙 보석
+        b.E((0, 1.98 + bob, 0.19), (0.05, 0.06, 0.02), C(90, 200, 220), emis=True)
     if name == 'mage':
         b.group()
         hat = C(52, 66, 170)
@@ -381,30 +422,31 @@ def build(name, ph, moving):
                 (0.07, 0.06, 0.07 + 0.03 * t), trim * (1.0 - 0.1 * t), spec=0.3)
         b.E((0, 1.55 + bob, -0.24 - 0.04 * sway), (0.27, 0.45, 0.05), hood * 0.9, rot('x', 0.15))   # 짧은 망토
     for p in b.P[nlegs:]: p.c = p.c + np.array([0, 0.15, 0.0])
-    return b.P
+    return b.P, b.anchors
 
 
 # ----------------------------------------------------------------------------- 렌더
 
-def render(name, theta, ph, moving):
-    prims = build(name, ph, moving)
+def raster(prims, theta, pad=0):
+    """도형들을 깊이 버퍼로 찍는다. 반환: 깊이/색/법선/그늘색/반사/발광/그룹 버퍼."""
     Ry = rot('y', theta)
-    depth = np.full((N, N), np.inf)
-    col = np.zeros((N, N, 3)); nrm = np.zeros((N, N, 3)); sh = np.tile(SH_DEF, (N, N, 1))
-    spec = np.zeros((N, N)); emis = np.zeros((N, N), bool); gid = np.zeros((N, N), np.int32)
+    M = N + 2 * pad * SS            # 캔버스 한 변(바깥으로 pad 그림 픽셀씩 여유: 길게 뻗는 무기가 잘리지 않게)
+    depth = np.full((M, M), np.inf)
+    col = np.zeros((M, M, 3)); nrm = np.zeros((M, M, 3)); sh = np.tile(SH_DEF, (M, M, 1))
+    spec = np.zeros((M, M)); emis = np.zeros((M, M), bool); gid = np.zeros((M, M), np.int32)
     D = -w_
     for p in prims:
         cw = Ry @ p.c; Rw = Ry @ p.R
         R_b = float(np.linalg.norm(p.a)) if p.box else (float(max(p.a[0], p.a[1]) * max(1.0, p.k) + p.a[2]) if p.cone else float(p.a.max()))
-        px = N / 2 + (cw @ r_) * PXU
-        py = N * FEET_Y - (cw @ u_) * PXU
+        px = M / 2 + (cw @ r_) * PXU
+        py = pad * SS + N * FEET_Y - (cw @ u_) * PXU
         rb = R_b * PXU + 3
-        x0, x1 = int(max(0, px - rb)), int(min(N, px + rb + 1))
-        y0, y1 = int(max(0, py - rb)), int(min(N, py + rb + 1))
+        x0, x1 = int(max(0, px - rb)), int(min(M, px + rb + 1))
+        y0, y1 = int(max(0, py - rb)), int(min(M, py + rb + 1))
         if x0 >= x1 or y0 >= y1: continue
         xs, ys = np.meshgrid(np.arange(x0, x1), np.arange(y0, y1))
-        sx = (xs - N / 2 + 0.5) / PXU
-        sy = -(ys - N * FEET_Y + 0.5) / PXU
+        sx = (xs - M / 2 + 0.5) / PXU
+        sy = -(ys - pad * SS - N * FEET_Y + 0.5) / PXU
         O = sx[..., None] * r_ + sy[..., None] * u_ + 4.0 * w_
         if p.cone:
             r0, r1, H = p.a; k = p.k; mm = (r1 - r0) / H
@@ -469,8 +511,14 @@ def render(name, theta, ph, moving):
         s_ = spec[sl]; s_[m] = p.spec
         e_ = emis[sl]; e_[m] = p.emis
         g_ = gid[sl]; g_[m] = p.gid
-    mask = np.isfinite(depth)
+    return {'depth': depth, 'col': col, 'nrm': nrm, 'sh': sh, 'spec': spec, 'emis': emis, 'gid': gid}
+
+
+def shade(R, mask):
+    """raster 결과 중 mask 에 해당하는 픽셀을 셀 셰이딩 + 외곽선으로 칠해 RGBA 그림으로 만든다."""
+    depth, col, nrm, sh, spec, emis, gid = R['depth'], R['col'], R['nrm'], R['sh'], R['spec'], R['emis'], R['gid']
     n = nrm
+    M = depth.shape[0]
     lam = np.clip((n * LIGHT).sum(-1), 0, 1)
     hemi = 0.5 + 0.5 * n[..., 1]
     tt = lam * 0.72 + hemi * 0.28
@@ -495,7 +543,7 @@ def render(name, theta, ph, moving):
     w = int(round(SS * 1.3))
     def shift(a, dy, dx, fill):
         out = np.full_like(a, fill)
-        ys0, ys1 = max(0, dy), N + min(0, dy); xs0, xs1 = max(0, dx), N + min(0, dx)
+        ys0, ys1 = max(0, dy), M + min(0, dy); xs0, xs1 = max(0, dx), M + min(0, dx)
         out[ys0:ys1, xs0:xs1] = a[ys0 - dy:ys1 - dy, xs0 - dx:xs1 - dx]
         return out
     dil = mask.copy()
@@ -504,29 +552,112 @@ def render(name, theta, ph, moving):
             if dx * dx + dy * dy <= w * w: dil |= shift(mask, dy, dx, False)
     outer = dil & ~mask
     dfin = np.where(mask, depth, 0.0)
-    inner = np.zeros((N, N), bool)
+    inner = np.zeros((M, M), bool)
     for dy, dx in ((1, 0), (0, 1), (-1, 0), (0, -1)):
         gn = shift(gid, dy, dx, 0); dn = shift(dfin, dy, dx, 0.0); mn = shift(mask, dy, dx, False)
         inner |= mask & mn & (gn != gid) & (np.abs(dn - dfin) > 0.035)
     inner_d = inner.copy()
     for dy, dx in ((1, 0), (0, 1), (-1, 0), (0, -1)): inner_d |= shift(inner, dy, dx, False) & mask
     rgb = np.where(inner_d[..., None], rgb * 0.55 + OUTLINE * 0.45 * 0.6, rgb)
-    out = np.zeros((N, N, 4)); out[..., :3] = np.where(outer[..., None], OUTLINE, rgb)
+    out = np.zeros((M, M, 4)); out[..., :3] = np.where(outer[..., None], OUTLINE, rgb)
     out[..., 3] = (mask | outer).astype(float)
     pm = out.copy(); pm[..., :3] *= pm[..., 3:4]
-    pm = pm.reshape(SZ, SS, SZ, SS, 4).mean((1, 3))
+    pm = pm.reshape(M // SS, SS, M // SS, SS, 4).mean((1, 3))
     a = pm[..., 3:4]; rgbf = np.where(a > 1e-6, pm[..., :3] / np.maximum(a, 1e-6), 0)
     img = np.concatenate([rgbf, a], -1)
     return Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGBA')
 
 
+def project(p3, theta):
+    """3D 점을 그림(SZ x SZ) 안 좌표로."""
+    cw = rot('y', theta) @ np.asarray(p3, float)
+    return [round(float(N / 2 + (cw @ r_) * PXU) / SS, 2), round(float(N * FEET_Y - (cw @ u_) * PXU) / SS, 2)]
+
+
+def to_image(img):
+    return Image.fromarray((np.clip(img, 0, 1) * 255 + 0.5).astype(np.uint8), 'RGBA')
+
+
+def render(name, theta, ph, moving, pose=None):
+    """몸만(무기 제외) 그린 그림과 무기 앵커."""
+    prims, anchors = build(name, ph, moving, pose)
+    R = raster([p for p in prims if p.part == 0], theta)
+    return shade(R, np.isfinite(R['depth'])), {k: project(v, theta) for k, v in anchors.items()}
+
+
+WEAPON_PAD = 160       # 창 그림은 몸 그림보다 사방으로 이만큼(그림 픽셀) 크다. 같은 기준점에서 pad 만큼 안쪽으로 겹치면 몸과 맞는다
+
+
+def render_weapon(name, theta, ph, moving, pose=None):
+    """무기만 그린 그림 둘: (몸 뒤에 가려지는 부분, 몸 앞으로 나오는 부분). 몸과 깊이를 비교해 가른다."""
+    prims, _ = build(name, ph, moving, pose)
+    Rb = raster([p for p in prims if p.part == 0], theta, WEAPON_PAD)
+    Rw = raster([p for p in prims if p.part == 1], theta, WEAPON_PAD)
+    mw = np.isfinite(Rw['depth'])
+    front = mw & (Rw['depth'] < Rb['depth'])
+    return shade(Rw, mw & ~front), shade(Rw, front)
+
+
+# 창술사 공격 자세: 팔과 창이 함께 움직이는 5장. (위팔 각, 굽힘, 벌림), 창 숙임(도)
+LANCER_ATK = [
+    ((-0.80, 1.00, 0.18), 74.0),     # 0 뒤로 당김
+    ((0.30, 0.75, 0.18), 84.0),      # 1 내지르는 중
+    ((1.35, 0.12, 0.10), 90.0),      # 2 쭉 뻗음
+    ((1.28, 0.16, 0.10), 89.0),      # 3 유지
+    ((0.45, 0.65, 0.18), 58.0),      # 4 거두는 중
+]
+
+
+def _save(img, path): img.save(path)
+
+
 def _job(args):
     name, out, ang, k, nwalk = args
+    th = math.radians(ang)
+    res = {'ang': ang}
+    if name == 'lancer':
+        # 창술사는 몸과 창을 따로 낸다: 몸(창 없음) 서기/걷기/공격 5장, 창(뒤/앞 두 겹) 서기 + 공격 5자세, 손 앵커
+        if k is None:
+            img, an = render(name, th, 0.0, False); _save(img, f'{out}/{ang:03d}.png')
+            res['idle'] = an
+            for pi in range(len(LANCER_ATK) + 1):
+                pose = None if pi == 0 else {'arm': LANCER_ATK[pi - 1][0], 'pitch': LANCER_ATK[pi - 1][1]}
+                if pi > 0:
+                    bi, an2 = render(name, th, 0.0, False, pose); _save(bi, f'{out}/atk_{ang:03d}_{pi - 1}.png')
+                else:
+                    an2 = an
+                back, front = render_weapon(name, th, 0.0, False, pose)
+                _save(back, f'{out}/spear_{pi}_{ang:03d}_b.png'); _save(front, f'{out}/spear_{pi}_{ang:03d}_f.png')
+                res.setdefault('pose', {})[pi] = an2
+        else:
+            ph = 2 * math.pi * k / nwalk
+            img, an = render(name, th, ph, True); _save(img, f'{out}/walk_{ang:03d}_{k:02d}.png')
+            res['walk'] = (k, an)
+        return res
     if k is None:
-        render(name, math.radians(ang), 0.0, False).save(f'{out}/{ang:03d}.png')
+        img, an = render(name, th, 0.0, False)
+        _save(img, f'{out}/{ang:03d}.png')
     else:
         ph = 2 * math.pi * k / nwalk
-        render(name, math.radians(ang), ph, True).save(f'{out}/walk_{ang:03d}_{k:02d}.png')
+        img, an = render(name, th, ph, True)
+        _save(img, f'{out}/walk_{ang:03d}_{k:02d}.png')
+    return res
+
+
+def write_anchors(out, results, nwalk):
+    """창술사 앵커(그림 좌표, 400x400 기준)를 anchors.json 으로. pose 0 = 서 있는 창, 1.. = 공격 자세."""
+    import json
+    angs = sorted({r['ang'] for r in results})
+    npose = len(LANCER_ATK) + 1
+    data = {'angles': len(angs), 'poses': npose, 'walkFrames': nwalk, 'grip': [], 'tip': [], 'butt': [], 'walkGrip': []}
+    by = {r['ang']: r for r in results if 'pose' in r}
+    walk = {}
+    for r in results:
+        if 'walk' in r: walk.setdefault(r['ang'], {})[r['walk'][0]] = r['walk'][1]['grip']
+    for key in ('grip', 'tip', 'butt'):
+        data[key] = [[by[a]['pose'][pi][key] for a in angs] for pi in range(npose)]
+    data['walkGrip'] = [[walk[a][k] for k in range(nwalk)] for a in angs] if nwalk else []
+    with open(f'{out}/anchors.json', 'w') as fp: json.dump(data, fp, separators=(',', ':'))
 
 
 if __name__ == '__main__':
@@ -540,6 +671,9 @@ if __name__ == '__main__':
     angs = [int(a) for a in rest] or list(range(0, 360, 20))
     jobs = [(name, out, a, None, 0) for a in angs]
     jobs += [(name, out, a, k, nwalk) for a in angs for k in range(nwalk)]
+    results = []
     with mp.Pool(max(1, mp.cpu_count())) as pool:
-        for i, _ in enumerate(pool.imap_unordered(_job, jobs)):
+        for i, r in enumerate(pool.imap_unordered(_job, jobs)):
+            results.append(r)
             if i % 20 == 0: print(f'{i}/{len(jobs)}', flush=True)
+    if name == 'lancer': write_anchors(out, results, nwalk)

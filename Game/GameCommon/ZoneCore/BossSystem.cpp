@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <set>
 
 //***************************************************************************
 // @brief 보스 시스템을 생성합니다.
@@ -35,15 +36,20 @@ CBossSystem::CBossSystem(CFieldZoneBase& zone, CMonsterSystem& monsters, std::sh
 // @brief 보스 데이터가 유효하고 이 존의 AOI 시야 안에서 동작하는지 검사합니다. Start() 전에 호출합니다.
 //        - 데이터 자체의 검사(CBossData::Validate): 값 범위와 몬스터/스킬/상태 효과 참조
 //        - 보스 스킬의 시전 거리 + 효과 반경, 소환 반경이 AOI 보장 시야 이하 (시야 밖에서 일어나는 일은 플레이어에게 전달되지 않는다)
-// @param error [out] 오류 설명
+//        - 소환하는 몬스터 템플릿도 스폰 테이블의 몬스터와 같은 기준으로 검사한다(CMonsterSystem::ValidateTemplate)
+//        위 검사의 오류는 모아서 한 번에 돌려준다.
+// @param error [out] 오류 설명 (여러 개면 줄바꿈으로 구분)
+// @param opponentMaxSpeed 소환수와 맞붙는 상대(플레이어)가 가질 수 있는 최고 이동 속도 (units/sec). 모르면 0
 // @return 문제가 없으면 true
 //***************************************************************************
-bool CBossSystem::Validate(std::string& error) const
+bool CBossSystem::Validate(std::string& error, float opponentMaxSpeed) const
 {
 	if( !_data->Validate(*_monsterData, *_skills, error) )
 		return false;
 
 	const float viewRange = _zone.GetGuaranteedViewRange();
+	std::vector<std::string> errors;
+	std::set<uint32> checkedSummons;
 	char buf[200];
 
 	for( const SBossTemplate& boss : _data->GetBosses() )
@@ -58,21 +64,27 @@ bool CBossSystem::Validate(std::string& error) const
 					if( skill != nullptr && skill->range + skill->radius > viewRange )
 					{
 						std::snprintf(buf, sizeof(buf), "boss %u skill %u: range + radius exceeds the guaranteed AOI view range %.1f", boss.id, skill->id, viewRange);
-						error = buf;
-						return false;
+						errors.emplace_back(buf);
 					}
 				}
-				else if( act.type == EBossActionType::Summon && act.spreadRadius > viewRange )
+				else if( act.type == EBossActionType::Summon )
 				{
-					std::snprintf(buf, sizeof(buf), "boss %u: SpreadRadius exceeds the guaranteed AOI view range %.1f", boss.id, viewRange);
-					error = buf;
-					return false;
+					if( act.spreadRadius > viewRange )
+					{
+						std::snprintf(buf, sizeof(buf), "boss %u: SpreadRadius exceeds the guaranteed AOI view range %.1f", boss.id, viewRange);
+						errors.emplace_back(buf);
+					}
+
+					// 소환수는 스폰 테이블에 없어도 같은 기준(감지/공격/도움/스킬 거리가 AOI 시야 안)을 지켜야 한다.
+					const SMonsterTemplate* summon = _monsterData->FindMonster(act.monsterId);
+					if( summon != nullptr && checkedSummons.insert(summon->id).second )
+						_monsters.ValidateTemplate(*summon, opponentMaxSpeed, errors);
 				}
 			}
 		}
 	}
 
-	return true;
+	return CMonsterSystem::JoinErrors(errors, error);
 }
 
 //***************************************************************************
@@ -373,7 +385,7 @@ void CBossSystem::DoAggro(CMonster& boss, CZoneEntity& current, const SBossActio
 			currentThreat = boss._aggro[i].threat;
 	}
 
-	if( maxThreat > INT64_MAX / 2 )
+	if( maxThreat > INT64_MAX / kAggroBoostPercent )
 		return;
 
 	const int64 wanted = maxThreat * kAggroBoostPercent / 100 + 1;
@@ -392,14 +404,14 @@ CZoneEntity* CBossSystem::PickEntity(CMonster& boss, CZoneEntity& current, EBoss
 	const Vec2 pos = boss.GetPos();
 
 	if( rule == EBossTarget::Current )
-		return (current.IsAlive() && DistanceSq(pos, current.GetPos()) <= radius * radius) ? &current : nullptr;
+		return (current.IsAlive() && DistanceSq(pos, current.GetPos()) <= radius * radius && _zone.CanAttack(boss, current)) ? &current : nullptr;
 
 	_candidates.clear();
 	_zone.ForEachLivePlayerInRadius(pos, radius, [&](CZoneEntity& e)
-		{
-			if( _zone.CanAttack(boss, e) )
-				_candidates.push_back(&e);
-		});
+	{
+		if( _zone.CanAttack(boss, e) )
+			_candidates.push_back(&e);
+	});
 
 	if( _candidates.empty() )
 		return nullptr;
@@ -454,10 +466,10 @@ void CBossSystem::DespawnAdds(SBossRuntime& rt)
 void CBossSystem::PruneAdds(SBossRuntime& rt)
 {
 	rt.adds.erase(std::remove_if(rt.adds.begin(), rt.adds.end(), [&](uint64 id)
-		{
-			CZoneEntity* e = _zone.FindEntity(id);
-			return e == nullptr || !e->IsAlive();
-		}), rt.adds.end());
+	{
+		CZoneEntity* e = _zone.FindEntity(id);
+		return e == nullptr || !e->IsAlive();
+	}), rt.adds.end());
 }
 
 //***************************************************************************

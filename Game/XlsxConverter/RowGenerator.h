@@ -9,6 +9,7 @@
 
 #include "RowSchema.h"
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -57,6 +58,11 @@ namespace RowGenerator
 	// @return 오류가 없으면 true
 	//***************************************************************************
 	bool GenerateCs(const std::vector<SSheetSchema>& schemas, const SDefinitions& defs, const std::string& ns, std::vector<SGeneratedFile>& out, std::vector<std::string>& errors);
+
+	//***************************************************************************
+	// @brief GenerateCs가 같은 네임스페이스에 만드는 형식 이름 전부. (시트 클래스 <시트>Row/<시트>Table, GameConsts, Enum 시트의 enum)
+	//***************************************************************************
+	std::set<std::string> CsTypeNames(const std::vector<SSheetSchema>& schemas, const SDefinitions& defs);
 }
 
 #endif // ndef ROWGENERATOR_H

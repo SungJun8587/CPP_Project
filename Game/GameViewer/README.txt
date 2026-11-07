@@ -37,6 +37,10 @@
      - GameViewer.bat 안의 DATA 를 서버가 읽는 GameData 폴더로 맞춰 주세요.
      - 서버 없이 화면만 보려면 GameViewer_Demo.bat
   3) BotClient 를 같이 돌리면 뷰어 주변에서 봇들이 몬스터와 싸우는 모습을 볼 수 있습니다.
+  4) 같은 PC 에서 GameViewer.bat 을 여러 번 실행하면 창이 여러 개 뜹니다. 실행마다 빈 슬롯 번호(0, 1, 2...)를 CharId 에 더해
+     (900001, 900002, ...) 서로 다른 캐릭터로 입장하고, 창 제목에 캐릭터 ID 가 표시됩니다. 창을 닫으면 그 번호는 다시 쓰입니다.
+     --char-id 를 직접 주거나 --single(또는 GameViewer.json 의 MultiInstance=false)이면 번호를 더하지 않고 그 ID 를 그대로 씁니다.
+     서버에 같은 캐릭터 ID 로 두 번 입장할 수 없으므로(DuplicateEntity) 직접 지정할 때는 창마다 다른 값을 주세요.
   종료 코드: 0 정상, 1 옵션 오류
 
 [조작]
@@ -73,7 +77,7 @@
   Single 은 대상 ID(적 스킬은 선택한 적 또는 가장 가까운 적, 아군 스킬은 선택한 아군 또는 자기 자신), Area 는 중심 좌표,
   Self 는 값 없음(시전자 위치), Cone/Line 은 방향점(시전자에서 1칸 이상). 키 입력과 자동 전투가 같은 규칙을 쓰며,
   자동 전투는 아군 스킬을 체력이 줄었을 때만, Self 스킬은 대상이 효과 반경 안일 때만 쓴다. 슬롯 아래 줄에 모양(범위/자신/부채꼴/직선/아군)과 사거리를 표시한다.
-  스킬 연출: Core/Data/SkillFx.cs 의 표가 스킬 ID마다 양식(Blade 베기, Pierce 찌르기, Whirl 회전, Arrow 화살, Volley 화살비, Fireball 불덩이,
+  스킬 연출: Core/Data/SkillFx.cs 의 표가 스킬 ID마다 양식(Blade 베기, Pierce 찌르기, Lance 창 찌르기/직선 관통, Whirl 회전, Arrow 화살, Volley 화살비, Fireball 불덩이,
   Blast 대폭발, Roar 함성, Quake 대지 강타, Poison 독, Heal 치유, Nova 충격파)과 두 가지 색, 지속 시간, 화면 흔들림을 정하고, 표에 없으면
   데이터(범위/투사체 속도)로 고릅니다. 그리기는 App/Render/SkillEffects.cs 가 맡습니다: 범위 폭발(바닥/공중), 베기, 투사체, 착탄 폭발,
   시전 중 몸으로 빨려드는 기(CastSkillId), 기절(머리 위 별)/보호막(방울)/지속 치유(십자) 오라. 양식이 Default 면 기본 연출을 씁니다.
@@ -84,8 +88,11 @@
   7~10번과 보스는 Slam(치켜들었다 내려찍고 땅이 울림), 나머지는 Lunge(달려들어 묾). 보스는 더 멀리 나가고 더 느리며 피격 반동이 작다.
   피격한 쪽은 공격자 반대로 밀리며 눌린다(Entity.HitDirX/Y). 근접 기본 공격은 몸 앞에 휘두름 궤적(DrawSwipe)이 번쩍인다. 스킬의 동작은 시전/발사 알림에서
   시작하며 적중 알림(투사체는 한참 뒤)으로 다시 시작하지 않는다. 동작 모음은 Snap.exe --atksheet out.png [배율].
-  영웅 무기 동작: 코드 그림(Creatures.cs)은 전사 검/궁수 시위/마법사 지팡이/도적 양손 단검이 공격 5프레임으로 움직이고, 전사와 도적은 칼날 잔상이 남는다.
-  이미지 에셋 영웅은 프레임 애니메이션이 없으므로 WorldRenderer 가 무기 궤적을 겹쳐 그려 대신한다: 전사 검광, 도적 X자 베기, 궁수 시위 섬광, 마법사 구슬 폭발.
+  영웅 무기 동작: 코드 그림(Creatures.cs)은 전사 검/궁수 시위/마법사 지팡이/창술사 창이 공격 5프레임으로 움직이고, 전사와 창술사는 칼날/창끝 잔상이 남는다.
+  기본 공격 연출(App/Render/AttackEffects.cs): 무기마다 궤적이 다르다. 검 = 겹친 초승달 궤적, 창 = 대상 너머까지 꿰뚫는 찌르기 줄기+속도선+고리,
+  몬스터 = 세 줄 할퀴기, 활 = 날아가는 화살, 지팡이 = 마력 구슬. 모든 타격에는 섬광, 별빛, 충격 고리, 맞은 방향으로 튀는 파편 선, 중력 불꽃이 붙고
+  큰 피해(대상 최대 체력의 12% 이상)는 고리와 먼지가 한 겹 더 붙으며 내가 주면 화면이 살짝 흔들린다. 기본 공격과 창술사 스킬은 Snap.exe --atkfx GameData out.png basic|skill 로 한눈에 본다.
+  이미지 에셋 영웅은 프레임 애니메이션이 없으므로 WorldRenderer 가 무기 궤적을 겹쳐 그려 대신한다: 전사 검광, 창기사 직선 찌르기, 궁수 시위 섬광, 마법사 구슬 폭발.
   영웅 4종의 프레임을 보려면 Snap.exe --herosheet out.png, 실제 장면에서 보려면 Snap.exe --heroscene GameData out.png.
   긴박감 연출(Core/Logic/Tension.cs 가 규칙, App/Render/TensionHud.cs 가 그리기): 체력 40% 이하에서 화면 가장자리가 붉게 맥동하고(5%에서 최대, 매우 위험하면
   "체력 위험!" 표시와 박동마다 화면 번쩍임), 심장 박동음이 60회/분에서 약 140회/분까지 빨라진다. 보스가 나타나거나 재출현/격노하면 붉은 경보 배너와 사이렌이 울린다.
@@ -105,7 +112,7 @@
     걷기 이미지는 기본 이미지와 같은 크기여야 하고, 크기/발 밑 기준은 걷기 프레임까지 합친 범위로 잡습니다.
   - 잘못된 항목(파일 없음, 크기 불일치, 값 범위 등)은 그 항목만 건너뛰고 표준 오류에 "assets: ..." 로 적습니다.
   - 늑대(몬스터 3): Assets\wolf\ 18방향 + 걷기 6프레임(wolf\walk_*). 외부 이미지가 아니라 tools\render_wolf.py 로 직접 렌더링한 것이라 색/비율을 바꿔 다시 만들 수 있습니다.
-  - 샘플: Assets\demon\ 의 악마를 오우거(몬스터 9)에, Assets\slime\ 의 점액 괴물을 슬라임(몬스터 1)에, Assets\mushroom\ 의 버섯 전사를 고블린(몬스터 2)에, Assets\warrior\, archer\, mage\, rogue\ 의 오리지널 영웅(전사/궁수/마법사/도적, 걷기 6프레임 포함)을 영웅 1/2/3/4에, Assets\spruce\ 의 가문비나무를 나무에 연결해 두었습니다(각 18방향, 20도 간격).
+  - 샘플: Assets\demon\ 의 악마를 오우거(몬스터 9)에, Assets\slime\ 의 점액 괴물을 슬라임(몬스터 1)에, Assets\mushroom\ 의 버섯 전사를 고블린(몬스터 2)에, Assets\warrior\, archer\, mage\, lancer\ 의 오리지널 영웅(전사/궁수/마법사/창기사(영웅 4), 걷기 6프레임 포함)을 영웅 1/2/3/4에, Assets\spruce\ 의 가문비나무를 나무에 연결해 두었습니다(각 18방향, 20도 간격).
     원본은 Pixabay 무료 3D 모델 페이지의 회전 렌더이고, WebP 였던 프레임은 PNG 로 바꾸고 400x400 으로 줄였습니다. 쓰기 전에 Pixabay 콘텐츠 라이선스를 확인하세요. 연결을 빼려면 sprites.json 의 항목을 지우면 됩니다.
   - 샘플 두 개와 코드로 그린 다른 몬스터는 화풍이 다릅니다. 통일하려면 같은 화풍의 에셋을 전 종류에 맞춰 넣어야 합니다.
 
@@ -160,5 +167,9 @@
   해상도는 화면(보통 1280x800 이상)보다 커야 선명합니다. Backdrop.cs 가 화면 크기가 바뀔 때만 다시 늘려 둡니다.
 
 [오리지널 영웅]
-  Assets\warrior, archer, mage, rogue  스타일라이즈드 3D 느낌(셀 셰이딩 + 외곽선)으로 직접 렌더한 영웅. 각 18방향(정지) + 방향마다 걷기 6프레임. 외부 모델/텍스처를 쓰지 않았습니다.
-  tools/render_heroes.py  <warrior|archer|mage|rogue> <출력폴더> --walk 6   (numpy, Pillow 필요) 형태/색을 고쳐 다시 렌더할 수 있습니다.
+  Assets\warrior, archer, mage, lancer  스타일라이즈드 3D 느낌(셀 셰이딩 + 외곽선)으로 직접 렌더한 영웅. 각 18방향(정지) + 방향마다 걷기 6프레임. 외부 모델/텍스처를 쓰지 않았습니다.
+  창 분리(sprites.json): "attackFrames": N, "attackPattern": "lancer/atk_{0:000}_{1}.png"({0}=각도, {1}=공격 자세 0..N-1) 와
+    "weapon": { "poses": N+1, "pad": 160, "backPattern": ..._{0}_{1:000}_b.png, "frontPattern": ..._f.png, "anchors": "lancer/anchors.json" } ({0}=자세, {1}=각도).
+    자세 0 은 대기/걷기, 1.. 은 공격 자세. 창 그림은 몸 그림 둘레에 pad 픽셀 여백을 둔 같은 카메라 그림이라 몸 그림 (-pad,-pad) 에 맞춰 찍으면 겹친다.
+    뷰어는 창 뒤쪽 -> 몸 -> 창 앞쪽 순으로 찍고, 걸을 때는 walkGrip 으로 창을 프레임별 손 위치에 옮기며, 찌르기 잔광/불꽃/기모으기 빛은 창끝 앵커를 따라간다.
+  tools/render_heroes.py  <warrior|archer|mage|lancer> <출력폴더> --walk 6   (numpy, Pillow 필요) 형태/색을 고쳐 다시 렌더할 수 있습니다. lancer 는 몸(창 없음: ###.png, walk_###_##.png, 공격 자세 atk_###_N.png)과 창(자세별 몸 뒤 spear_P_###_b.png / 몸 앞 spear_P_###_f.png)을 따로 렌더하고, 손/창끝/창꼬리 위치를 anchors.json 으로 내보냅니다.

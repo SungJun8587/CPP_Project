@@ -6,7 +6,7 @@
 
 #include "pch.h"
 #include "SheetConverter.h"
-#include "ValueFormat.h"
+#include "Utf8Literal.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -23,14 +23,6 @@ using Xlnt::TRows;
 namespace
 {
 
-
-	//***************************************************************************
-	// @brief 비어 있는 셀인지 확인합니다. (값이 없거나 공백뿐인 문자열)
-	//***************************************************************************
-	bool IsEmptyCell(const SCell& c)
-	{
-		return c.kind == SCell::Empty || (c.kind == SCell::Str && ValueFormat::Trim(c.text).empty());
-	}
 
 	//***************************************************************************
 	// @brief 범위 한쪽 끝("-1000", "")을 읽습니다.
@@ -124,19 +116,16 @@ namespace
 		return true;
 	}
 
-	//***************************************************************************
-	// @brief 셀 하나를 헤더에 선언된 타입으로 변환해 JSON 값 문자열로 만듭니다.
-	// @param cell 셀
-	// @param def  필드 정의 (타입과 범위)
-	// @param json [out] JSON 값 (이미 따옴표/이스케이프 포함)
-	// @param why  [out] 실패 사유
-	// @return 변환했으면 true
-	//***************************************************************************
-	bool ConvertCell(const SCell& cell, const SFieldDef& def, const SDefinitions* defs, std::string& json, std::string& why)
+}
+
+//***************************************************************************
+// @brief 셀 하나를 헤더에 선언된 타입으로 변환해 JSON 값 문자열로 만듭니다. (SheetConverter.h 참고)
+//***************************************************************************
+bool SheetConverter::ConvertCellValue(const SCell& cell, const SFieldDef& def, const SDefinitions* defs, std::string& json, std::string& why)
+{
 	{
 		const std::string& type = def.type;
-		const bool blank = cell.kind == SCell::Empty || (cell.kind == SCell::Str && ValueFormat::Trim(cell.text).empty());
-		if( blank ) { why = U8("빈 칸"); return false; }
+		if( SheetConverter::IsBlank(cell) ) { why = U8("빈 칸"); return false; }
 
 		if( type == "string" ) { json = ValueFormat::JsonString(ValueFormat::CellToString(cell)); return true; }
 
@@ -169,26 +158,14 @@ namespace
 		if( cell.kind == SCell::Bool ) { why = U8("숫자가 아님: ") + ValueFormat::CellToString(cell); return false; }
 
 		double num;
-		if( cell.kind == SCell::Num ) num = std::strtod(cell.text.c_str(), nullptr);
-		else
-		{
-			const std::string t = ValueFormat::Trim(cell.text);
-			char* end = nullptr;
-			num = std::strtod(t.c_str(), &end);
-			const bool bad = t.empty() || *end != '\0' || t.find_first_of("xXpP") != std::string::npos;
-			if( bad ) { why = U8("숫자가 아님: ") + ValueFormat::Quote(cell.text); return false; }
-		}
-		if( std::isnan(num) || std::isinf(num) )
-		{
-			why = U8("유한한 숫자가 아님: ") + (cell.kind == SCell::Str ? ValueFormat::Quote(cell.text) : ValueFormat::CellToString(cell));
-			return false;
-		}
+		if( !ValueFormat::ParseNumber(cell, num, why) ) return false;
 
-		const std::string shown = cell.kind == SCell::Str ? ValueFormat::Quote(cell.text) : ValueFormat::CellToString(cell);
 		if( type == "float" ) { json = ValueFormat::FloatRepr(num); return true; }
 
-		if( num != std::floor(num) ) { why = U8("정수가 아님: ") + shown; return false; }
-		if( type == "uint" && num < 0 ) { why = U8("음수는 uint가 될 수 없음: ") + shown; return false; }
+		// 오류 메시지에 인용할 원래 값 (성공 경로에서는 만들지 않는다)
+		const auto shown = [&]() { return cell.kind == SCell::Str ? ValueFormat::Quote(cell.text) : ValueFormat::CellToString(cell); };
+		if( num != std::floor(num) ) { why = U8("정수가 아님: ") + shown(); return false; }
+		if( type == "uint" && num < 0 ) { why = U8("음수는 uint가 될 수 없음: ") + shown(); return false; }
 
 		// 헤더에 범위가 없어도 C++ 행 구조체(int32/uint32)에 담기는 값이어야 한다.
 		const STypeInfo* info = FindTypeInfo(type);
@@ -196,7 +173,7 @@ namespace
 		const double hi = static_cast<double>(def.hasMax ? def.maxV : info->maxV);
 		if( num < lo || num > hi )
 		{
-			why = shown + U8("은(는) 허용 범위 ") + std::to_string(static_cast<long long>(lo)) + ".." + std::to_string(static_cast<long long>(hi)) + U8("를 벗어남");
+			why = shown() + U8("은(는) 허용 범위 ") + std::to_string(static_cast<long long>(lo)) + ".." + std::to_string(static_cast<long long>(hi)) + U8("를 벗어남");
 			return false;
 		}
 
@@ -213,21 +190,33 @@ namespace
 //***************************************************************************
 bool SheetConverter::IsBlank(const SCell& cell)
 {
-	return IsEmptyCell(cell);
+	return cell.kind == SCell::Empty || (cell.kind == SCell::Str && ValueFormat::Trim(cell.text).empty());
 }
 
-bool SheetConverter::ConvertCellValue(const SCell& cell, const SFieldDef& def, const SDefinitions* defs, std::string& json, std::string& why)
+bool SheetConverter::IsCommentRow(const TRow& row)
 {
-	return ConvertCell(cell, def, defs, json, why);
+	if( row.empty() || row[0].kind != SCell::Str ) return false;
+	const std::string t = ValueFormat::Trim(row[0].text);
+	return !t.empty() && t[0] == '#';
 }
 
-bool SheetConverter::Convert(const std::string& sheet, const TRows& rows, std::vector<std::string>& errors, std::string& jsonOut, size_t& rowCount, SSheetSchema* schemaOut, const SDefinitions* defs)
+bool SheetConverter::IsSkipRow(const TRow& row)
+{
+	return IsCommentRow(row) || std::all_of(row.begin(), row.end(), SheetConverter::IsBlank);
+}
+
+std::string SheetConverter::RowLabel(const std::string& sheet, size_t row)
+{
+	return sheet + "!" + std::to_string(row) + U8("행 ");
+}
+
+bool SheetConverter::Convert(const std::string& sheet, const TRows& rows, std::vector<std::string>& errors, std::string& jsonOut, size_t& rowCount, SSheetSchema* schemaOut, const SDefinitions* defs, std::vector<std::string>* warnings)
 {
 	auto headerIt = rows.find(1);
 	std::vector<SFieldDef> fields;
 	const size_t errBefore = errors.size();
 
-	if( headerIt == rows.end() || std::all_of(headerIt->second.begin(), headerIt->second.end(), IsEmptyCell) )
+	if( headerIt == rows.end() || std::all_of(headerIt->second.begin(), headerIt->second.end(), SheetConverter::IsBlank) )
 	{
 		errors.push_back(headerIt == rows.end() && rows.empty() ? sheet + U8(": 시트가 비어 있습니다") : sheet + U8(": 헤더가 비어 있습니다"));
 		return false;
@@ -237,7 +226,7 @@ bool SheetConverter::Convert(const std::string& sheet, const TRows& rows, std::v
 	const TRow& header = headerIt->second;
 	for( size_t i = 0; i < header.size(); ++i )
 	{
-		if( IsEmptyCell(header[i]) ) continue;
+		if( SheetConverter::IsBlank(header[i]) ) continue;
 		const std::string text = ValueFormat::Trim(ValueFormat::CellToString(header[i]));
 		const std::string where = sheet + "!" + std::to_string(i + 1) + U8("열 헤더 '") + text + "'";
 
@@ -250,42 +239,54 @@ bool SheetConverter::Convert(const std::string& sheet, const TRows& rows, std::v
 	}
 	if( fields.empty() ) { if( errors.size() == errBefore ) errors.push_back(sheet + U8(": 헤더가 비어 있습니다")); return false; }
 
-	std::string body;
+	// 필드마다 JSON 키 부분("      \"이름\": ")은 한 번만 만든다. (행 x 열 만큼 되풀이해 만들 필요가 없다)
+	std::vector<std::string> keys;
+	keys.reserve(fields.size());
+	for( const SFieldDef& f : fields )
+		keys.push_back("      " + ValueFormat::JsonString(f.name) + ": ");
+
+	// 본문은 jsonOut에 바로 쓴다. 실패하면 비운다.
+	jsonOut = "{\n  " + ValueFormat::JsonString(sheet) + ": ";
 	rowCount = 0;
 	const SCell emptyCell;
 	for( const auto& kv : rows )
 	{
 		if( kv.first < 2 ) continue;
 		const TRow& row = kv.second;
-		if( !row.empty() && row[0].kind == SCell::Str )
+		if( IsSkipRow(row) )
 		{
-			const std::string t = ValueFormat::Trim(row[0].text);
-			if( !t.empty() && t[0] == '#' ) continue;
+			// 첫 칸만 '#'이고 나머지는 비어 있어야 주석이다. 다른 칸에 값이 있으면 데이터를 주석으로 잘못 본 것일 수 있다.
+			if( warnings && IsCommentRow(row) && std::any_of(row.begin() + 1, row.end(), [](const SCell& c) { return !SheetConverter::IsBlank(c); }) )
+				warnings->push_back(RowLabel(sheet, kv.first) + U8("첫 칸이 '#'로 시작해 주석으로 건너뜁니다. 다른 칸에도 값이 있으니 데이터가 맞는지 확인하세요"));
+			continue;
 		}
-		if( std::all_of(row.begin(), row.end(), IsEmptyCell) ) continue;
 
-		std::string item;
+		jsonOut += rowCount ? ",\n    {\n" : "[\n    {\n";
 		bool first = true;
-		for( const SFieldDef& f : fields )
+		for( size_t i = 0; i < fields.size(); ++i )
 		{
+			const SFieldDef& f = fields[i];
 			const SCell& cell = f.col < row.size() ? row[f.col] : emptyCell;
-			if( f.optional && IsEmptyCell(cell) ) continue;
+			if( f.optional && SheetConverter::IsBlank(cell) ) continue;
 
 			std::string json, why;
-			if( !ConvertCell(cell, f, defs, json, why) )
+			if( !ConvertCellValue(cell, f, defs, json, why) )
 			{
-				errors.push_back(sheet + "!" + std::to_string(kv.first) + U8("행 ") + f.name + ": " + why);
+				errors.push_back(RowLabel(sheet, kv.first) + f.name + ": " + why);
 				continue;
 			}
-			item += std::string(first ? "" : ",\n") + "      " + ValueFormat::JsonString(f.name) + ": " + json;
+			if( !first ) jsonOut += ",\n";
 			first = false;
+			jsonOut += keys[i];
+			jsonOut += json;
 		}
-		body += std::string(rowCount ? ",\n" : "") + "    {\n" + item + "\n    }";
+		jsonOut += "\n    }";
 		++rowCount;
 	}
 
-	if( errors.size() != errBefore ) return false;
-	jsonOut = "{\n  " + ValueFormat::JsonString(sheet) + ": " + (rowCount ? "[\n" + body + "\n  ]" : "[]") + "\n}\n";
+	if( errors.size() != errBefore ) { jsonOut.clear(); return false; }
+	jsonOut += rowCount ? "\n  ]" : "[]";
+	jsonOut += "\n}\n";
 	if( schemaOut )
 	{
 		schemaOut->name = sheet;

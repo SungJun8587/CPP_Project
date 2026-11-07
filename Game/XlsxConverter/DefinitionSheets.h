@@ -46,7 +46,7 @@ namespace DefinitionSheets
 	bool IsPacketSheet(const std::string& name);
 
 	//***************************************************************************
-	// @brief 예약 시트 이름인지 확인합니다. (Enum, Const, 그리고 생성 파일 이름과 겹치는 Enums, Consts, EnumStrings)
+	// @brief 예약 시트 이름인지 확인합니다. (Enum, Const, Packet*, 그리고 생성 파일 이름과 겹치는 Enums, Consts, EnumStrings, GeneratedCommon, ZonePacketTypes, ZonePacketStructs)
 	//***************************************************************************
 	bool IsReservedSheet(const std::string& name);
 

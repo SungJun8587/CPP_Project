@@ -361,6 +361,7 @@ namespace GameViewer.App.Render
             {
                 case SkillFxStyle.Blade: DrawBlade(g, info, fx, v, p, cx, cy, tx, ty); return true;
                 case SkillFxStyle.Pierce: DrawPierce(g, info, fx, v, p, cx, cy, tx, ty); return true;
+                case SkillFxStyle.Lance: _fx.Attack.Thrust(g, fx, v, p, cx, cy, info.Color1, info.Color2, 1.7f); return true;
                 case SkillFxStyle.Whirl: case SkillFxStyle.Roar: case SkillFxStyle.Nova:
                     return RingAir(g, info, fx, v, now, cx, cy, fx.Radius > 0 ? fx.Radius : 3.5f);
                 case SkillFxStyle.Heal: case SkillFxStyle.Blast: case SkillFxStyle.Quake: case SkillFxStyle.Poison: case SkillFxStyle.Volley:
@@ -457,6 +458,34 @@ namespace GameViewer.App.Render
                 Glow(g, Mix(c1, c2, Rn(fx, k + 60)), px, py, v.Px(0.16f), 0.9f * fade);
             }
             Star(g, 0xFFFFFF, (int)(240 * fade), b.X, b.Y, v.Px(0.9f) * (0.4f + 0.6f * reach), p * 5f, 2f);
+            if (info.Style == SkillFxStyle.Lance)
+            {
+                // 창끝 쐐기: 광선 끝에서 앞으로 뾰족하게, 옆으로 번지는 두 날개
+                float ux = b.X - a.X, uy = b.Y - a.Y, ul = (float)Math.Sqrt(ux * ux + uy * uy);
+                if (ul > 1f)
+                {
+                    ux /= ul; uy /= ul;
+                    float nx = -uy, ny = ux, hw = Math.Max(5f, wpx * 0.5f), hl = v.Px(1.3f);
+                    g.FillPolygon(Br(c2, (int)(235 * fade)), new PointF[] { new PointF(b.X + ux * hl, b.Y + uy * hl), new PointF(b.X + nx * hw, b.Y + ny * hw), new PointF(b.X - ux * hl * 0.5f, b.Y - uy * hl * 0.5f), new PointF(b.X - nx * hw, b.Y - ny * hw) });
+                    // 사거리를 따라 달리는 충격 고리 세 개
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        float q = Clamp01(p * 2.2f - k * 0.28f);
+                        if (q <= 0f || q >= 1f) continue;
+                        PointF c = Polar(v, cx, cy, ang, R * (0.25f + 0.7f * q), lift);
+                        float rw = v.Px(0.5f) * (0.6f + 0.6f * q), rh = Math.Max(wpx * 0.55f, v.Px(0.9f));
+                        g.DrawEllipse(Pn(c2, (int)(210 * (1f - q)), 2.5f), c.X - rw, c.Y - rh, rw * 2, rh * 2);
+                    }
+                    // 광선 양옆으로 흩어지는 속도선
+                    for (int k = 0; k < 8; ++k)
+                    {
+                        float off = (Rn(fx, k + 80) - 0.5f) * W * 1.9f, d0 = R * reach * Rn(fx, k + 90) * 0.7f, d1 = d0 + R * 0.25f;
+                        PointF s0 = new PointF(v.ToScreenX(cx + (float)Math.Cos(ang) * d0 - (float)Math.Sin(ang) * off), v.ToScreenY(cy + (float)Math.Sin(ang) * d0 + (float)Math.Cos(ang) * off) - lift);
+                        PointF s1 = new PointF(v.ToScreenX(cx + (float)Math.Cos(ang) * d1 - (float)Math.Sin(ang) * off), v.ToScreenY(cy + (float)Math.Sin(ang) * d1 + (float)Math.Cos(ang) * off) - lift);
+                        g.DrawLine(Pn(c2, (int)(170 * fade), 1.5f), s0, s1);
+                    }
+                }
+            }
         }
 
         private void DrawBlade(Graphics g, SkillFxInfo info, ViewEffect fx, ViewState v, float p, float cx, float cy, float tx, float ty)

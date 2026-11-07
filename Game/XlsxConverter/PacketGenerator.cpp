@@ -6,59 +6,26 @@
 
 #include "pch.h"
 #include "PacketGenerator.h"
-#include "Utf8Literal.h"
-#include "CodeGenCommon.h"
 
 #include <algorithm>
-#include <cctype>
 #include <set>
-#include <sstream>
 
 namespace
 {
 	const char* const kDivider = "//***************************************************************************\n";
 
 
-	std::string Pascal(const std::string& s)
-	{
-		std::string r = s;
-		if( !r.empty() ) r[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(r[0])));
-		return r;
-	}
-
-	// 열거형 이름의 C# 형태: 앞의 'E' + 대문자(EGatewayResult)이면 E를 뗀다.
-	std::string CsEnumName(const std::string& name)
-	{
-		if( name.size() > 1 && name[0] == 'E' && std::isupper(static_cast<unsigned char>(name[1])) ) return name.substr(1);
-		return name;
-	}
-
-	// 상수 이름의 C# 형태: 앞의 'k' + 대문자(kMaxClientPacketBytes)이면 k를 뗀다.
-	std::string CsConstName(const std::string& name)
-	{
-		if( name.size() > 1 && name[0] == 'k' && std::isupper(static_cast<unsigned char>(name[1])) ) return name.substr(1);
-		return name;
-	}
-
-	std::vector<std::string> Lines(const std::string& text)
-	{
-		std::vector<std::string> v;
-		size_t pos = 0;
-		while( pos <= text.size() )
-		{
-			size_t e = text.find('\n', pos);
-			if( e == std::string::npos ) e = text.size();
-			v.push_back(text.substr(pos, e - pos));
-			pos = e + 1;
-		}
-		return v;
-	}
+	using CodeGenCommon::CsConstName;
+	using CodeGenCommon::CsEnumName;
+	using CodeGenCommon::Lines;
+	using CodeGenCommon::Pascal;
 
 	//***************************************************************************
 	// @brief "@brief ... / @details ..." 블록 주석. 둘째 줄부터는 태그 뒤 글자에 맞춰 들여쓴다.
 	//***************************************************************************
 	std::string DocBlock(const std::string& brief, const std::string& detail)
 	{
+		if( brief.empty() && detail.empty() ) return std::string();		// 빈 설명 블록(구분선만 두 줄)을 만들지 않는다
 		std::string s = kDivider;
 		const auto emit = [&](const char* tag, const std::string& text, size_t indent)
 			{
@@ -76,10 +43,15 @@ namespace
 	}
 
 	// C++ 필드 타입 (Network의 uint8 같은 별칭을 쓴다. 서버 코드가 이미 쓰는 이름)
+	// SPacketField.type은 ParsePacketSheets가 FindPacketTypeInfo로 검증한 값이므로 항상 표에 있다.
+	const SPacketTypeInfo& TypeOf(const SPacketField& f)
+	{
+		return *FindPacketTypeInfo(f.type);
+	}
+
 	std::string CppFieldType(const SPacketField& f)
 	{
-		if( f.type == "bool8" ) return "uint8";
-		return f.type;
+		return TypeOf(f).cppType;
 	}
 
 	std::string CppConstType(const std::string& t)
@@ -96,9 +68,34 @@ namespace
 		return "int";
 	}
 
+	//***************************************************************************
+	// @brief 생성 C++ 코드에 이름 그대로 들어가는 것들(상수, enum과 멤버, 패킷 번호 enum, 패킷, 필드)이 C++ 키워드나 Windows 매크로와 겹치는지 확인합니다.
+	// @details 겹치면 변환은 성공하는데 컴파일에서 터지므로 여기서 막는다. (Enum 시트는 RowGenerator가 같은 규칙으로 검사한다)
+	//***************************************************************************
+	void ValidateCppNames(const SPacketSchema& schema, std::vector<std::string>& errors)
+	{
+		const auto check = [&](const std::string& what, const std::string& name)
+			{
+				if( CodeGenCommon::IsCppReservedName(name) )
+					errors.push_back(what + U8(": '") + name + U8("'은(는) C++ 키워드이거나 Windows 헤더가 매크로로 정의하는 이름이라 생성 코드에 쓸 수 없습니다"));
+			};
+		for( const SPacketConst& c : schema.consts ) check("PacketConst " + c.name, c.name);
+		for( const SEnumDef& e : schema.enums )
+		{
+			check("PacketEnum " + e.name, e.name);
+			for( const SEnumMember& m : e.members ) check("PacketEnum " + e.name + "." + m.name, m.name);
+		}
+		for( const SPacketGroup& g : schema.groups ) check("PacketGroup " + g.name + " Enum", g.enumName);
+		for( const SPacketDef& p : schema.packets )
+		{
+			check("Packet " + p.name, p.name);
+			for( const SPacketField& f : p.fields ) check("PacketField " + p.name + "." + f.name, f.name);
+		}
+	}
+
 	std::string Header(const char* file, const char* desc)
 	{
-		return std::string(kDivider) + "// " + file + U8(" : 자동 생성 파일 - 직접 수정하지 마세요.\n//\n// XlsxConverter가 GameData.xlsx의 ") + desc + U8(" 시트로부터 만듭니다.\n") + kDivider;
+		return CodeGenCommon::CppBanner(file, CodeGenCommon::SourceNote(desc));
 	}
 
 	// 같은 입력이면 같은 출력: 정렬 없이 시트 순서 그대로 쓴다.
@@ -127,13 +124,9 @@ namespace
 		// 결과 코드 enum
 		for( const SEnumDef& e : schema.enums )
 		{
-			const SBaseInfo* bi = FindBaseInfo(e.base);
 			s += "\n";
 			if( !e.comment.empty() ) s += DocBlock(e.comment, "");
-			s += "enum class " + e.name + " : " + bi->cppType + "\n{\n";
-			for( const SEnumMember& m : e.members )
-				s += "\t" + m.name + " = " + std::to_string(m.value) + "," + CodeGenCommon::CommentTail(m.comment) + "\n";
-			s += "};\n";
+			s += CodeGenCommon::CppEnum(e, "");
 		}
 
 		// 패킷 번호 열거형 (그룹마다)
@@ -192,48 +185,29 @@ namespace
 
 	// ---------------------------------------------------------------- C#
 
-	struct SCsType { const char* read; const char* csType; };
-
-	std::string CsFieldType(const SPacketField& f, const SPacketSchema& schema)
+	std::string CsFieldType(const SPacketField& f)
 	{
 		if( !f.enumName.empty() ) return CsEnumName(f.enumName);
-		if( f.type == "uint8" ) return "byte";
-		if( f.type == "bool8" ) return "bool";
-		if( f.type == "uint16" ) return "ushort";
-		if( f.type == "uint32" ) return "uint";
-		if( f.type == "int32" ) return "int";
-		if( f.type == "uint64" ) return "ulong";
-		return "float";
+		return TypeOf(f).csType;
 	}
 
-	std::string CsReadExpr(const SPacketField& f, const SPacketSchema& schema)
+	std::string CsReadExpr(const SPacketField& f)
 	{
-		const std::string type = CsFieldType(f, schema);
-		std::string raw;
-		if( f.type == "uint8" || f.type == "bool8" ) raw = "r.U8()";
-		else if( f.type == "uint16" ) raw = "r.U16()";
-		else if( f.type == "uint32" ) raw = "r.U32()";
-		else if( f.type == "int32" ) raw = "r.I32()";
-		else if( f.type == "uint64" ) raw = "r.U64()";
-		else raw = "r.F32()";
-		if( f.type == "bool8" ) return raw + " != 0";
-		return f.enumName.empty() ? raw : "(" + type + ")" + raw;
+		const std::string raw = TypeOf(f).csRead;
+		return f.enumName.empty() ? raw : "(" + CsFieldType(f) + ")" + raw;
 	}
 
 	std::string CsWriteStmt(const SPacketField& f, const std::string& value)
 	{
-		if( f.type == "bool8" ) return "w.U8(" + value + " ? (byte)1 : (byte)0);";
-		if( f.type == "uint8" ) return "w.U8((byte)" + value + ");";
-		if( f.type == "uint16" ) return "w.U16((ushort)" + value + ");";
-		if( f.type == "uint32" ) return f.enumName.empty() ? "w.U32(" + value + ");" : "w.U32((uint)" + value + ");";
-		if( f.type == "int32" ) return "w.U32(unchecked((uint)" + value + "));";
-		if( f.type == "uint64" ) return "w.U64(" + value + ");";
-		return "w.F32(" + value + ");";
+		const SPacketTypeInfo& ti = TypeOf(f);
+		std::string pattern = (!f.enumName.empty() && ti.csWriteEnum) ? ti.csWriteEnum : ti.csWrite;
+		const size_t pos = pattern.find("{v}");
+		return pattern.replace(pos, 3, value);		// 패턴마다 {v}는 하나다. (식이 값을 두 번 평가하지 않도록 표를 만든다)
 	}
 
 	std::string CsHeader(const char* file, const char* desc)
 	{
-		return std::string("// <auto-generated>\n// ") + file + U8(" : 자동 생성 파일 - 직접 수정하지 마세요.\n// XlsxConverter가 GameData.xlsx의 ") + desc + U8(" 시트로부터 만듭니다.\n// </auto-generated>\n");
+		return CodeGenCommon::CsBanner(file, CodeGenCommon::SourceNote(desc));
 	}
 
 	// C# 주석은 한 줄씩 //로 쓴다.
@@ -260,13 +234,9 @@ namespace
 
 		for( const SEnumDef& e : schema.enums )
 		{
-			const SBaseInfo* bi = FindBaseInfo(e.base);
 			s += "\n";
 			if( !e.comment.empty() ) s += CsComment(e.comment, "\t");
-			s += std::string("\tpublic enum ") + CsEnumName(e.name) + " : " + bi->csType + "\n\t{\n";
-			for( const SEnumMember& m : e.members )
-				s += "\t\t" + m.name + " = " + std::to_string(m.value) + "," + CodeGenCommon::CommentTail(m.comment) + "\n";
-			s += "\t}\n";
+			s += CodeGenCommon::CsEnum(e, CsEnumName(e.name), "\t");
 		}
 		for( const SPacketGroup& g : schema.groups )
 		{
@@ -274,7 +244,7 @@ namespace
 			if( !g.comment.empty() ) s += CsComment(g.comment, "\t");
 			s += "\tpublic enum " + g.csEnum + " : ushort\n\t{\n";
 			for( const SPacketDef& p : schema.packets )
-				if( p.group == g.name ) s += "\t\t" + p.name + " = " + std::to_string(p.id) + "," + CodeGenCommon::CommentTail(p.summary) + "\n";
+				if( p.group == g.name ) s += "\t\t" + CodeGenCommon::CsIdent(p.name) + " = " + std::to_string(p.id) + "," + CodeGenCommon::CommentTail(p.summary) + "\n";
 			s += "\t}\n";
 		}
 		return s + "}\n";
@@ -302,7 +272,8 @@ namespace
 				for( const SPacketField& f : p.fields )
 				{
 					if( CodeGenCommon::IsCsKeyword(f.name) ) { errors.push_back(std::string("PacketField: ") + p.name + "." + f.name + U8(": C# 예약어라 매개변수 이름으로 쓸 수 없습니다")); continue; }
-					args += (args.empty() ? "" : ", ") + CsFieldType(f, schema) + " " + f.name;
+					if( f.name == "w" ) { errors.push_back(std::string("PacketField: ") + p.name + "." + f.name + U8(": 매개변수 이름 w는 생성 코드의 PacketWriter 지역 변수와 겹칩니다")); continue; }
+					args += (args.empty() ? "" : ", ") + CsFieldType(f) + " " + f.name;
 				}
 				s += "\n\t\tpublic static byte[] " + p.name + "(" + args + ")\n\t\t{\n";
 				s += "\t\t\tPacketWriter w = new PacketWriter((ushort)" + groupEnum(p) + "." + p.name + ", " + p.name + "Size);\n";
@@ -324,7 +295,7 @@ namespace
 			const auto flush = [&]() { if( !run.empty() ) { s += "\t\tpublic " + runType + " " + run + ";\n"; run.clear(); } };
 			for( const SPacketField& f : p.fields )
 			{
-				const std::string m = Pascal(f.name), t = CsFieldType(f, schema);
+				const std::string m = Pascal(f.name), t = CsFieldType(f);
 				if( m == p.name || m == "Size" || m == "Parse" || m == "ToBytes" || !members.insert(m).second )
 				{
 					errors.push_back(std::string("PacketField: ") + p.name + "." + f.name + U8(": C# 멤버 이름 ") + m + U8("이(가) 겹칩니다"));
@@ -337,7 +308,7 @@ namespace
 			s += "\n\t\tpublic static " + p.name + " Parse(byte[] d)\n\t\t{\n";
 			s += "\t\t\tPacketReader r = new PacketReader(d, ProtocolConst.HeaderSize);\n";
 			s += "\t\t\t" + p.name + " p = new " + p.name + "();\n";
-			for( const SPacketField& f : p.fields ) s += "\t\t\tp." + Pascal(f.name) + " = " + CsReadExpr(f, schema) + ";\n";
+			for( const SPacketField& f : p.fields ) s += "\t\t\tp." + Pascal(f.name) + " = " + CsReadExpr(f) + ";\n";
 			s += "\t\t\treturn p;\n\t\t}\n";
 			s += "\n\t\t// 서버 쪽 레이아웃으로 직렬화한다 (테스트의 가짜 서버와 오프라인 데모가 쓴다)\n\t\tpublic byte[] ToBytes()\n\t\t{\n";
 			s += "\t\t\tPacketWriter w = new PacketWriter((ushort)" + groupEnum(p) + "." + p.name + ", Size);\n";
@@ -353,15 +324,47 @@ namespace PacketGenerator
 	bool Generate(const SPacketSchema& schema, std::vector<SGeneratedFile>& out, std::vector<std::string>& errors)
 	{
 		if( schema.empty() ) return true;
+		const size_t before = errors.size();
+		ValidateCppNames(schema, errors);
+		if( errors.size() != before ) return false;
 		out.push_back({ "ZonePacketTypes.gen.h", GenTypes(schema) });
 		out.push_back({ "ZonePacketStructs.gen.h", GenStructs(schema) });
-		return errors.empty();
+		return true;
 	}
 
-	bool GenerateCs(const SPacketSchema& schema, const std::string& ns, std::vector<SGeneratedFile>& out, std::vector<std::string>& errors)
+	bool GenerateCs(const SPacketSchema& schema, const std::string& ns, std::vector<SGeneratedFile>& out, std::vector<std::string>& errors, const std::set<std::string>* otherTypeNames)
 	{
 		if( schema.empty() ) return true;
 		const size_t before = errors.size();
+		if( !CodeGenCommon::IsValidNamespace(ns) )
+		{
+			errors.push_back(U8("패킷 C# 네임스페이스 '") + ns + U8("': 형식이 아닙니다 (--proto-cs-namespace, 없으면 --cs-namespace)"));
+			return false;
+		}
+
+		// 같은 네임스페이스에 만들어지는 형식 이름끼리 겹치면 C# 컴파일이 깨지므로 미리 막는다.
+		{
+			bool anySend = false;
+			for( const SPacketDef& p : schema.packets ) if( p.cs == "Send" || p.cs == "Both" ) anySend = true;
+			std::set<std::string> names = { "ProtocolConst" };
+			if( anySend ) names.insert("Build");
+			const auto add = [&](const std::string& name, const char* what)
+				{
+					if( !names.insert(name).second )
+						errors.push_back(std::string(what) + " " + name + U8(": C# 형식 이름이 패킷 프로토콜의 다른 형식(ProtocolConst, Build, enum, 패킷 클래스)과 겹칩니다"));
+					else if( otherTypeNames && otherTypeNames->count(name) )
+						errors.push_back(std::string(what) + " " + name + U8(": C# 형식 이름이 같은 네임스페이스(") + ns + U8(")의 시트 클래스/GameConsts/Enum 시트의 enum과 겹칩니다"));
+				};
+			for( const SEnumDef& e : schema.enums ) add(CsEnumName(e.name), "PacketEnum");
+			for( const SPacketGroup& g : schema.groups ) add(g.csEnum, "PacketGroup");
+			for( const SPacketDef& p : schema.packets )
+			{
+				if( p.cs == "None" ) continue;
+				if( CodeGenCommon::IsCsKeyword(p.name) ) errors.push_back(std::string("Packet ") + p.name + U8(": C# 예약어라 클래스/메서드 이름으로 쓸 수 없습니다"));
+				if( p.cs == "Recv" || p.cs == "Both" ) add(p.name, "Packet");
+			}
+			if( errors.size() != before ) return false;
+		}
 		out.push_back({ "ProtocolTypes.gen.cs", GenCsTypes(schema, ns) });
 		out.push_back({ "Packets.gen.cs", GenCsPackets(schema, ns, errors) });
 		return errors.size() == before;

@@ -14,6 +14,42 @@
 #include <vector>
 
 //***************************************************************************
+// @struct SPacketTypeInfo
+// @brief PacketField 시트의 Type 하나에 대한 모든 매핑. 타입을 추가/변경할 때는 이 표만 고친다. (와이어 크기, C++/C# 타입, C# 읽기/쓰기 식)
+// @details csWrite/csWriteEnum의 {v}는 값 식으로 치환된다. csWriteEnum은 enum으로 선언한 필드의 쓰기 식이며 nullptr이면 csWrite와 같다.
+//          char 배열은 C# 생성을 지원하지 않으므로 C# 항목이 nullptr이다.
+//***************************************************************************
+struct SPacketTypeInfo
+{
+	const char* name;
+	size_t			bytes;
+	const char* cppType;
+	const char* csType;
+	const char* csRead;
+	const char* csWrite;
+	const char* csWriteEnum;
+};
+
+inline const SPacketTypeInfo* FindPacketTypeInfo(const std::string& name)
+{
+	static const SPacketTypeInfo kTable[] =
+	{
+		//	name		bytes	cpp			cs			read			write							writeEnum
+		{ "uint8",		1,		"uint8",	"byte",		"r.U8()",		"w.U8((byte){v});",				nullptr },
+		{ "bool8",		1,		"uint8",	"bool",		"r.U8() != 0",	"w.U8({v} ? (byte)1 : (byte)0);",	nullptr },
+		{ "uint16",		2,		"uint16",	"ushort",	"r.U16()",		"w.U16((ushort){v});",			nullptr },
+		{ "uint32",		4,		"uint32",	"uint",		"r.U32()",		"w.U32({v});",					"w.U32((uint){v});" },
+		{ "int32",		4,		"int32",	"int",		"r.I32()",		"w.U32(unchecked((uint){v}));",	nullptr },
+		{ "uint64",		8,		"uint64",	"ulong",	"r.U64()",		"w.U64({v});",					nullptr },
+		{ "float",		4,		"float",	"float",	"r.F32()",		"w.F32({v});",					nullptr },
+		{ "char",		1,		"char",		nullptr,	nullptr,		nullptr,						nullptr },
+	};
+	for( const SPacketTypeInfo& t : kTable )
+		if( name == t.name ) return &t;
+	return nullptr;
+}
+
+//***************************************************************************
 // @struct SPacketConst
 // @brief PacketConst 시트의 한 행. 프로토콜 전역 상수(버전, 크기 상한, 이름 필드 길이 등).
 //***************************************************************************
@@ -47,7 +83,7 @@ struct SPacketGroup
 struct SPacketField
 {
 	std::string		name;				// C++ 멤버 이름 (C#에서는 첫 글자만 대문자로)
-	std::string		type;				// uint8, bool8, uint16, uint32, int32, uint64, float, char
+	std::string		type;				// FindPacketTypeInfo의 이름: uint8, bool8, uint16, uint32, int32, uint64, float, char
 	std::string		len;				// char 배열 길이: 숫자 또는 PacketConst 이름
 	std::string		enumName;			// 값의 의미를 나타내는 PacketEnum 이름 (C++ 멤버는 정수형 그대로, C#은 enum으로 변환)
 	std::string		comment;

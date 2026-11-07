@@ -1,7 +1,7 @@
 ﻿//***************************************************************************
 // ZonePacketTypes.gen.h : 자동 생성 파일 - 직접 수정하지 마세요.
 //
-// XlsxConverter가 GameData.xlsx의 PacketConst, PacketEnum, PacketGroup, Packet 시트로부터 만듭니다.
+// XlsxConverter가 GameData 엑셀의 PacketConst, PacketEnum, PacketGroup, Packet 시트로부터 만듭니다.
 //***************************************************************************
 
 #ifndef ZONEPACKETTYPES_GEN_H

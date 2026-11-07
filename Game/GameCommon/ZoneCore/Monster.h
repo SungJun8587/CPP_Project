@@ -100,8 +100,8 @@ private:
 	friend class CMonsterSystem;
 	friend class CBossSystem;
 
-	const SMonsterTemplate* _tmpl;				// 몬스터 종류 데이터 (CMonsterData 소유)
-	CMonsterSystem* _system;			// AI 시스템 (활성화 요청 대상)
+	const SMonsterTemplate*	_tmpl;				// 몬스터 종류 데이터 (CMonsterData 소유)
+	CMonsterSystem*			_system;			// AI 시스템 (활성화 요청 대상)
 	Vec2					_anchor;			// 스폰 중심점
 	float					_spawnRadius;		// 스폰 반경
 	Vec2					_home;				// 복귀 지점 (마지막 스폰 위치)
@@ -117,7 +117,7 @@ private:
 	uint64					_noPathUntilMs;		// 이 시각 전에는 경로탐색을 다시 하지 않는다 (경로 없음이 반복되는 비용 억제)
 	SAggroEntry				_aggro[kMaxAggro];	// 어그로 표
 	size_t					_aggroCount;		// 어그로 표 항목 수
-	SBossRuntime* _boss = nullptr;	// 보스 전투 상태 (보스가 아니면 nullptr. 소유는 CBossSystem)
+	SBossRuntime*			_boss = nullptr;	// 보스 전투 상태 (보스가 아니면 nullptr. 소유는 CBossSystem)
 	bool					_summoned = false;	// 보스가 소환한 몬스터인지. 소환수는 부활하지 않고 죽으면 시체를 치운다
 	uint64					_ownerId = 0;		// 소환한 보스의 엔티티 ID (소환수만)
 };

@@ -10,6 +10,7 @@
 #include "PacketSchema.h"
 #include "RowGenerator.h"
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -32,9 +33,10 @@ namespace PacketGenerator
 	// @brief C# 파일 2개를 만듭니다.
 	//   ProtocolTypes.gen.cs  상수(ProtocolConst, partial), enum, 패킷 번호 열거형
 	//   Packets.gen.cs        Cs=Send/Both: Build.<Name>(...),  Cs=Recv/Both: <Name>.Parse(byte[]) / ToBytes()
-	// @param ns C# 네임스페이스
+	// @param ns             C# 네임스페이스
+	// @param otherTypeNames 같은 네임스페이스에 다른 생성기(RowGenerator::CsTypeNames)가 만드는 형식 이름. 겹치면 오류. 없으면 nullptr
 	//***************************************************************************
-	bool GenerateCs(const SPacketSchema& schema, const std::string& ns, std::vector<SGeneratedFile>& out, std::vector<std::string>& errors);
+	bool GenerateCs(const SPacketSchema& schema, const std::string& ns, std::vector<SGeneratedFile>& out, std::vector<std::string>& errors, const std::set<std::string>* otherTypeNames = nullptr);
 
 	//***************************************************************************
 	// @brief "<구조체 이름> <바이트>" 줄 목록. C++ sizeof와 대조하는 용도(테스트 입력)다.

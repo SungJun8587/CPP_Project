@@ -51,6 +51,20 @@ namespace GameViewer.App
                 return 0;
             }
 
+            // 같은 PC에서 여러 개를 띄울 수 있게, 이미 실행 중인 뷰어와 겹치지 않는 슬롯을 잡아 CharId 에 더한다(서버는 같은 캐릭터 ID 의 중복 입장을 거부한다).
+            // 데모는 서버에 접속하지 않으므로 필요 없다.
+            if (!demo && cfg.MultiInstance)
+            {
+                int slot = InstanceSlot.Acquire(cfg.Host, cfg.Port);
+                if (slot < 0)
+                {
+                    MessageBox.Show("실행 중인 뷰어가 너무 많습니다 (최대 " + InstanceSlot.MaxSlots + "개).", "GameViewer", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return 1;
+                }
+                cfg.Slot = slot;
+                cfg.CharId += (ulong)slot;
+            }
+
             string dataDir = cfg.DataDir;
             if (!Path.IsPathRooted(dataDir)) dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, dataDir);
             if (!Directory.Exists(dataDir) && Directory.Exists(cfg.DataDir)) dataDir = Path.GetFullPath(cfg.DataDir);

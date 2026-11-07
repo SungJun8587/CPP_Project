@@ -311,10 +311,10 @@ public:
 	void ForEachLivePlayerInRadius(const Vec2& center, float radius, F&& fn) const
 	{
 		_aoi.ForEachWatcherInRadius(center, radius, [&](CZoneEntity& e)
-			{
-				if( e.GetType() == EntityType::Player && e.IsAlive() && !IsInvulnerable(e) )
-					fn(e);
-			});
+		{
+			if( e.GetType() == EntityType::Player && e.IsAlive() && !IsInvulnerable(e) )
+				fn(e);
+		});
 	}
 
 	//***************************************************************************

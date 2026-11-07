@@ -148,7 +148,7 @@
     },
     {
       "Id": 12,
-      "Name": "질주",
+      "Name": "돌격 태세",
       "Kind": "Buff",
       "Target": "Self",
       "DurationMs": 5000,
@@ -161,7 +161,7 @@
     },
     {
       "Id": 13,
-      "Name": "약점 노출",
+      "Name": "방어 붕괴",
       "Kind": "Buff",
       "Target": "Hit",
       "DurationMs": 6000,

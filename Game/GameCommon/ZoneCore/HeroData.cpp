@@ -97,12 +97,12 @@ bool CHeroData::Validate(std::string& error) const
 		const SHeroTemplate& h = pair.second;
 		const unsigned id = h.id;
 
-		if( h.stats.maxHp < 1 ) { error = Format("hero %u: maxHp must be >= 1", id); return false; }
-		if( h.stats.attack < 0 ) { error = Format("hero %u: attack must be >= 0", id); return false; }
-		if( h.stats.defense < 0 ) { error = Format("hero %u: defense must be >= 0", id); return false; }
-		if( !IsFinitePositive(h.stats.attackRange) ) { error = Format("hero %u: attackRange must be > 0", id); return false; }
-		if( h.stats.attackIntervalMs < 1 ) { error = Format("hero %u: attackIntervalMs must be >= 1", id); return false; }
-		if( !IsFinitePositive(h.speed) ) { error = Format("hero %u: speed must be > 0", id); return false; }
+		if( h.stats.maxHp < 1 )				{ error = Format("hero %u: maxHp must be >= 1", id); return false; }
+		if( h.stats.attack < 0 )			{ error = Format("hero %u: attack must be >= 0", id); return false; }
+		if( h.stats.defense < 0 )			{ error = Format("hero %u: defense must be >= 0", id); return false; }
+		if( !IsFinitePositive(h.stats.attackRange) )	{ error = Format("hero %u: attackRange must be > 0", id); return false; }
+		if( h.stats.attackIntervalMs < 1 )	{ error = Format("hero %u: attackIntervalMs must be >= 1", id); return false; }
+		if( !IsFinitePositive(h.speed) )	{ error = Format("hero %u: speed must be > 0", id); return false; }
 	}
 
 	for( const auto& pair : _skills )
@@ -112,55 +112,49 @@ bool CHeroData::Validate(std::string& error) const
 
 		const bool shapeKnown = s.shape == ESkillShape::Single || s.shape == ESkillShape::Area || s.shape == ESkillShape::Self
 			|| s.shape == ESkillShape::Cone || s.shape == ESkillShape::Line;
-		if( !shapeKnown ) { error = Format("skill %u: unknown shape", id); return false; }
-		if( s.target != ESkillTarget::Enemy && s.target != ESkillTarget::Ally ) { error = Format("skill %u: unknown target", id); return false; }
-		if( s.healPercent > kMaxSkillDamagePercent || s.flatHeal < 0 ) { error = Format("skill %u: heal out of range", id); return false; }
-		if( SkillHasHeal(s) && s.target != ESkillTarget::Ally ) { error = Format("skill %u: heal needs target Ally", id); return false; }
-		if( SkillHasDamage(s) && s.target == ESkillTarget::Ally ) { error = Format("skill %u: Ally skill cannot deal damage", id); return false; }
-		if( s.damagePercent > kMaxSkillDamagePercent ) { error = Format("skill %u: damagePercent is too large", id); return false; }
-		if( s.flatDamage < 0 ) { error = Format("skill %u: flatDamage must be >= 0", id); return false; }
-		if( !SkillHasDamage(s) && !SkillHasHeal(s) && s.statusId == 0 ) { error = Format("skill %u: needs damage, heal or statusId", id); return false; }
-		if( s.castTimeMs > kMaxCastTimeMs ) { error = Format("skill %u: castTimeMs is too large", id); return false; }
+		if( !shapeKnown )									{ error = Format("skill %u: unknown shape", id); return false; }
+		if( s.target != ESkillTarget::Enemy && s.target != ESkillTarget::Ally )	{ error = Format("skill %u: unknown target", id); return false; }
+		if( s.healPercent > kMaxSkillDamagePercent || s.flatHeal < 0 )			{ error = Format("skill %u: heal out of range", id); return false; }
+		if( SkillHasHeal(s) && s.target != ESkillTarget::Ally )					{ error = Format("skill %u: heal needs target Ally", id); return false; }
+		if( SkillHasDamage(s) && s.target == ESkillTarget::Ally )				{ error = Format("skill %u: Ally skill cannot deal damage", id); return false; }
+		if( s.damagePercent > kMaxSkillDamagePercent )		{ error = Format("skill %u: damagePercent is too large", id); return false; }
+		if( s.flatDamage < 0 )								{ error = Format("skill %u: flatDamage must be >= 0", id); return false; }
+		if( !SkillHasDamage(s) && !SkillHasHeal(s) && s.statusId == 0 )	{ error = Format("skill %u: needs damage, heal or statusId", id); return false; }
+		if( s.castTimeMs > kMaxCastTimeMs )					{ error = Format("skill %u: castTimeMs is too large", id); return false; }
 		if( !std::isfinite(s.projectileSpeed) || s.projectileSpeed < 0.0f || s.projectileSpeed > kMaxProjectileSpeed )
-		{
-			error = Format("skill %u: projectileSpeed must be 0..1000", id); return false;
-		}
-		if( s.statusId != 0 && FindStatus(s.statusId) == nullptr ) { error = Format("skill %u: unknown statusId", id); return false; }
+															{ error = Format("skill %u: projectileSpeed must be 0..1000", id); return false; }
+		if( s.statusId != 0 && FindStatus(s.statusId) == nullptr )	{ error = Format("skill %u: unknown statusId", id); return false; }
 		if( s.shape == ESkillShape::Self )
 		{
-			if( s.range != 0.0f ) { error = Format("skill %u: Self skill must have range 0", id); return false; }
+			if( s.range != 0.0f )							{ error = Format("skill %u: Self skill must have range 0", id); return false; }
 		}
-		else if( !IsFinitePositive(s.range) ) { error = Format("skill %u: range must be > 0", id); return false; }
+		else if( !IsFinitePositive(s.range) )				{ error = Format("skill %u: range must be > 0", id); return false; }
 		if( s.shape == ESkillShape::Cone )
 		{
-			if( !std::isfinite(s.angle) || s.angle <= 0.0f || s.angle > 360.0f ) { error = Format("skill %u: Cone angle must be 0..360", id); return false; }
+			if( !std::isfinite(s.angle) || s.angle <= 0.0f || s.angle > 360.0f )	{ error = Format("skill %u: Cone angle must be 0..360", id); return false; }
 		}
-		else if( s.angle != 0.0f ) { error = Format("skill %u: only Cone uses angle", id); return false; }
+		else if( s.angle != 0.0f )							{ error = Format("skill %u: only Cone uses angle", id); return false; }
 		if( s.projectileSpeed > 0.0f && s.shape != ESkillShape::Single && s.shape != ESkillShape::Area )
-		{
-			error = Format("skill %u: projectile needs Single or Area", id); return false;
-		}
-		if( s.cooldownMs < 1 ) { error = Format("skill %u: cooldownMs must be >= 1", id); return false; }
+															{ error = Format("skill %u: projectile needs Single or Area", id); return false; }
+		if( s.cooldownMs < 1 )								{ error = Format("skill %u: cooldownMs must be >= 1", id); return false; }
 		if( s.shape == ESkillShape::Single )
 		{
-			if( s.radius != 0.0f ) { error = Format("skill %u: Single skill must have radius 0", id); return false; }
-			if( s.maxTargets != 1 ) { error = Format("skill %u: Single skill must have maxTargets 1", id); return false; }
+			if( s.radius != 0.0f )							{ error = Format("skill %u: Single skill must have radius 0", id); return false; }
+			if( s.maxTargets != 1 )							{ error = Format("skill %u: Single skill must have maxTargets 1", id); return false; }
 		}
 		else
 		{
 			if( s.shape == ESkillShape::Cone )
 			{
-				if( s.radius != 0.0f ) { error = Format("skill %u: Cone skill must have radius 0", id); return false; }
+				if( s.radius != 0.0f )						{ error = Format("skill %u: Cone skill must have radius 0", id); return false; }
 			}
-			else if( !IsFinitePositive(s.radius) ) { error = Format("skill %u: Area/Self/Line skill needs radius > 0", id); return false; }
-			if( s.maxTargets < 1 || s.maxTargets > kMaxSkillTargets ) { error = Format("skill %u: maxTargets must be 1..32", id); return false; }
+			else if( !IsFinitePositive(s.radius) )			{ error = Format("skill %u: Area/Self/Line skill needs radius > 0", id); return false; }
+			if( s.maxTargets < 1 || s.maxTargets > kMaxSkillTargets )	{ error = Format("skill %u: maxTargets must be 1..32", id); return false; }
 		}
 
 		// 비행 시간이 상한을 넘는 조합은 투사체가 도착하기 전에 시야 밖으로 사라지고 타이머가 오래 남는다.
 		if( s.projectileSpeed > 0.0f && (s.range + s.radius) / s.projectileSpeed * 1000.0f > static_cast<float>(kMaxProjectileFlightMs) )
-		{
-			error = Format("skill %u: projectile flight time exceeds the limit", id); return false;
-		}
+															{ error = Format("skill %u: projectile flight time exceeds the limit", id); return false; }
 	}
 
 	for( const auto& pair : _statuses )
@@ -170,61 +164,47 @@ bool CHeroData::Validate(std::string& error) const
 
 		const bool kindKnown = t.kind == EStatusKind::Dot || t.kind == EStatusKind::Buff || t.kind == EStatusKind::Stun
 			|| t.kind == EStatusKind::Shield || t.kind == EStatusKind::Hot;
-		if( !kindKnown ) { error = Format("status %u: unknown kind", id); return false; }
-		if( t.healPercent > kMaxSkillDamagePercent || t.flatHeal < 0 ) { error = Format("status %u: amount out of range", id); return false; }
+		if( !kindKnown )														{ error = Format("status %u: unknown kind", id); return false; }
+		if( t.healPercent > kMaxSkillDamagePercent || t.flatHeal < 0 )			{ error = Format("status %u: amount out of range", id); return false; }
 		if( t.kind != EStatusKind::Hot && t.kind != EStatusKind::Shield && (t.healPercent != 0 || t.flatHeal != 0) )
-		{
-			error = Format("status %u: only Hot/Shield use healPercent/flatHeal", id); return false;
-		}
-		if( t.target != EStatusTarget::Hit && t.target != EStatusTarget::Self ) { error = Format("status %u: unknown target", id); return false; }
-		if( t.durationMs < 1 || t.durationMs > kMaxStatusDurationMs ) { error = Format("status %u: durationMs must be 1..600000", id); return false; }
+																				{ error = Format("status %u: only Hot/Shield use healPercent/flatHeal", id); return false; }
+		if( t.target != EStatusTarget::Hit && t.target != EStatusTarget::Self )	{ error = Format("status %u: unknown target", id); return false; }
+		if( t.durationMs < 1 || t.durationMs > kMaxStatusDurationMs )			{ error = Format("status %u: durationMs must be 1..600000", id); return false; }
 		if( t.kind == EStatusKind::Dot )
 		{
-			if( t.tickMs < kMinStatusTickMs || t.tickMs > t.durationMs ) { error = Format("status %u: Dot tickMs must be 100..durationMs", id); return false; }
-			if( t.damagePercent > kMaxSkillDamagePercent || t.flatDamage < 0 ) { error = Format("status %u: Dot damage out of range", id); return false; }
-			if( t.damagePercent == 0 && t.flatDamage == 0 ) { error = Format("status %u: Dot needs damagePercent or flatDamage", id); return false; }
+			if( t.tickMs < kMinStatusTickMs || t.tickMs > t.durationMs )		{ error = Format("status %u: Dot tickMs must be 100..durationMs", id); return false; }
+			if( t.damagePercent > kMaxSkillDamagePercent || t.flatDamage < 0 )	{ error = Format("status %u: Dot damage out of range", id); return false; }
+			if( t.damagePercent == 0 && t.flatDamage == 0 )						{ error = Format("status %u: Dot needs damagePercent or flatDamage", id); return false; }
 			if( t.attackPercent != 0 || t.defensePercent != 0 || t.speedPercent != 0 )
-			{
-				error = Format("status %u: Dot must not have stat percents", id); return false;
-			}
+																				{ error = Format("status %u: Dot must not have stat percents", id); return false; }
 		}
 		else if( t.kind == EStatusKind::Hot )
 		{
-			if( t.tickMs < kMinStatusTickMs || t.tickMs > t.durationMs ) { error = Format("status %u: Hot tickMs must be 100..durationMs", id); return false; }
-			if( t.healPercent == 0 && t.flatHeal == 0 ) { error = Format("status %u: Hot needs healPercent or flatHeal", id); return false; }
+			if( t.tickMs < kMinStatusTickMs || t.tickMs > t.durationMs )		{ error = Format("status %u: Hot tickMs must be 100..durationMs", id); return false; }
+			if( t.healPercent == 0 && t.flatHeal == 0 )							{ error = Format("status %u: Hot needs healPercent or flatHeal", id); return false; }
 			if( t.damagePercent != 0 || t.flatDamage != 0 || t.attackPercent != 0 || t.defensePercent != 0 || t.speedPercent != 0 )
-			{
-				error = Format("status %u: Hot must not have damage or stat percents", id); return false;
-			}
+																				{ error = Format("status %u: Hot must not have damage or stat percents", id); return false; }
 		}
 		else if( t.kind == EStatusKind::Shield )
 		{
-			if( t.healPercent == 0 && t.flatHeal == 0 ) { error = Format("status %u: Shield needs healPercent or flatHeal", id); return false; }
+			if( t.healPercent == 0 && t.flatHeal == 0 )							{ error = Format("status %u: Shield needs healPercent or flatHeal", id); return false; }
 			if( t.tickMs != 0 || t.damagePercent != 0 || t.flatDamage != 0 || t.attackPercent != 0 || t.defensePercent != 0 || t.speedPercent != 0 )
-			{
-				error = Format("status %u: Shield must not have tick, damage or stat percents", id); return false;
-			}
+																				{ error = Format("status %u: Shield must not have tick, damage or stat percents", id); return false; }
 		}
 		else if( t.kind == EStatusKind::Stun )
 		{
 			if( t.tickMs != 0 || t.damagePercent != 0 || t.flatDamage != 0 || t.attackPercent != 0 || t.defensePercent != 0 || t.speedPercent != 0 )
-			{
-				error = Format("status %u: Stun must not have tick, damage or stat percents", id); return false;
-			}
+																				{ error = Format("status %u: Stun must not have tick, damage or stat percents", id); return false; }
 		}
 		else
 		{
-			if( t.tickMs != 0 || t.damagePercent != 0 || t.flatDamage != 0 ) { error = Format("status %u: Buff must not have tick or damage", id); return false; }
+			if( t.tickMs != 0 || t.damagePercent != 0 || t.flatDamage != 0 )	{ error = Format("status %u: Buff must not have tick or damage", id); return false; }
 			if( t.attackPercent == 0 && t.defensePercent == 0 && t.speedPercent == 0 )
-			{
-				error = Format("status %u: Buff needs a stat percent", id); return false;
-			}
+																				{ error = Format("status %u: Buff needs a stat percent", id); return false; }
 			if( t.attackPercent < kMinStatPercent || t.attackPercent > kMaxStatPercent
 				|| t.defensePercent < kMinStatPercent || t.defensePercent > kMaxStatPercent
 				|| t.speedPercent < kMinStatPercent || t.speedPercent > kMaxSpeedBuffPercent )
-			{
-				error = Format("status %u: stat percent out of range", id); return false;
-			}
+																				{ error = Format("status %u: stat percent out of range", id); return false; }
 		}
 	}
 

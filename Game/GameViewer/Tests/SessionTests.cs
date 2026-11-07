@@ -217,6 +217,14 @@ namespace GameViewer.Tests
                 Thread.Sleep(50);
                 T.Eq(skillsBefore + 1, gw.Count((ushort)ZonePacketType.ZcSkillReq), "only one extra skill packet on the wire");
 
+                // 보낸 스킬 요청의 답이 오기 전에는 다른 스킬도 보내지 않고(자동 추적도 멈춘다), 답이 오면 풀린다
+                T.Check(s.SkillPending(Now + 310), "waiting for the server's answer to the skill request");
+                T.Check(!s.UseSkill(7, 0, 24, 20, Now + 450), "no second skill while the first is unanswered");
+                gw.Send(Pk.Skill(777, 2, 0, 24, 20, 0));
+                Pump(s, null, delegate { return !s.SkillPending(Now + 460); }, 2000);
+                T.Check(!s.SkillPending(Now + 460), "answer releases the wait");
+                T.Check(s.UseSkill(7, 0, 24, 20, Now + 470), "next skill allowed after the answer");
+
                 // 서버 이벤트가 월드에 반영된다 (분할 전송 포함)
                 gw.Send(Pk.Damage(0x8000000000000001UL, 777, 20, 130, 150), true);
                 Pump(s, null, delegate { return s.World.Self.Hp == 130; }, 2000);

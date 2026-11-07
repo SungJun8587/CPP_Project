@@ -199,7 +199,12 @@ namespace GameViewer.App
             UpdateMouse(e.X, e.Y);
             Entity hover = PickEntity(e.X, e.Y, Now);
             _view.HoverId = hover != null ? hover.Id : 0;
-            if (_rightDown && _pilot.Mode == PilotMode.Off) _seekBoss = false; _session.MoveTo(_view.MouseWorldX, _view.MouseWorldY, Now, false);
+            // 우클릭을 누르고 있을 때만 커서 쪽으로 이동한다(마우스를 그냥 움직일 때 이동 요청이 나가면 서버가 시전을 취소한다).
+            if (_rightDown && _pilot.Mode == PilotMode.Off)
+            {
+                _seekBoss = false;
+                _session.MoveTo(_view.MouseWorldX, _view.MouseWorldY, Now, false);
+            }
             base.OnMouseMove(e);
         }
 
@@ -395,7 +400,7 @@ namespace GameViewer.App
             {
                 string dir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "screenshots");
                 System.IO.Directory.CreateDirectory(dir);
-                string path = System.IO.Path.Combine(dir, "shot_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png");
+                string path = System.IO.Path.Combine(dir, "shot_" + _cfg.CharId + "_" + DateTime.Now.ToString("yyyyMMdd_HHmmss_fff") + ".png");
                 using (Bitmap bmp = new Bitmap(Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height)))
                 {
                     using (Graphics g = Graphics.FromImage(bmp)) _renderer.Draw(g, _session, _pilot, _view, Now);

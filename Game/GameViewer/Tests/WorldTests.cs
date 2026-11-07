@@ -167,6 +167,16 @@ namespace GameViewer.Tests
             T.Eq(0, CountFx(w, EffectKind.Projectile), "projectile removed on impact");
             T.Check(CountFx(w, EffectKind.Spark) >= 1, "impact spark");
 
+            // 타격 충격은 공격자와 피해량을 알아야 무기 색/크기를 고른다
+            {
+                WorldModel hw = NewWorld();
+                ViewEffect hit = null;
+                Apply(hw, Pk.Spawn(M1, EntityType.Monster, 50, 50, 50, 50, 3, false, 100, 100, false, 1), 0);
+                Apply(hw, Pk.Damage(Self, M1, 50, 50, 100), 200);
+                foreach (ViewEffect f in hw.Effects) if (f.Kind == EffectKind.Spark) hit = f;
+                T.Check(hit != null && hit.TargetId == Self && hit.Value == 50 && hit.Variant == 1, "spark carries attacker, damage and heavy flag");
+            }
+
             // 착탄 알림이 유실돼도 결국 정리된다
             Apply(w, Pk.Projectile(10, Self, 3, M1, 10, 10, 30, 30, 400), 8000);
             w.Update(8000 + 400 + 700);

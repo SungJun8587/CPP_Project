@@ -404,7 +404,13 @@ private:
 		// 관찰자가 아닌 엔티티는 주변 관찰자하고만 통지를 주고받는다. (두 엔티티 모두 관찰자가 아니면 통지가 필요 없다)
 		const bool scanOthers = entity->_aoiNode.watcher;
 
-		_dispatching = true;
+		// 통지 콜백에서 예외가 나가도 플래그가 켜진 채 남지 않게 한다.
+		struct SDispatchScope
+		{
+			bool& flag;
+			explicit SDispatchScope(bool& f) : flag(f) { flag = true; }
+			~SDispatchScope() { flag = false; }
+		} dispatchScope(_dispatching);
 
 		for( int32 y = (std::max)(cy - _view, 0); y <= (std::min)(cy + _view, _rows - 1); ++y )
 		{
@@ -419,8 +425,6 @@ private:
 					Dispatch(entity, cell.others, enter);
 			}
 		}
-
-		_dispatching = false;
 	}
 
 	//***************************************************************************

@@ -21,7 +21,17 @@ namespace GameViewer.App
             _cfg = cfg; _demo = demo;
             Text = BuildTitle();
             ClientSize = new Size(cfg.WindowWidth, cfg.WindowHeight);
-            StartPosition = FormStartPosition.CenterScreen;
+            if (cfg.Slot == 0) StartPosition = FormStartPosition.CenterScreen;
+            else
+            {
+                // 같은 PC 에서 여러 창을 띄웠을 때 서로 가리지 않게 슬롯 번호만큼 비껴 놓는다.
+                StartPosition = FormStartPosition.Manual;
+                Rectangle wa = Screen.PrimaryScreen.WorkingArea;
+                int step = 40 * (cfg.Slot % 10);
+                int x = wa.Left + Math.Max(0, (wa.Width - Width) / 2) + step;
+                int y = wa.Top + Math.Max(0, (wa.Height - Height) / 2) + step;
+                Location = new Point(Math.Max(wa.Left, Math.Min(x, wa.Right - 200)), Math.Max(wa.Top, Math.Min(y, wa.Bottom - 120)));
+            }
             BackColor = Color.Black;
             MinimumSize = new Size(640, 480);
 

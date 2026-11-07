@@ -27,7 +27,7 @@ class CMonsterSystem;
 //***************************************************************************
 struct SBossRuntime
 {
-	const SBossTemplate* tmpl = nullptr;			// 보스 정의
+	const SBossTemplate*	tmpl = nullptr;			// 보스 정의
 	size_t					phaseIdx = 0;			// 현재 페이즈 위치 (tmpl->phases 인덱스)
 	bool					engaged = false;		// 전투 중인지 (첫 추적 사고에서 켜지고, 복귀/사망/부활에서 꺼짐)
 	bool					enraged = false;		// 격노가 걸렸는지
@@ -63,7 +63,7 @@ public:
 	CBossSystem(CFieldZoneBase& zone, CMonsterSystem& monsters, std::shared_ptr<const CBossData> data,
 		std::shared_ptr<const CHeroData> skills, std::shared_ptr<const CMonsterData> monsterData);
 
-	bool Validate(std::string& error) const;
+	bool Validate(std::string& error, float opponentMaxSpeed = 0.0f) const;
 
 	// 행동 조건(대상/사거리/재사용)이 안 맞을 때 기다리는 최대 시간을 바꿉니다. 존 구동 전에 호출한다. (기본 kActionTimeoutMs)
 	void SetActionTimeoutMs(uint32 ms) { _actionTimeoutMs = ms; }
@@ -95,8 +95,8 @@ private:
 	void PruneAdds(SBossRuntime& rt);
 	void ResetRuntime(SBossRuntime& rt);
 
-	CFieldZoneBase& _zone;
-	CMonsterSystem& _monsters;
+	CFieldZoneBase&						_zone;
+	CMonsterSystem&						_monsters;
 	std::shared_ptr<const CBossData>	_data;			// 보스 데이터
 	std::shared_ptr<const CHeroData>	_skills;		// 스킬/상태 효과 데이터 (영웅과 같은 시트를 쓴다)
 	std::shared_ptr<const CMonsterData>	_monsterData;

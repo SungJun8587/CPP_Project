@@ -17,6 +17,8 @@ namespace GameViewer.App.Render
     {
         private readonly Resources _res;
         private readonly SkillEffects _skill;
+        private readonly AttackEffects _attack;
+        internal AttackEffects Attack { get { return _attack; } }
         private readonly SpriteCache _glows = new SpriteCache(200);
         private readonly SpriteCache.PaintFn _glowPaint;
         private Color _gc; private int _ga; private int _gs;
@@ -26,6 +28,7 @@ namespace GameViewer.App.Render
         {
             _res = res;
             _skill = new SkillEffects(res, this);
+            _attack = new AttackEffects(res, this);
             _glowPaint = delegate (Graphics g) { P.Glow(g, 0, 0, _gs / 2f - 1, _gc, _ga); };
         }
 
@@ -157,6 +160,7 @@ namespace GameViewer.App.Render
                     {
                         SkillFxInfo info = fx.Variant == 1 && fx.SkillId != 0 ? SkillFxTable.For(w.Data, fx.SkillId) : null;
                         if (info != null && info.Style != SkillFxStyle.Default && _skill.Slash(g, info, w, fx, v, now)) break;
+                        if (fx.Variant != 1 && _attack.MeleeSlash(g, w, fx, v, now)) break;
                         DrawSlash(g, w, fx, v, now, p, sx, sy);
                         break;
                     }
@@ -164,6 +168,7 @@ namespace GameViewer.App.Render
                     {
                         Entity c = w.Find(fx.EntityId);
                         if (c == null) break;
+                        if (_attack.Tracer(g, w, fx, v, now)) break;
                         float ax, ay; c.PosAt(now, out ax, out ay);
                         float x0 = v.ToScreenX(ax), y0 = v.ToScreenY(ay) - v.Px(1.5f), y1 = sy - v.Px(1.1f);
                         g.DrawLine(_res.Pen((int)(120 * (1f - p)), 255, 240, 170, 5f), x0, y0, sx, y1);
@@ -174,7 +179,7 @@ namespace GameViewer.App.Render
                     {
                         SkillFxInfo info = fx.SkillId != 0 ? SkillFxTable.For(w.Data, fx.SkillId) : null;
                         if (info != null && _skill.Impact(g, info, fx, v, now, p, sx, sy)) break;
-                        DrawSpark(g, fx, v, p, sx, sy);
+                        _attack.Hit(g, w, fx, v, p, sx, sy);
                         break;
                     }
                     case EffectKind.Ring:
@@ -219,23 +224,6 @@ namespace GameViewer.App.Render
                 g.DrawArc(sp, ox - rk, oy - rk, rk * 2, rk * 2, tail, head - tail);
             }
             if (skill) Glow(g, Color.FromArgb(255, 220, 120), ox + (float)Math.Cos(head * Math.PI / 180.0) * rr, oy + (float)Math.Sin(head * Math.PI / 180.0) * rr, rr * 0.45f, rr * 0.45f, 0.8f * fade);
-        }
-
-        private void DrawSpark(Graphics g, ViewEffect fx, ViewState v, float p, float sx, float sy)
-        {
-            float cy = sy - v.Px(1.1f);
-            float scale = (float)v.Scale;
-            if (p < 0.5f) Glow(g, Color.FromArgb(255, 230, 150), sx, cy, scale * (0.5f + p), scale * (0.5f + p), 1f - p * 2f);
-            for (int k = 0; k < 10; ++k)
-            {
-                float a = Rnd(fx, k) * 6.2832f, spd = (1.2f + Rnd(fx, k + 11) * 2.8f) * scale;
-                float t = p * 0.6f;
-                float px = sx + (float)Math.Cos(a) * spd * t;
-                float py = cy + (float)Math.Sin(a) * spd * t * 0.8f + 2.2f * scale * t * t;
-                float r = Math.Max(1f, scale * 0.09f * (1f - p));
-                int al = (int)(255 * (1f - p));
-                g.FillEllipse(_res.Brush(al, 255, k % 3 == 0 ? 255 : 200, k % 3 == 0 ? 220 : 90), px - r, py - r, r * 2, r * 2);
-            }
         }
 
         internal void DrawBurstDust(Graphics g, ViewEffect fx, ViewState v, float p, float sx, float sy)
@@ -360,6 +348,11 @@ namespace GameViewer.App.Render
 
             float rise = v.Px(fx.Kind == EffectKind.Text ? 1.0f : 1.8f) * (1f - (1f - p) * (1f - p));
             float jitter = ((fx.StartMs % 7) - 3) * 4f + (float)(Noise.Hash01((int)(fx.StartMs & 0xFFFF), (int)fx.Value, 9) - 0.5f) * 10f;
+            if (fx.Kind == EffectKind.Damage && font == _res.Huge && p < 0.35f)
+            {
+                float gr = v.Px(1.8f) * (0.6f + p * 2f);
+                Glow(g, fx.Variant == 2 ? Color.FromArgb(255, 70, 60) : Color.FromArgb(255, 210, 90), sx + jitter, sy - v.Px(topY * 0.75f) - rise, gr, gr, 0.9f * (1f - p / 0.35f));
+            }
             int a = p < 0.65f ? 255 : (int)(255 * (1f - (p - 0.65f) / 0.35f));
             _res.OutlinedText(g, text, font, Color.FromArgb(Resources.Clamp(a), color), sx + jitter, sy - v.Px(topY * 0.75f) - rise, _res.Center);
         }

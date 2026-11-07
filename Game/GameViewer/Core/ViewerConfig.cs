@@ -15,6 +15,8 @@ namespace GameViewer.Core
         public string Host = "127.0.0.1";
         public int Port = 7000;
         public ulong CharId = 900001;       // 봇(100000+)과 겹치지 않는 값. 몬스터 전용 대역(최상위 비트)은 쓰지 말 것
+        public bool MultiInstance = true;   // 같은 PC에서 여러 개를 띄울 수 있게, 실행할 때마다 CharId 에 빈 슬롯 번호를 더한다(첫 창은 CharId 그대로)
+        public int Slot = 0;                // 이 실행이 차지한 슬롯 번호(0부터). 실행 중에 정해지며 설정 파일에는 저장하지 않는다
         public uint ZoneId = 1;
         public uint HeroId = 1;             // 0 = 서버 기본 영웅
         public string DataDir = "GameData"; // XlsxConverter 출력(Hero/Monster/Skill/Status/HeroSkill/Block/Spawn .json) 폴더
@@ -31,7 +33,8 @@ namespace GameViewer.Core
   --dump-config <file>  기본값 설정 파일 템플릿을 저장하고 종료
   --host <addr>         Gateway 클라이언트 포트 주소 (기본 127.0.0.1)
   --port <n>            Gateway 클라이언트 포트 (기본 7000)
-  --char-id <n>         캐릭터 ID (기본 900001)
+  --char-id <n>         캐릭터 ID (기본 900001). 지정하면 이 값 그대로 쓴다(다중 실행 번호를 더하지 않음)
+  --single              다중 실행 번호를 더하지 않고 설정의 CharId 를 그대로 쓴다
   --zone <id>           입장할 존 ID (기본 1)
   --hero <id>           영웅 ID, 0=서버 기본 영웅 (기본 1)
   --data <dir>          GameData JSON 폴더 (기본 GameData)
@@ -66,6 +69,7 @@ namespace GameViewer.Core
                     case "--config": ++i; break;
                     case "--help": case "-h": case "/?": Console.WriteLine(Usage); exitNow = true; return c;
                     case "--auto": c.Auto = true; break;
+                    case "--single": c.MultiInstance = false; break;
                     case "--dump-config":
                         if (v == null) { error = "--dump-config needs a file"; return null; }
                         File.WriteAllText(v, new ViewerConfig().ToJson(), new UTF8Encoding(true));
@@ -75,7 +79,7 @@ namespace GameViewer.Core
                     case "--port": if (!Num(v, a, 1, 65535, ref error)) return null; c.Port = int.Parse(v); ++i; break;
                     case "--zone": if (!Num(v, a, 1, int.MaxValue, ref error)) return null; c.ZoneId = uint.Parse(v); ++i; break;
                     case "--hero": if (!Num(v, a, 0, int.MaxValue, ref error)) return null; c.HeroId = uint.Parse(v); ++i; break;
-                    case "--char-id": if (!Num(v, a, 1, long.MaxValue, ref error)) return null; c.CharId = ulong.Parse(v); ++i; break;
+                    case "--char-id": if (!Num(v, a, 1, long.MaxValue, ref error)) return null; c.CharId = ulong.Parse(v); c.MultiInstance = false; ++i; break;
                     case "--width": if (!Num(v, a, 320, 8192, ref error)) return null; c.WindowWidth = int.Parse(v); ++i; break;
                     case "--height": if (!Num(v, a, 240, 8192, ref error)) return null; c.WindowHeight = int.Parse(v); ++i; break;
                     case "--scale":
@@ -113,6 +117,7 @@ namespace GameViewer.Core
                 Host = MiniJson.Str(o, "Host", Host);
                 Port = (int)MiniJson.Num(o, "Port", Port);
                 CharId = (ulong)MiniJson.Num(o, "CharId", CharId);
+                MultiInstance = MiniJson.Bool(o, "MultiInstance", MultiInstance);
                 ZoneId = (uint)MiniJson.Num(o, "ZoneId", ZoneId);
                 HeroId = (uint)MiniJson.Num(o, "HeroId", HeroId);
                 DataDir = MiniJson.Str(o, "DataDir", DataDir);
@@ -141,6 +146,7 @@ namespace GameViewer.Core
             sb.Append("  \"Host\": \"" + Host + "\",\r\n");
             sb.Append("  \"Port\": " + Port.ToString(ci) + ",\r\n");
             sb.Append("  \"CharId\": " + CharId.ToString(ci) + ",\r\n");
+            sb.Append("  \"MultiInstance\": " + (MultiInstance ? "true" : "false") + ",\r\n");
             sb.Append("  \"ZoneId\": " + ZoneId.ToString(ci) + ",\r\n");
             sb.Append("  \"HeroId\": " + HeroId.ToString(ci) + ",\r\n");
             sb.Append("  \"DataDir\": \"" + DataDir.Replace("\\", "\\\\") + "\",\r\n");

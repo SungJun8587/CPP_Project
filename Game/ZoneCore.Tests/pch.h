@@ -45,6 +45,7 @@ using namespace std;
 #include <Util/FixedBufUtil.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
+#include <Util/Regular.h>
 
 #include <Memory/MemoryCommon.h>
 #include <Memory/Singleton.h>

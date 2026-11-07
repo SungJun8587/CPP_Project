@@ -86,11 +86,11 @@ namespace GameViewer.Tests
             T.Check(d.Skill(2).IsArea && d.Skill(2).Radius == 4.0, "skill 2 area radius 4");
             T.Check(!d.Skill(1).IsArea, "skill 1 single");
             T.Eq(3, d.SkillsOf(1).Count, "hero 1 skills");
-            T.Eq(2, d.SkillsOf(4).Count, "hero 4 (rogue) skills");
-            T.Check(d.Skill(18).Range < 3f && d.Skill(18).StatusId == 2 && !d.Skill(18).IsArea, "rogue skill 18 is a short-range single hit with bleed");
+            T.Eq(2, d.SkillsOf(4).Count, "hero 4 (lancer) skills");
+            T.Check(d.Skill(18).Shape == "Line" && d.Skill(18).Range >= 4f && d.Skill(19).Shape == "Self" && d.Skill(19).StatusId == 4, "lancer skill 18 is a piercing line, 19 a self-centered sweep with slow");
             T.Check(d.Status(1).IsDot && !d.Status(3).IsDot, "status kinds");
             T.Check(SkillFxTable.For(d, 5).Style == SkillFxStyle.Fireball && SkillFxTable.For(d, 4).Style == SkillFxStyle.Volley, "skill fx styles by id");
-            T.Check(SkillFxTable.For(d, 18).Style == SkillFxStyle.Pierce && SkillFxTable.For(d, 6).Shake > 0f, "rogue pierce, boss blast shakes");
+            T.Check(SkillFxTable.For(d, 18).Style == SkillFxStyle.Lance && SkillFxTable.For(d, 6).Shake > 0f, "lancer thrust, boss blast shakes");
             T.Check(SkillFxTable.For(d, 9999) != null, "unknown skill still gets a style");
             T.Check(SkillFxTable.For(d, 23).Style == SkillFxStyle.Blade && SkillFxTable.For(d, 27).Shake > 0f && SkillFxTable.For(d, 21).Style == SkillFxStyle.Arrow, "new archer/rogue skills have fx");
             T.Check(SkillFxTable.DotColor(11) != SkillFxTable.DotColor(1) && SkillFxTable.DotColor(2) != SkillFxTable.DotColor(1), "poison/bleed embers differ from burn");
@@ -113,6 +113,15 @@ namespace GameViewer.Tests
             ViewerConfig c = ViewerConfig.FromArgs(new string[] { "--host", "10.0.0.5", "--port", "7100", "--hero", "2", "--auto", "--scale", "9.5" }, out err, out exit);
             T.Check(c != null && err == null, "valid args");
             T.Eq("10.0.0.5", c.Host, "host"); T.Eq(7100, c.Port, "port"); T.Eq(2u, c.HeroId, "hero"); T.Check(c.Auto, "auto"); T.Near(9.5, c.PixelsPerUnit, 1e-9, "scale");
+
+            // 다중 실행: 기본은 슬롯 번호를 CharId 에 더하는 방식, 명시한 ID 나 --single 이면 그대로 쓴다
+            c = ViewerConfig.FromArgs(new string[0], out err, out exit);
+            T.Check(c != null && c.MultiInstance && c.CharId == 900001UL && c.Slot == 0, "multi instance is the default");
+            c = ViewerConfig.FromArgs(new string[] { "--char-id", "123" }, out err, out exit);
+            T.Check(c != null && !c.MultiInstance && c.CharId == 123UL, "explicit char id is used as is");
+            c = ViewerConfig.FromArgs(new string[] { "--single" }, out err, out exit);
+            T.Check(c != null && !c.MultiInstance, "--single");
+            T.Check(c.ToJson().Contains("\"MultiInstance\": false"), "MultiInstance is saved");
 
             c = ViewerConfig.FromArgs(new string[] { "--port", "70000" }, out err, out exit);
             T.Check(c == null && err != null, "port out of range rejected");

@@ -467,7 +467,8 @@ AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetI
 	assert(!_updatingMovement && "CFieldZoneBase::RequestAttack called during movement update");
 
 	const uint64 nowMs = GetNowMs();
-	if( !attacker._attackGate.TryPass(nowMs, 1) )
+	// 같은 틱에 이미 통과한 요청이 있는지만 본다. 검증을 모두 통과한 공격만 아래에서 기록한다(스킬 시전과 같은 규칙).
+	if( !attacker._attackGate.CanPass(nowMs, 1) )
 		return AttackResult::Throttled;
 
 	if( attacker._dead )
@@ -539,6 +540,7 @@ AttackResult CFieldZoneBase::RequestAttack(CZoneEntity& attacker, uint64 targetI
 		return AttackResult::TargetInvulnerable;
 	}
 
+	attacker._attackGate.TryPass(nowMs, 1);
 	attacker._nextAttackMs = (attacker._nextAttackMs > nowMs ? attacker._nextAttackMs : nowMs) + attacker._stats.attackIntervalMs;
 	attacker._invulnerableUntilMs = 0;
 
@@ -975,7 +977,13 @@ void CFieldZoneBase::UpdateMovement(uint32 dtMs)
 {
 	const float dtSec = static_cast<float>(dtMs) * 0.001f;
 
-	_updatingMovement = true;
+	// 훅에서 예외가 나가도 플래그가 켜진 채 남지 않게 한다(CZone이 예외를 격리하고 틱을 계속 돌린다).
+	struct SMovementScope
+	{
+		bool& flag;
+		explicit SMovementScope(bool& f) : flag(f) { flag = true; }
+		~SMovementScope() { flag = false; }
+	} movementScope(_updatingMovement);
 
 	for( size_t i = 0; i < _moving.size(); )
 	{
@@ -1021,8 +1029,6 @@ void CFieldZoneBase::UpdateMovement(uint32 dtMs)
 			++i;
 		}
 	}
-
-	_updatingMovement = false;
 }
 
 //***************************************************************************

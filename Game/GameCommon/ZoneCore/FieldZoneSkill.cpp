@@ -22,7 +22,7 @@ namespace
 
 //***************************************************************************
 // @brief 스킬을 시전합니다. 검증 순서는 RequestAttack과 같은 원칙(싸고 위조하기 쉬운 값부터)이다.
-//        1) 같은 틱의 공격/스킬 요청 중복은 조용히 무시(Throttled, 기본 공격과 같은 게이트를 쓴다)
+//        1) 같은 틱에 이미 통과한 공격/스킬 요청이 있으면 조용히 무시(Throttled, 기본 공격과 같은 게이트를 쓴다. 게이트는 검증을 모두 통과한 요청만 기록한다)
 //        2) 시전자 생존 -> 기절 아님 -> 3) 이미 시전 중이 아님 -> 4) 재사용 대기
 //        5) 사거리(Single은 대상 위치, Area는 지정한 중심. Self는 시전자 위치라 검사 없음. Cone/Line은 좌표가 방향일 뿐이라 영역 안인지만 보고
 //           시전자와 같은 위치(방향 없음)는 InvalidTarget)
@@ -48,14 +48,16 @@ SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate&
 	assert(!_updatingMovement && "CFieldZoneBase::CastSkill called during movement update");
 
 	const uint64 nowMs = GetNowMs();
-	if( !caster._attackGate.TryPass(nowMs, 1) )
+	// 공격 게이트는 기본 공격과 공유한다. 여기서는 같은 틱에 이미 통과한 요청이 있는지만 보고,
+	// 검증을 모두 통과한 시전만 아래에서 기록한다(거부된 시전이 같은 틱의 기본 공격을 막지 않게 한다).
+	if( !caster._attackGate.CanPass(nowMs, 1) )
 		return SkillResult::Throttled;
 
 	auto reject = [&](SkillResult reason)
-		{
-			HandleSkillRejected(caster, skill, reason);
-			return reason;
-		};
+	{
+		HandleSkillRejected(caster, skill, reason);
+		return reason;
+	};
 
 	if( caster._dead )
 		return reject(SkillResult::CasterDead);
@@ -110,6 +112,7 @@ SkillResult CFieldZoneBase::CastSkill(CZoneEntity& caster, const SSkillTemplate&
 	if( single && !IsSkillTarget(caster, skill, *target) )
 		return reject(SkillResult::InvalidTarget);
 
+	caster._attackGate.TryPass(nowMs, 1);
 	readyAtMs = (readyAtMs > nowMs ? readyAtMs : nowMs) + skill.cooldownMs;
 	caster._invulnerableUntilMs = 0;
 
@@ -305,41 +308,41 @@ void CFieldZoneBase::CollectHits(CZoneEntity& caster, const SSkillTemplate& skil
 	}
 
 	ForEachInRadius(origin, queryRadius, [&](CZoneEntity& e)
-		{
-			if( !IsSkillTarget(caster, skill, e) )
-				return;
+	{
+		if( !IsSkillTarget(caster, skill, e) )
+			return;
 
-			const float dx = e._pos.x - origin.x, dy = e._pos.y - origin.y;
-			const float distSq = dx * dx + dy * dy;
-			if( skill.shape == ESkillShape::Cone )
-			{
-				if( distSq > skill.range * skill.range )
-					return;
-				if( distSq > 1e-8f )
-				{
-					const float along = dx * dir.x + dy * dir.y;
-					if( !(along >= cosHalf * std::sqrt(distSq)) )
-						return;
-				}
-			}
-			else if( skill.shape == ESkillShape::Line )
+		const float dx = e._pos.x - origin.x, dy = e._pos.y - origin.y;
+		const float distSq = dx * dx + dy * dy;
+		if( skill.shape == ESkillShape::Cone )
+		{
+			if( distSq > skill.range * skill.range )
+				return;
+			if( distSq > 1e-8f )
 			{
 				const float along = dx * dir.x + dy * dir.y;
-				const float side = dx * dir.y - dy * dir.x;
-				if( along < 0.0f || along > skill.range || std::fabs(side) > skill.radius )
+				if( !(along >= cosHalf * std::sqrt(distSq)) )
 					return;
 			}
+		}
+		else if( skill.shape == ESkillShape::Line )
+		{
+			const float along = dx * dir.x + dy * dir.y;
+			const float side = dx * dir.y - dy * dir.x;
+			if( along < 0.0f || along > skill.range || std::fabs(side) > skill.radius )
+				return;
+		}
 
-			if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(origin, e._pos) )
-				return;		// 벽에 가려진 대상에게는 닿지 않는다
+		if( _fieldConfig.blockMap != nullptr && !_fieldConfig.blockMap->IsSegmentClear(origin, e._pos) )
+			return;		// 벽에 가려진 대상에게는 닿지 않는다
 
-			hits.push_back({ distSq, e.GetId() });
-		});
+		hits.push_back({ distSq, e.GetId() });
+	});
 
 	std::sort(hits.begin(), hits.end(), [](const SSkillHit& a, const SSkillHit& b)
-		{
-			return a.distSq != b.distSq ? a.distSq < b.distSq : a.id < b.id;
-		});
+	{
+		return a.distSq != b.distSq ? a.distSq < b.distSq : a.id < b.id;
+	});
 	if( hits.size() > skill.maxTargets )
 		hits.resize(skill.maxTargets);
 }
@@ -571,7 +574,7 @@ void CFieldZoneBase::RemoveStatusHolder(CZoneEntity& entity)
 }
 
 //***************************************************************************
-// @brief 걸려 있는 Buff의 증감(%)을 합산해 공격력/방어력/이동속도 보정을 다시 계산합니다. 합계는 kMin/kMaxStatPercent로 묶는다.
+// @brief 걸려 있는 Buff의 증감(%)을 합산해 공격력/방어력/이동속도 보정을 다시 계산합니다. 합계는 kMin/kMaxStatPercent로 묶고, 이동속도는 kMaxSpeedBuffPercent로 묶는다.
 //***************************************************************************
 void CFieldZoneBase::RecomputeStatMods(CZoneEntity& entity)
 {
@@ -587,7 +590,8 @@ void CFieldZoneBase::RecomputeStatMods(CZoneEntity& entity)
 
 	entity._attackPct = (std::min)((std::max)(attack, kMinStatPercent), kMaxStatPercent);
 	entity._defensePct = (std::min)((std::max)(defense, kMinStatPercent), kMaxStatPercent);
-	entity._speedPct = (std::min)((std::max)(speed, kMinStatPercent), kMaxStatPercent);
+	// 이동속도는 합계도 kMaxSpeedBuffPercent로 묶는다. AOI 시야 검증(CBattleZone::ValidateMonsters)이 이 상한을 전제로 최고 속도를 계산한다.
+	entity._speedPct = (std::min)((std::max)(speed, kMinStatPercent), kMaxSpeedBuffPercent);
 	entity._speed = entity._baseSpeed * static_cast<float>(100 + entity._speedPct) * 0.01f;
 }
 
@@ -631,7 +635,7 @@ void CFieldZoneBase::UpdateStatuses()
 		if( entity == nullptr || entity->_statuses.empty() )
 			continue;
 
-		std::array<STick, kMaxStatusesPerEntity* kMaxTicksPerStatus> ticks;
+		std::array<STick, kMaxStatusesPerEntity * kMaxTicksPerStatus> ticks;
 		size_t tickCount = 0;
 		for( SActiveStatus& s : entity->_statuses )
 		{

@@ -51,7 +51,7 @@ namespace GameViewer.App.Render
                 case 1: return Color.FromArgb(214, 70, 64);     // 전사: 붉은색
                 case 2: return Color.FromArgb(70, 168, 96);     // 궁수: 녹색
                 case 3: return Color.FromArgb(92, 110, 226);    // 마법사: 파란색
-                case 4: return Color.FromArgb(160, 84, 204);    // 도적: 보라색
+                case 4: return Color.FromArgb(52, 170, 176);    // 창기사: 청록색
                 default: return Color.FromArgb(180, 160, 200);
             }
         }
@@ -207,7 +207,7 @@ namespace GameViewer.App.Render
 
         /// <summary>
         /// 근접 공격의 휘두름 궤적. 몸 뒤(back)에서 번지는 잔광과 몸 앞에서 번쩍이는 날로 나눠 그린다.
-        /// 영웅은 직업별로 다르다: 전사는 크게 내려치는 검광, 도적은 양손 단검의 X 베기. 이미지 영웅은 무기 프레임이 없어 이 궤적이 무기 동작을 대신한다.
+        /// 영웅은 직업별로 다르다: 전사는 크게 내려치는 검광, 창기사는 앞으로 뻗는 직선 찌르기. 이미지 영웅은 무기 프레임이 없어 이 궤적이 무기 동작을 대신한다.
         /// </summary>
         private void DrawSwipe(Graphics g, Entity e, ViewState v, Look look, float sx, float sy, float prog, bool back)
         {
@@ -227,13 +227,25 @@ namespace GameViewer.App.Render
             if (e.TemplateId == 1)
                 ArcSlash(g, ex, ey - v.Px(0.5f), r * 1.15f, ang - 95f, 160f, prog, Color.FromArgb(200, 225, 255), w * 1.25f, back);
             else if (e.TemplateId == 4)
-            {
-                Color rc = Color.FromArgb(200, 170, 255);
-                ArcSlash(g, ex, ey, r * 0.85f, ang - 60f, 120f, prog, rc, w * 0.8f, back);
-                float p2 = (prog - 0.3f) / 0.7f;
-                if (p2 > 0f) ArcSlash(g, ex, ey, r * 0.85f, ang + 60f, -120f, p2, rc, w * 0.8f, back);
-            }
+                Thrust(g, ex, ey, ang, v.Px(2.9f), prog, Color.FromArgb(170, 240, 235), w * 0.8f, back);
             else ArcSlash(g, ex, ey, r, ang - 65f, 130f, prog, Color.FromArgb(255, 240, 190), w, back);
+        }
+
+        /// <summary>창 찌르기: 몸에서 ang 방향으로 곧게 뻗는 잔광 한 줄.</summary>
+        private void Thrust(Graphics g, float ex, float ey, float ang, float reach, float prog, Color c, float w, bool back)
+        {
+            int a = (int)(230 * (1f - prog) * (1f - prog)) & ~15;
+            if (a < 16) return;
+            double r = ang * Math.PI / 180.0;
+            float dx = (float)Math.Cos(r), dy = (float)Math.Sin(r) * 0.8f;
+            float k = AttackPose.EaseOut(prog * 2f > 1f ? 1f : prog * 2f);
+            float x0 = ex + dx * reach * 0.25f * k, y0 = ey + dy * reach * 0.25f * k, x1 = ex + dx * reach * (0.3f + 0.7f * k), y1 = ey + dy * reach * (0.3f + 0.7f * k);
+            if (back) g.DrawLine(_res.Pen(a / 3, c.R, c.G, c.B, w * 2.6f), x0, y0, x1, y1);
+            else
+            {
+                g.DrawLine(_res.Pen(a, c.R, c.G, c.B, w), x0, y0, x1, y1);
+                g.DrawLine(_res.Pen(a, 255, 255, 255, w * 0.35f), x0 + (x1 - x0) * 0.4f, y0 + (y1 - y0) * 0.4f, x1, y1);
+            }
         }
 
         /// <summary>호 모양 베기 한 번. prog 0~1 동안 start 에서 sweep 도까지 뻗으며 사라진다.</summary>

@@ -95,6 +95,7 @@
     <ClCompile Include="..\..\..\Library\UtilCore\Excel\XlntUtil.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Excel\XlntWorkbookReader.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\EncodingConvert.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Regular.cpp" />
     <ClCompile Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.cpp" />
     <ClCompile Include="DefinitionSheets.cpp" />
     <ClCompile Include="PacketGenerator.cpp" />
@@ -116,6 +117,7 @@
     <ClInclude Include="..\..\..\Library\UtilCore\Excel\XlntWorkbookReader.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\ConsoleUtil.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\EncodingConvert.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Regular.h" />
     <ClInclude Include="..\..\..\Library\UtilCore\Util\WinCharsetConv.h" />
     <ClInclude Include="CodeGenCommon.h" />
     <ClInclude Include="DefinitionSheets.h" />

@@ -40,6 +40,7 @@
 #include <Util/ConsoleUtil.h>
 #include <Util/WinCharsetConv.h>
 #include <Util/EncodingConvert.h>
+#include <Util/Regular.h>
 
 #include <Excel/XlntUtil.h>
 #include <Excel/XlntDefine.h>

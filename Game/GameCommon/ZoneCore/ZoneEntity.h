@@ -64,12 +64,21 @@ struct SReqGate
 	//***************************************************************************
 	bool TryPass(uint64 nowMs, uint32 minIntervalMs)
 	{
-		if( minIntervalMs != 0 && has && nowMs - lastMs < minIntervalMs )
+		if( !CanPass(nowMs, minIntervalMs) )
 			return false;
 
 		has = true;
 		lastMs = nowMs;
 		return true;
+	}
+
+	//***************************************************************************
+	// @brief 통과할 수 있는지만 판정합니다. 시각은 기록하지 않습니다.
+	//        검증을 모두 통과한 요청만 TryPass로 기록하려는 호출자가 쓴다(거부된 요청이 같은 틱의 다른 요청을 막지 않게 한다).
+	//***************************************************************************
+	bool CanPass(uint64 nowMs, uint32 minIntervalMs) const
+	{
+		return !(minIntervalMs != 0 && has && nowMs - lastMs < minIntervalMs);
 	}
 
 	void Reset() { has = false; lastMs = 0; }

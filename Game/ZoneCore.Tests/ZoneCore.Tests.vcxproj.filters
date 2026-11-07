@@ -119,6 +119,9 @@
     <ClCompile Include="..\GameCommon\ZoneCore\BossSystem.cpp">
       <Filter>GameCommon\ZoneCore</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Regular.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h" />
@@ -313,6 +316,9 @@
     </ClInclude>
     <ClInclude Include="TestZoneHelpers.h">
       <Filter>Tests</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Regular.h">
+      <Filter>UtilCore\Util</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

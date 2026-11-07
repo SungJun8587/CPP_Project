@@ -11,6 +11,7 @@ namespace GameViewer.Core.Data
         Default,    // 기본 (기존 연출)
         Blade,      // 묵직한 베기: 겹친 초승달 궤적 + 타격 섬광
         Pierce,     // 급소 찌르기: 돌진 선 + 교차하는 가는 칼날 + 핏빛 파편
+        Lance,      // 창 찌르기: 대상 너머까지 꿰뚫는 굵은 줄기 + 속도선 + 퍼지는 고리와 방사선. 직선 스킬은 창끝 쐐기와 충격 고리가 사거리를 따라 달린다
         Whirl,      // 회전 베기: 중심을 도는 칼날 호
         Arrow,      // 화살: 길게 빛나는 궤적 + 적중 섬광
         Volley,     // 화살비: 위에서 쏟아지는 화살
@@ -53,16 +54,16 @@ namespace GameViewer.Core.Data
             { 15, new SkillFxInfo(SkillFxStyle.Arrow,    0xFFB45A, 0xFFFFFF, 0, 0f) },       // 관통 사격
             { 16, new SkillFxInfo(SkillFxStyle.Nova,     0xB48CFF, 0xF0E6FF, 900, 4f) },     // 충격파
             { 17, new SkillFxInfo(SkillFxStyle.Heal,     0x6CC8FF, 0xE6F8FF, 900, 0f) },     // 수호의 방패
-            { 18, new SkillFxInfo(SkillFxStyle.Pierce,   0xFF3C4C, 0xFFE0E0, 0, 0f) },       // 급소 찌르기
-            { 19, new SkillFxInfo(SkillFxStyle.Whirl,    0xA864FF, 0xF0DCFF, 800, 0f) },     // 그림자 난무
+            { 18, new SkillFxInfo(SkillFxStyle.Lance,    0x34D4E0, 0xE8FFFF, 0, 3f) },       // 관통 찌르기 (직선)
+            { 19, new SkillFxInfo(SkillFxStyle.Whirl,    0x40C8D8, 0xE0FFFF, 800, 3f) },     // 회전 창격
             { 20, new SkillFxInfo(SkillFxStyle.Arrow,    0xB4F060, 0xF4FFD0, 0, 0f) },       // 속박 사격
             { 21, new SkillFxInfo(SkillFxStyle.Arrow,    0x5CD43C, 0xE4FFB8, 0, 0f) },       // 독화살
             { 22, new SkillFxInfo(SkillFxStyle.Roar,     0xFFA830, 0xFFE8A0, 800, 0f) },     // 집중
             { 23, new SkillFxInfo(SkillFxStyle.Blade,    0xFFC850, 0xFFF4C0, 0, 0f) },       // 일제 사격 (부채꼴)
-            { 24, new SkillFxInfo(SkillFxStyle.Pierce,   0x6CE03A, 0xE8FFC8, 0, 0f) },       // 독 칼날
-            { 25, new SkillFxInfo(SkillFxStyle.Nova,     0x8A5CFF, 0xE0D0FF, 700, 0f) },     // 그림자 질주
-            { 26, new SkillFxInfo(SkillFxStyle.Pierce,   0xE040C0, 0xFFD8F4, 0, 0f) },       // 약점 공격
-            { 27, new SkillFxInfo(SkillFxStyle.Nova,     0xFFF6A8, 0xFFFFFF, 900, 3f) },     // 섬광탄
+            { 24, new SkillFxInfo(SkillFxStyle.Lance,    0xE04048, 0xFFE0E0, 0, 2f) },       // 찢는 창끝
+            { 25, new SkillFxInfo(SkillFxStyle.Nova,     0x58E0C0, 0xE0FFF4, 700, 0f) },     // 질풍 돌격
+            { 26, new SkillFxInfo(SkillFxStyle.Lance,    0xFFB84A, 0xFFF4D8, 0, 3f) },       // 갑옷 꿰기
+            { 27, new SkillFxInfo(SkillFxStyle.Blade,    0xFFE080, 0xFFFFFF, 0, 4f) },       // 제압 휘두르기 (부채꼴)
         };
         /// <summary>지속 피해 상태의 불씨 색. 표에 없으면 주황(화상). 독은 초록, 출혈은 붉은색.</summary>
         public static int DotColor(uint statusId)
@@ -96,7 +97,7 @@ namespace GameViewer.Core.Data
             switch (style)
             {
                 case SkillFxStyle.Arrow: case SkillFxStyle.Fireball: return proj || !sk.IsBurst;     // 투사체이거나 단일 대상
-                case SkillFxStyle.Blade: case SkillFxStyle.Pierce: return !sk.IsBurst && !proj;
+                case SkillFxStyle.Blade: case SkillFxStyle.Pierce: case SkillFxStyle.Lance: return !sk.IsBurst && !proj;
                 default: return true;                                                                 // 범위/치유 양식은 모양 제한을 두지 않는다
             }
         }

@@ -36,6 +36,9 @@ namespace GameViewer.Core.World
         /// <summary>내가 스킬을 쓴 것이 확인되면 호출된다(쿨다운 표시용). 인자: skillId, castStartedNow(시전 시작이면 true), now.</summary>
         public event Action<uint, bool, long> SelfSkillUsed;
 
+        /// <summary>내 스킬 요청에 대한 서버의 답이 왔다(시전 시작/발동/투사체 발사/거부/취소). 요청이 처리 중인 동안 다른 요청을 보내지 않기 위한 신호다.</summary>
+        public event Action<long> SelfSkillResponded;
+
         private readonly Dictionary<uint, ViewEffect> _projectiles = new Dictionary<uint, ViewEffect>();
         private readonly Dictionary<ulong, long> _lastSkillMs = new Dictionary<ulong, long>();
 
@@ -264,6 +267,7 @@ namespace GameViewer.Core.World
                 SetHitDir(target, attacker, now);
                 UpdateBossPhase(target, now, false);
                 if (p.TargetId == SelfId && target.MaxHp > 0 && dmg * 100 >= target.MaxHp * 12) Shake(now, 260, 4f);
+                else if (p.AttackerId == SelfId && target.MaxHp > 0 && dmg * 100 >= target.MaxHp * 12) Shake(now, 150, 2.5f);      // 내가 큰 타격을 줄 때 손맛
                 target.PosAt(now, out tx, out ty);
             }
             else if (attacker != null) attacker.PosAt(now, out tx, out ty);
@@ -276,8 +280,9 @@ namespace GameViewer.Core.World
                 int variant = p.AttackerId == 0 ? 1 : (p.TargetId == SelfId ? 2 : (p.AttackerId == SelfId ? 3 : 0));
                 ViewEffect d = NewFx(EffectKind.Damage, now, 900, tx, ty);
                 d.Value = dmg; d.Variant = variant; d.EntityId = p.TargetId;
-                ViewEffect s = NewFx(EffectKind.Spark, now, 220, tx, ty);
-                s.EntityId = p.TargetId;
+                bool heavyHit = target.MaxHp > 0 && dmg * 100 >= target.MaxHp * 12;
+                ViewEffect s = NewFx(EffectKind.Spark, now, heavyHit ? 480 : 360, tx, ty);
+                s.EntityId = p.TargetId; s.TargetId = p.AttackerId; s.Value = dmg; s.Variant = heavyHit ? 1 : 0;
             }
 
             if (attacker != null && target != null)
@@ -293,7 +298,7 @@ namespace GameViewer.Core.World
                     float dx = tx - ax, dy = ty - ay;
                     bool ranged = dx * dx + dy * dy > 4.0f * 4.0f;
                     attacker.AttackKind = (byte)(ranged ? 2 : 0);
-                    ViewEffect t = NewFx(ranged ? EffectKind.Tracer : EffectKind.Slash, now, ranged ? 160 : 200, tx, ty);
+                    ViewEffect t = NewFx(ranged ? EffectKind.Tracer : EffectKind.Slash, now, ranged ? 260 : 320, tx, ty);
                     t.EntityId = p.AttackerId;
                 }
             }
@@ -363,6 +368,7 @@ namespace GameViewer.Core.World
 
         private void OnSkillReject(ZcSkillRejectNotify p, long now)
         {
+            if (SelfSkillResponded != null) SelfSkillResponded(now);
             AddLog(now, 1, "스킬 거부(" + Data.SkillName(p.SkillId) + "): " + p.Reason);
         }
 
@@ -381,6 +387,7 @@ namespace GameViewer.Core.World
                 ViewEffect t = NewFx(EffectKind.Telegraph, now, (int)p.CastTimeMs + 300, p.X, p.Y);
                 t.Radius = (float)sk.Radius; t.EntityId = p.CasterId; t.SkillId = p.SkillId;
             }
+            if (p.CasterId == SelfId && SelfSkillResponded != null) SelfSkillResponded(now);
             if (p.CasterId == SelfId && SelfSkillUsed != null) SelfSkillUsed(p.SkillId, true, now);
         }
 
@@ -389,6 +396,7 @@ namespace GameViewer.Core.World
             Entity c = Find(p.CasterId);
             if (c != null) EndCast(c);
             if (p.CasterId == SelfId) AddLog(now, 1, "시전 취소(" + Data.SkillName(p.SkillId) + "): " + p.Reason);
+            if (p.CasterId == SelfId && SelfSkillResponded != null) SelfSkillResponded(now);
         }
 
         private void OnSkill(ZcSkillNotify p, long now)
@@ -414,7 +422,7 @@ namespace GameViewer.Core.World
             {
                 // 베기 계열은 짧게, 범위형 양식(치유/충격파 등)을 단일 대상 형태로 쓰는 스킬은 그 양식의 길이만큼 남긴다.
                 bool burst = fxi.BurstMs > 0;
-                ViewEffect s = NewFx(EffectKind.Slash, now, burst ? fxi.BurstMs : (fxi.Style == SkillFxStyle.Blade || fxi.Style == SkillFxStyle.Pierce ? 420 : 260), p.X, p.Y);
+                ViewEffect s = NewFx(EffectKind.Slash, now, burst ? fxi.BurstMs : (fxi.Style == SkillFxStyle.Blade || fxi.Style == SkillFxStyle.Pierce || fxi.Style == SkillFxStyle.Lance ? 460 : 260), p.X, p.Y);
                 s.EntityId = p.CasterId; s.SkillId = p.SkillId; s.Variant = 1;
                 if (burst) s.Radius = sk != null && sk.Radius > 0 ? (float)sk.Radius : 3.5f;
                 if (sk != null && sk.IsAimed)
@@ -425,6 +433,7 @@ namespace GameViewer.Core.World
                 }
                 ShakeForSkill(fxi, c, p.X, p.Y, now);
             }
+            if (p.CasterId == SelfId && SelfSkillResponded != null) SelfSkillResponded(now);
             if (p.CasterId == SelfId && SelfSkillUsed != null && (sk == null || sk.CastTimeMs == 0))
                 SelfSkillUsed(p.SkillId, false, now);
         }
@@ -451,6 +460,7 @@ namespace GameViewer.Core.World
             fx.SkillId = p.SkillId; fx.ProjectileId = p.ProjectileId; fx.Value = (int)p.FlightMs;
             _projectiles[p.ProjectileId] = fx;
             SkillRow sk = Data.Skill(p.SkillId);
+            if (p.CasterId == SelfId && SelfSkillResponded != null) SelfSkillResponded(now);
             if (p.CasterId == SelfId && SelfSkillUsed != null && (sk == null || sk.CastTimeMs == 0))
                 SelfSkillUsed(p.SkillId, false, now);
         }

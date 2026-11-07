@@ -20,6 +20,9 @@
     <ClCompile Include="RowGenerator.cpp" />
     <ClCompile Include="DefinitionSheets.cpp" />
     <ClCompile Include="PacketGenerator.cpp" />
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Regular.cpp">
+      <Filter>UtilCore\Util</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Library\UtilCore\BaseDefine.h">
@@ -59,6 +62,9 @@
     <ClInclude Include="PacketGenerator.h" />
     <ClInclude Include="PacketSchema.h" />
     <ClInclude Include="CodeGenCommon.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Regular.h">
+      <Filter>UtilCore\Util</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="UtilCore">

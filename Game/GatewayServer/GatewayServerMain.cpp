@@ -1,6 +1,6 @@
 ﻿
 //***************************************************************************
-// GatewayServerMain.cpp: implementation of the CGatewayServerMain class.
+// GatewayServerMain.cpp : implementation of the CGatewayServerMain class.
 //
 //***************************************************************************
 
@@ -318,7 +318,7 @@ bool CGatewayServerMain::HandleLogin(CGatewayClientSession& client, const Packet
 // @details 세션이 존 슬롯을 먼저 점유(TryAssignZone)해 중복 입장을 막고, 존 정원 슬롯을 예약한 뒤
 //          존 서버에 입장을 요청한다. 최종 결과는 존 서버의 ZoneEnterRes로 비동기 통지된다(HandleZoneEnterRes).
 // @param client 요청한 클라이언트 세션
-// @param header GwEnterZoneReqPacket
+// @param header GwEnterZoneReqPacket (heroId는 존 서버로 그대로 전달한다)
 // @return 프로토콜 위반이면 false
 //***************************************************************************
 bool CGatewayServerMain::HandleEnterZone(CGatewayClientSession& client, const PacketHeader* header)
@@ -326,7 +326,9 @@ bool CGatewayServerMain::HandleEnterZone(CGatewayClientSession& client, const Pa
 	if( header->size < sizeof(GwEnterZoneReqPacket) )
 		return false;
 
-	const uint32 zoneId = static_cast<const GwEnterZoneReqPacket*>(header)->zoneId;
+	const GwEnterZoneReqPacket* req = static_cast<const GwEnterZoneReqPacket*>(header);
+	const uint32 zoneId = req->zoneId;
+	const uint32 heroId = req->heroId;	// 유효성은 존 서버가 영웅 데이터로 판정한다
 
 	if( !client.IsLoggedIn() )
 	{
@@ -369,6 +371,7 @@ bool CGatewayServerMain::HandleEnterZone(CGatewayClientSession& client, const Pa
 	InitZonePacket(enter, EZoneServerPacketType::ZoneEnterReq);
 	enter.clientSessionId = client.GetSessionId();
 	enter.charId = client.GetCharId();
+	enter.heroId = heroId;
 
 	if( !zoneSession->Send(&enter, enter.size) )
 	{

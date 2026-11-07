@@ -30,7 +30,7 @@ GameData\*.xlsx ──► XlsxConverter ──┬─► <시트>.json           
 | `RowGenerator.h/.cpp` | 스키마 → C++/C# 코드 생성 |
 | `PacketSchema.h` | 패킷 정의 시트에서 읽은 내용(상수, 번호 그룹, 패킷, 필드)과 계산된 패킷 크기 |
 | `PacketGenerator.h/.cpp` | 패킷 스키마 → C++ 구조체·enum·번호, C# Build/Parse/ToBytes, 크기 목록 |
-| `CodeGenCommon.h` | RowGenerator와 PacketGenerator가 함께 쓰는 C# 예약어 목록, 줄 끝 주석 접미사 |
+| `CodeGenCommon.h` | RowGenerator와 PacketGenerator가 함께 쓰는 C++/C# 예약어와 Windows 매크로 이름 검사, 식별자·네임스페이스 검사, enum 출력, 줄 끝 주석 접미사 |
 | `ValueFormat.h/.cpp` | 숫자·문자열 표기 규칙(JSON 출력용) |
 | `Utf8Literal.h` | `U8("...")` 매크로. 한글 리터럴을 항상 UTF-8 바이트로 만듦 |
 
@@ -53,10 +53,10 @@ enum 기반형(`Base` 열)은 `uint8`, `uint16`, `uint32`, `int32`이고 C++에�
 ### 시트와 행
 
 - 시트 이름이 곧 `<시트>.json` 파일 이름, JSON 최상위 키, C++ 구조체 이름(`S<시트>Row`)이 됩니다. 예) `Monster` 시트 → `Monster.json` = `{"Monster":[...]}`
-- 1행은 헤더, 2행부터 데이터입니다.
-- 첫 칸이 `#`로 시작하는 행과 완전히 빈 행은 건너뜁니다.
+- 1행은 헤더, 2행부터 데이터입니다. 셀 앞뒤의 공백은 지우며, NBSP·전각 공백(U+3000)·U+FEFF도 공백으로 봅니다.
+- 첫 칸이 `#`로 시작하는 행과 완전히 빈 행은 건너뜁니다. 주석 행에 다른 칸 값이 있으면 건너뛰되 변환이 끝난 뒤 stderr에 warning을 내므로, 데이터 행이 주석 처리된 것은 아닌지 확인하세요.
 - 이름이 `_`로 시작하는 시트(예: `_README`)는 변환하지 않습니다. (`--sheets`로 직접 지정하면 변환합니다.)
-- 예약 시트 이름 `Enums`, `Consts`, `EnumStrings`, `GeneratedCommon`은 생성 파일 이름과 겹치므로 시트 이름으로 쓸 수 없습니다.
+- 예약 시트 이름 `Enums`, `Consts`, `EnumStrings`, `GeneratedCommon`, 패킷 생성 파일 이름인 ZonePacketTypes, ZonePacketStructs는 생성 파일 이름과 겹치므로 시트 이름으로 쓸 수 없습니다.
 
 ### 헤더 문법
 
@@ -88,7 +88,7 @@ enum 기반형(`Base` 열)은 `uint8`, `uint16`, `uint32`, `int32`이고 C++에�
 - 같은 `Enum` 이름의 행들이 한 enum이 되고 순서는 시트의 행 순서입니다.
 - `Value`를 비우면 앞 값 + 1이고 첫 값은 0입니다.
 - `Base`는 `uint8`(기본), `uint16`, `uint32`, `int32` 중 하나이며 enum의 첫 행에만 써도 됩니다. 값은 기반형 범위 안이어야 합니다.
-- 멤버 이름 중복, 값 중복, C++ 키워드 이름은 오류입니다.
+- 멤버 이름 중복, 값 중복, C++ 키워드와 ERROR, DELETE 같은 Windows 매크로 이름은 오류입니다.
 - EnumComment 열(enum 설명)은 PacketEnum 시트에만 있고 enum의 첫 행에만 쓸 수 있습니다. 일반 Enum 시트에는 이 열이 없습니다.
 
 ### Const 시트
@@ -113,7 +113,7 @@ enum 기반형(`Base` 열)은 `uint8`, `uint16`, `uint32`, `int32`이고 C++에�
 - 필드 `Type`: `uint8`, `bool8`, `uint16`, `uint32`, `int32`, `uint64`, `float`, `char`. `bool8`은 C++에서 `uint8`, C#에서 `bool`입니다. `char`는 `Len`(숫자 또는 `PacketConst` 이름)이 필요하고 `Cs=None` 패킷에서만 쓸 수 있습니다.
 - `Enum` 열은 필드 값의 의미를 나타내는 `PacketEnum`의 enum입니다. 필드 타입과 enum의 기반형이 같아야 합니다. C++ 멤버는 정수형 그대로이고 C#은 enum 타입이 됩니다.
 - `Cs` 열: `Send`(클라이언트가 보냄, `Build` 생성), `Recv`(클라이언트가 받음, `Parse`/`ToBytes` 생성), `Both`, `None`(기본값, 서버 간 패킷).
-- `Id`는 그룹의 `Min`..`Max` 안에 있어야 하고 전체에서 유일해야 합니다. 패킷을 추가할 때는 `Packet` 시트에 행을, `PacketField` 시트에 그 패킷의 필드 행을 추가하고 다시 실행하면 됩니다.
+- `Id`는 그룹의 `Min`..`Max` 안에 있어야 하고 전체에서 유일해야 합니다. 패킷을 추가할 때는 `Packet` 시트에 행을, `PacketField` 시트에 그 패킷의 필드 행을 추가하고 다시 실행하면 됩니다. 패킷·필드·enum·상수 이름이 C++ 키워드나 Windows 매크로 이름이면 오류이고, Type이 size인 상수는 2147483647 이하여야 합니다.
 
 ## 4. 명령행
 
@@ -130,11 +130,11 @@ XlsxConverter64.exe <GameData 폴더 | file.xlsx> --out <dir> [--cpp-out <dir>] 
 | `--out` | JSON 출력 폴더 (필수) |
 | `--cpp-out` | C++ 헤더 출력 폴더 |
 | `--cs-out` | C# 출력 폴더 |
-| `--cs-namespace` | C# 네임스페이스 (기본 `GameDataRows`) |
+| `--cs-namespace` | C# 네임스페이스 (기본 `GameDataRows`). 점으로 구분한 식별자여야 함 |
 | `--sheets` | 일부 시트만 JSON 변환. 코드 생성과 함께 쓸 수 없음 (일부 시트만으로 만든 헤더는 다른 구조체를 지우기 때문) |
 | `--incremental` | 모든 xlsx의 파일 이름/수정 시각/크기가 마지막 실행 때와 같고 출력 파일이 모두 있으면 엑셀을 열지 않고 종료 |
 | --proto-cs-out | 패킷 프로토콜 C# 출력 폴더. --cs-out과 다른 폴더여야 함 (3절 패킷 정의 시트) |
-| --proto-cs-namespace | 패킷 C# 네임스페이스 (기본은 --cs-namespace 값) |
+| --proto-cs-namespace | 패킷 C# 네임스페이스 (기본은 --cs-namespace 값). 같은 규칙으로 검사 |
 | --proto-sizes-out | "<구조체> <바이트>" 목록 파일. C# 테스트가 C++ sizeof와 대조하는 입력. 폴더 없이 파일 이름만 줘도 현재 폴더에 만듦 |
 
 종료 코드: `0` 성공, `1` 변환 실패(데이터 오류), `2` 사용법/파일 오류
@@ -392,7 +392,7 @@ python run_tests.py --exe ..\Bin\x64\Release\XlsxConverter64.exe
 | `err_enum_const` | Enum/Const 시트 오류들 |
 | `err_data` | 범위, enum 오타, 정수 아님, bool 아님, 빈 칸 |
 | `err_reserved` | 예약 시트 이름 |
-| `err_cpp_keyword` | C++ 키워드를 enum/멤버 이름으로 쓴 경우 |
+| `err_cpp_keyword` | C++ 키워드나 Windows 매크로 이름(ERROR, DELETE 등)을 enum/멤버 이름으로 쓴 경우 |
 | `packets` | 패킷 시트 5개: C++ 헤더 2개, C# 2개, 크기 목록 (Send/Recv/Both/None, bool8, enum 필드, char 배열, 구간) |
 | `err_packet` | 패킷 시트 오류들: 상수 타입·범위, 구간 겹침, Id 중복·구간 밖, 알 수 없는 Group/Cs/Type, enum 기반형 불일치, char Len, C# 미지원 char |
 | `scn/*` | BOM 유무, 같은 내용은 다시 쓰지 않음, 낡은 생성 파일 정리, `--incremental` 동작 |

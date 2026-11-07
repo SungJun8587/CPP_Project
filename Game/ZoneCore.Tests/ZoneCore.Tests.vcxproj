@@ -96,6 +96,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\..\Library\UtilCore\Util\Regular.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\BlockMap.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\BlockMapFile.cpp" />
     <ClCompile Include="..\GameCommon\ZoneCore\BossData.cpp" />
@@ -142,6 +143,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\..\Library\UtilCore\Util\MainArgParser.h" />
+    <ClInclude Include="..\..\..\Library\UtilCore\Util\Regular.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\BlockMap.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\BlockMapFile.h" />
     <ClInclude Include="..\GameCommon\ZoneCore\BossData.h" />

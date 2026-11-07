@@ -57,6 +57,7 @@ namespace GameViewer.Core.Logic
             WorldModel w = _s.World;
             Entity self = w.Self;
             if (self.Casting) { Note = "시전 중"; return; }
+            if (_s.SkillPending(now)) { Note = "시전 응답 대기"; return; }
 
             ObserveCorrections(now, w);
 
@@ -84,7 +85,7 @@ namespace GameViewer.Core.Logic
                 SkillRow sk = _s.Data.Skill(skills[i]);
                 if (sk == null || _s.SkillCooldownLeftMs(sk.Id, now) > 0) continue;
                 if (!SkillWanted(sk, self, dist)) continue;
-                if (sk.CastTimeMs > 0 && self.Moving) { _s.StopMoving(now); Note = "시전 준비(정지)"; return; }
+                // 시전 시간이 있는 스킬은 서버가 시전을 시작하면서 이동을 멈춘다. 여기서 따로 멈춤 요청을 보내면 그 요청이 시전 직전·직후에 닿아 시전을 취소할 수 있다.
                 SkillAimResult aim = SkillAim.Resolve(sk, w, sk.IsAlly ? null : target, false, 0f, 0f, now);
                 if (!aim.Ok) continue;
                 if (_s.UseSkill(sk.Id, aim.TargetId, aim.X, aim.Y, now)) { Note = "스킬 " + sk.Name; return; }
